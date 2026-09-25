@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+	<meta name="theme-color" content="#11151d">
+	<title>Track Editor · Online Racing Game GP</title>
+	<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2311151d'/%3E%3Cpath d='M6 24 L14 8 L26 20' stroke='%23f48342' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;0,900;1,800;1,900&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+	<script src="https://cdn.tailwindcss.com"></script>
+	<script>tailwind.config = { corePlugins: { preflight: false } };</script>
+	<link href="../css/style.css" rel="stylesheet">
+	<link href="editor.css" rel="stylesheet">
+</head>
+<body class="editor" style="visibility:hidden">
+	<header class="ed-top">
+		<a class="back-btn" href="../">&larr; Game</a>
+		<h1 class="screen-title">Track editor</h1>
+		<div class="ed-name">
+			<label class="eyebrow" for="trackName">Track name</label>
+			<input id="trackName" class="text-input" maxlength="24" placeholder="My track" autocomplete="off">
+		</div>
+		<div class="ed-actions">
+			<button class="back-btn" id="importBtn">Import code</button>
+			<button class="back-btn" id="exportBtn">Copy code</button>
+			<button class="go-btn" id="raceBtn"><span>Save &amp; race</span></button>
+		</div>
+	</header>
+
+	<aside class="ed-tools" role="toolbar" aria-label="Tools">
+		<button class="tool" data-tool="wall" aria-pressed="true"><i class="sw wall"></i>Walls<kbd>1</kbd></button>
+		<button class="tool" data-tool="line" aria-pressed="false"><i class="sw line"></i>Start &amp; checkpoints<kbd>2</kbd></button>
+		<button class="tool" data-tool="tree" aria-pressed="false"><i class="sw tree"></i>Trees<kbd>3</kbd></button>
+		<button class="tool" data-tool="arrow" aria-pressed="false"><i class="sw arrow"></i>Arrows<kbd>4</kbd></button>
+		<button class="tool" data-tool="erase" aria-pressed="false"><i class="sw erase"></i>Eraser<kbd>5</kbd></button>
+		<hr>
+		<button class="tool" id="undoBtn"><i class="sw undo"></i>Undo<kbd>Ctrl Z</kbd></button>
+		<button class="tool" id="clearBtn"><i class="sw erase"></i>Clear all</button>
+		<div class="ed-tips">
+			<p><b>Drag</b> to draw walls and lines. The first line you draw is the start line; draw more in the order cars should cross them.</p>
+			<p>Cars start on the dots and drive up the screen, so put the start line just in front of them.</p>
+			<p><b>Right-drag</b> or <b>Space-drag</b> to move around. <b>Scroll</b> to zoom.</p>
+		</div>
+		<ul class="ed-warn" id="warnings"></ul>
+	</aside>
+
+	<canvas id="board" aria-label="Track canvas"></canvas>
+
+	<div class="modal" id="codeModal" hidden>
+		<div class="panel kerbed">
+			<h2 id="codeTitle">Track code</h2>
+			<p id="codeHelp">Share this with friends, or paste it here later with Import code.</p>
+			<textarea id="codeText" class="text-input ed-code" spellcheck="false"></textarea>
+			<p class="msg err" id="codeErr" hidden></p>
+			<div class="flex gap-3">
+				<button class="go-btn" id="codeOk"><span>Done</span></button>
+				<button class="go-btn ghost" id="codeCancel"><span>Cancel</span></button>
+			</div>
+		</div>
+	</div>
+
+	<script type="module" src="editor.js"></script>
+</body>
+</html>

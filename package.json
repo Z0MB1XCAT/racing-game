@@ -1,0 +1,11 @@
+{
+  "name": "online-racing-game-gp",
+  "private": true,
+  "type": "module",
+  "description": "Fork of jchabin/cars with new tracks, UI and modes. GPL-3.0.",
+  "scripts": {
+    "serve": "node serve.mjs",
+    "test": "node tools/physics-equivalence.mjs && node tools/track-sim.mjs"
+  },
+  "license": "GPL-3.0"
+}

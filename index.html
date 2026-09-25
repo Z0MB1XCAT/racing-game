@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+	<meta name="theme-color" content="#11151d">
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="description" content="A browser racing game for you and your friends: real F1 circuits, an oval, bots, ghosts and online rooms.">
+	<title>Online Racing Game GP</title>
+	<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2311151d'/%3E%3Cpath d='M8 5v23' stroke='%23f3f5f9' stroke-width='2.5' stroke-linecap='round'/%3E%3Cpath d='M9 6h16l-3 5 3 5H9z' fill='%23f48342'/%3E%3Cpath d='M9 6h4v5H9zM17 6h4v5h-4zM13 11h4v5h-4z' fill='%2311151d'/%3E%3C/svg%3E">
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;0,800;0,900;1,700;1,800;1,900&family=Figtree:wght@400;500;600;700&family=Monoton&display=swap" rel="stylesheet">
+	<script src="https://cdn.tailwindcss.com"></script>
+	<script>
+		tailwind.config = { corePlugins: { preflight: false }, theme: { extend: { fontFamily: { display: ["Barlow Condensed", "sans-serif"], body: ["Figtree", "sans-serif"] } } } };
+	</script>
+	<link href="css/style.css" rel="stylesheet">
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+	<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+	<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+	<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+</head>
+<body>
+	<div id="stage"></div>
+	<div id="labels"></div>
+
+	<main id="ui">
+		<!-- Title -->
+		<section class="screen scrim" id="screen-title" data-screen="title">
+			<header class="topbar">
+				<div class="logo">
+					<h1 id="gameName">Online Racing Game</h1>
+					<span class="edition">Grand Prix edition</span>
+				</div>
+				<div class="flex gap-2">
+					<button class="icon-btn" data-open="help" aria-label="How to play">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9.5"/><path d="M9.5 9.2a2.6 2.6 0 1 1 3.6 2.4c-.7.3-1.1.9-1.1 1.6v.6"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>
+					</button>
+					<button class="icon-btn" data-open="settings" aria-label="Settings">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+					</button>
+				</div>
+			</header>
+
+			<div class="title-grid">
+				<div class="stack">
+					<div class="panel kerbed">
+						<div class="field">
+							<label class="eyebrow" for="nameInput">Driver name</label>
+							<input id="nameInput" class="text-input" maxlength="18" placeholder="Nerd with No Name" autocomplete="off" spellcheck="false">
+						</div>
+						<div class="field">
+							<label class="eyebrow" for="hueInput">Car colour</label>
+							<input id="hueInput" class="hue" type="range" min="0" max="359" step="1">
+						</div>
+						<div class="field">
+							<span class="eyebrow" id="bodyLabel">Car</span>
+							<div class="bodies" id="bodyPicker" role="radiogroup" aria-labelledby="bodyLabel"></div>
+						</div>
+						<div class="field">
+							<span class="eyebrow">Account</span>
+							<div class="acct-row">
+								<span class="acct-text" id="acctText">Playing as a guest</span>
+								<button class="back-btn" id="acctBtn">Sign in</button>
+							</div>
+						</div>
+					</div>
+
+					<nav class="race-menu" aria-label="Game modes">
+						<button class="race-btn primary" id="btnOnline">
+							<span class="rb-text"><span class="rb-title">Race online</span><span class="rb-sub">Host a room or join your friends with a code</span></span>
+							<span class="rb-arrow">&rarr;</span>
+						</button>
+						<button class="race-btn" id="btnBots">
+							<span class="rb-text"><span class="rb-title">Race bots</span><span class="rb-sub">Grand prix or elimination against AI drivers</span></span>
+							<span class="rb-arrow">&rarr;</span>
+						</button>
+						<button class="race-btn" id="btnTrial">
+							<span class="rb-text"><span class="rb-title">Time trial</span><span class="rb-sub">Race your ghost and set a lap record</span></span>
+							<span class="rb-arrow">&rarr;</span>
+						</button>
+						<button class="race-btn small" id="btnBoards">
+							<span class="rb-text"><span class="rb-title">Leaderboards</span><span class="rb-sub">Most wins, most podiums and every track's lap record</span></span>
+							<span class="rb-arrow">&rarr;</span>
+						</button>
+						<a class="race-btn small" href="editor/" id="btnEditor" hidden>
+							<span class="rb-text"><span class="rb-title">Track editor</span><span class="rb-sub">Draw a track and race it here</span></span>
+							<span class="rb-arrow">&rarr;</span>
+						</a>
+					</nav>
+					<p class="credit">Based on the original <a href="https://github.com/jchabin/cars" target="_blank" rel="noopener">cars</a> by jchabin. Same handling, new everything else. GPL-3.0.</p>
+				</div>
+
+				<div class="title-side">
+				<section class="panel kerbed weekly" id="weeklyCard" aria-labelledby="weeklyTitle">
+					<div class="opt-row"><span class="eyebrow">Weekly challenge</span><span class="eyebrow weekly-ends" id="weeklyEnds"></span></div>
+					<div class="sel-name" id="weeklyTitle">Track</div>
+					<ol class="board" id="weeklyBoard"><li class="empty">Loading…</li></ol>
+					<p class="opt-help weekly-last" id="weeklyLast"></p>
+					<button class="go-btn" id="weeklyGo"><span>Take the challenge</span></button>
+				</section>
+				<div class="showcase-tag" aria-hidden="true">
+					<span class="num" id="showNum">07</span>
+					<span class="who" id="showName">Driver</span>
+					<span class="what" id="showBody">Classic</span>
+				</div>
+				</div>
+			</div>
+		</section>
+
+		<!-- Solo setup: race bots / time trial -->
+		<section class="screen scrim" id="screen-setup" data-screen="setup" hidden>
+			<header class="screen-head">
+				<button class="back-btn" data-back>&larr; Back</button>
+				<h2 class="screen-title" id="setupTitle">Race bots</h2>
+			</header>
+			<div class="setup-grid">
+				<div class="track-grid" id="setupTracks" role="radiogroup" aria-label="Track"></div>
+				<aside class="panel kerbed options" id="setupOptions">
+					<div>
+						<div class="eyebrow" id="setupPlace">Track</div>
+						<div class="sel-name" id="setupName">Monza</div>
+					</div>
+					<p class="sel-blurb" id="setupBlurb"></p>
+					<div class="opt-row" data-for="bots">
+						<span class="opt-label">Mode</span>
+						<div class="seg" id="setupMode" role="radiogroup" aria-label="Mode">
+							<button data-v="race" aria-checked="true">Race</button>
+							<button data-v="elim" aria-checked="false">Elimination</button>
+							<button data-v="champ" aria-checked="false">Championship</button>
+						</div>
+					</div>
+					<p class="opt-help" data-for="bots" id="modeHelp">First across the line after the last lap wins.</p>
+					<div class="opt-row" data-for="bots laps">
+						<span class="opt-label">Laps</span>
+						<div class="stepper" data-stepper="laps"><button data-d="-1" aria-label="Fewer laps">&minus;</button><output id="setupLaps">3</output><button data-d="1" aria-label="More laps">+</button></div>
+					</div>
+					<div class="opt-row" data-for="bots">
+						<span class="opt-label">Bots</span>
+						<div class="stepper" data-stepper="bots"><button data-d="-1" aria-label="Fewer bots">&minus;</button><output id="setupBots">5</output><button data-d="1" aria-label="More bots">+</button></div>
+					</div>
+					<div class="opt-row" data-for="bots">
+						<span class="opt-label">Bot level</span>
+						<div class="seg" id="setupLevel" role="radiogroup" aria-label="Bot level">
+							<button data-v="easy" aria-checked="false">Rookie</button>
+							<button data-v="medium" aria-checked="true">Racer</button>
+							<button data-v="hard" aria-checked="false">Ace</button>
+						</div>
+					</div>
+					<div class="opt-row" data-for="bots">
+						<span class="opt-label">Slipstream</span>
+						<div class="seg" id="setupDraft" role="radiogroup" aria-label="Slipstream">
+							<button data-v="1" aria-checked="true">On</button>
+							<button data-v="0" aria-checked="false">Off</button>
+						</div>
+					</div>
+					<div class="opt-row">
+						<span class="opt-label">Direction</span>
+						<div class="seg" id="setupDir" role="radiogroup" aria-label="Direction">
+							<button data-v="0" aria-checked="true">Normal</button>
+							<button data-v="1" aria-checked="false">Reverse</button>
+						</div>
+					</div>
+					<div data-for="trial">
+						<div class="eyebrow" style="margin-bottom:6px">Lap records</div>
+						<ol class="board" id="setupBoard"></ol>
+					</div>
+					<button class="go-btn" id="setupGo"><span>Start race</span></button>
+				</aside>
+			</div>
+		</section>
+
+		<!-- Online: host or join -->
+		<section class="screen scrim" id="screen-online" data-screen="online" hidden>
+			<header class="screen-head">
+				<button class="back-btn" data-back>&larr; Back</button>
+				<h2 class="screen-title">Race online</h2>
+			</header>
+			<div class="panel notice" id="onlineNotice" hidden style="margin-top:24px;max-width:860px">
+				<div class="eyebrow">Online play is off</div>
+				<p class="msg" style="margin-top:6px">Online rooms need a free Firebase project. Follow <b>Set up online play</b> in <code>README.md</code>, paste your config into <code>js/config.js</code>, then push to GitHub. Bots, time trial and the editor work without it.</p>
+			</div>
+			<div class="online-grid" id="onlineCards">
+				<div class="panel kerbed stack">
+					<div class="eyebrow">Host</div>
+					<h3 class="screen-title" style="font-size:32px">Make a room</h3>
+					<p class="msg" style="color:var(--mute)">You get a four-letter code to share. You pick the track, laps and bots.</p>
+					<button class="go-btn" id="hostBtn"><span>Create room</span></button>
+				</div>
+				<div class="panel kerbed stack">
+					<div class="eyebrow">Join</div>
+					<h3 class="screen-title" style="font-size:32px">Enter a code</h3>
+					<input id="codeInput" class="code-input" maxlength="4" autocomplete="off" spellcheck="false" placeholder="ABCD" aria-label="Room code">
+					<button class="go-btn ghost" id="joinBtn"><span>Join room</span></button>
+				</div>
+			</div>
+			<p class="msg err" id="onlineMsg" style="margin-top:16px" hidden></p>
+		</section>
+
+		<!-- Lobby -->
+		<section class="screen scrim-full" id="screen-lobby" data-screen="lobby" hidden>
+			<header class="screen-head" style="justify-content:space-between;flex-wrap:wrap">
+				<div class="room-code">
+					<button class="back-btn" id="leaveRoom">&larr; Leave</button>
+					<div>
+						<div class="eyebrow">Room code</div>
+						<div class="code" id="roomCode">----</div>
+					</div>
+					<button class="back-btn" id="copyCode">Copy code</button>
+				</div>
+				<p class="msg" id="lobbyStatus" style="color:var(--mute)"></p>
+			</header>
+			<div class="lobby-grid">
+				<div class="panel kerbed stack">
+					<div class="opt-row"><span class="opt-label">Drivers <span id="playerCount" style="color:var(--mute)"></span></span></div>
+					<ul class="players" id="playerList"></ul>
+					<div class="opt-row" id="botControls">
+						<div class="seg" id="lobbyLevel" role="radiogroup" aria-label="Bot level">
+							<button data-v="easy" aria-checked="false">Rookie</button>
+							<button data-v="medium" aria-checked="true">Racer</button>
+							<button data-v="hard" aria-checked="false">Ace</button>
+						</div>
+						<button class="back-btn" id="addBot">+ Add bot</button>
+					</div>
+				</div>
+				<div class="panel kerbed stack">
+					<div class="opt-row"><span class="opt-label" id="lobbyTrackLabel">Track</span><span class="eyebrow" id="lobbyTrackName"></span></div>
+					<div class="track-grid mini-grid" id="lobbyTracks" role="radiogroup" aria-label="Track"></div>
+					<div class="opt-row">
+						<span class="opt-label">Mode</span>
+						<div class="seg" id="lobbyMode" role="radiogroup" aria-label="Mode">
+							<button data-v="race" aria-checked="true">Race</button>
+							<button data-v="elim" aria-checked="false">Elimination</button>
+							<button data-v="champ" aria-checked="false">Championship</button>
+						</div>
+					</div>
+					<div class="opt-row">
+						<span class="opt-label">Laps</span>
+						<div class="stepper" data-stepper="lobbyLaps"><button data-d="-1" aria-label="Fewer laps">&minus;</button><output id="lobbyLaps">3</output><button data-d="1" aria-label="More laps">+</button></div>
+					</div>
+					<div class="opt-row">
+						<span class="opt-label">Slipstream</span>
+						<div class="seg" id="lobbyDraft" role="radiogroup" aria-label="Slipstream">
+							<button data-v="1" aria-checked="true">On</button>
+							<button data-v="0" aria-checked="false">Off</button>
+						</div>
+					</div>
+					<div class="opt-row">
+						<span class="opt-label">Direction</span>
+						<div class="seg" id="lobbyDir" role="radiogroup" aria-label="Direction">
+							<button data-v="0" aria-checked="true">Normal</button>
+							<button data-v="1" aria-checked="false">Reverse</button>
+						</div>
+					</div>
+					<button class="go-btn" id="lobbyGo"><span>Start race</span></button>
+				</div>
+			</div>
+		</section>
+
+		<!-- Leaderboards -->
+		<section class="screen scrim-full" id="screen-boards" data-screen="boards" hidden>
+			<header class="screen-head" style="flex-wrap:wrap">
+				<button class="back-btn" data-back>&larr; Back</button>
+				<h2 class="screen-title">Leaderboards</h2>
+				<div class="seg" id="boardTab" role="tablist" aria-label="Leaderboard" style="margin-left:auto">
+					<button data-v="drivers" aria-checked="true">Drivers</button>
+					<button data-v="tracks" aria-checked="false">Lap records</button>
+					<button data-v="weekly" aria-checked="false">Weekly</button>
+				</div>
+			</header>
+			<div class="panel notice" id="boardsNotice" hidden style="margin-top:24px">
+				<div class="eyebrow">Leaderboards are offline</div>
+				<p class="msg" style="margin-top:6px">Shared leaderboards need online play set up (see <code>README.md</code>). Your own best laps on this device are shown under Lap records.</p>
+			</div>
+
+			<div class="boards-grid" id="boardDrivers">
+				<div class="panel kerbed stack">
+					<div class="opt-row" style="flex-wrap:wrap">
+						<div>
+							<div class="eyebrow">Career</div>
+							<div class="sel-name">Driver standings</div>
+						</div>
+						<div class="seg" id="driverSort" role="radiogroup" aria-label="Sort by">
+							<button data-v="wins" aria-checked="true">Wins</button>
+							<button data-v="podiums" aria-checked="false">Podiums</button>
+							<button data-v="races" aria-checked="false">Races</button>
+						</div>
+					</div>
+					<div class="table-wrap">
+						<table class="results standings">
+							<thead><tr><th>Pos</th><th>Driver</th><th>Wins</th><th>Podiums</th><th>Races</th><th>Win rate</th></tr></thead>
+							<tbody id="driverBody"></tbody>
+						</table>
+					</div>
+					<p class="opt-help" style="margin:0">Counts online races with at least two real drivers. Bots can't pad your stats. Stats belong to this browser, so use the same one each time.</p>
+				</div>
+				<aside class="panel kerbed stack you-card" id="youCard">
+					<div class="eyebrow">You</div>
+					<div class="sel-name" id="youName">Driver</div>
+					<dl class="you-stats">
+						<div><dt>Wins</dt><dd id="youWins">0</dd></div>
+						<div><dt>Podiums</dt><dd id="youPodiums">0</dd></div>
+						<div><dt>Races</dt><dd id="youRaces">0</dd></div>
+						<div><dt>Records</dt><dd id="youRecords">0</dd></div>
+					</dl>
+					<p class="opt-help" style="margin:0" id="youNote">Race online to get on the board.</p>
+				</aside>
+			</div>
+
+			<div class="boards-grid" id="boardWeekly" hidden>
+				<div class="panel kerbed stack">
+					<div class="opt-row" style="flex-wrap:wrap">
+						<div>
+							<div class="eyebrow" id="wkPlace">This week</div>
+							<div class="sel-name" id="wkName">Track</div>
+						</div>
+						<span class="eyebrow" id="wkEnds"></span>
+					</div>
+					<div class="table-wrap">
+						<table class="results standings">
+							<thead><tr><th>Pos</th><th>Driver</th><th>Lap</th><th>Gap</th><th>Set</th></tr></thead>
+							<tbody id="wkBody"></tbody>
+						</table>
+					</div>
+					<p class="opt-help" style="margin:0">A new track every Monday. Time trial laps on this week's track count here.</p>
+					<button class="go-btn" id="wkGo"><span>Take the challenge</span></button>
+				</div>
+				<aside class="panel kerbed stack you-card">
+					<div class="eyebrow">Last week</div>
+					<div class="sel-name" id="wkLastName">-</div>
+					<ol class="board" id="wkLastBoard"></ol>
+				</aside>
+			</div>
+
+			<div class="boards-grid" id="boardTracks" hidden>
+				<div class="track-grid mini-grid" id="boardTrackGrid" role="radiogroup" aria-label="Track"></div>
+				<div class="panel kerbed stack">
+					<div class="opt-row" style="flex-wrap:wrap">
+						<div>
+							<div class="eyebrow" id="boardTrackPlace">Lap record</div>
+							<div class="sel-name" id="boardTrackName">Monza</div>
+						</div>
+						<div class="seg" id="boardDir" role="radiogroup" aria-label="Direction">
+							<button data-v="0" aria-checked="true">Normal</button>
+							<button data-v="1" aria-checked="false">Reverse</button>
+						</div>
+					</div>
+					<div class="table-wrap">
+						<table class="results standings">
+							<thead><tr><th>Pos</th><th>Driver</th><th>Lap</th><th>Gap</th><th>Set</th></tr></thead>
+							<tbody id="lapBody"></tbody>
+						</table>
+					</div>
+					<p class="opt-help" style="margin:0">Lap records come from Time trial, where nobody can tow you along.</p>
+					<button class="go-btn" id="boardTrial"><span>Set a lap here</span></button>
+				</div>
+			</div>
+		</section>
+
+		<!-- (weekly board lives inside the leaderboards screen) -->
+		<!-- Results -->
+		<section class="screen scrim-full" id="screen-results" data-screen="results" hidden>
+			<div class="results-wrap">
+				<div>
+					<div class="eyebrow" id="resultsTrack">Results</div>
+					<h2 class="screen-title" id="resultsTitle">Chequered flag</h2>
+				</div>
+				<div class="podium" id="podium"></div>
+				<div class="panel table-wrap">
+					<table class="results">
+						<thead><tr><th>Pos</th><th>Driver</th><th>Time</th><th>Best lap</th><th>Gap</th></tr></thead>
+						<tbody id="resultsBody"></tbody>
+					</table>
+				</div>
+				<div class="panel kerbed table-wrap" id="champPanel" hidden>
+					<div class="opt-row" style="margin-bottom:8px"><span class="opt-label">Championship</span><span class="eyebrow" id="champRound"></span></div>
+					<table class="results standings">
+						<thead><tr><th>Pos</th><th>Driver</th><th>Points</th><th>This round</th><th>Wins</th></tr></thead>
+						<tbody id="champBody"></tbody>
+					</table>
+				</div>
+				<div class="results-actions" id="resultsActions"></div>
+				<p class="msg" id="resultsNote" style="color:var(--mute)"></p>
+			</div>
+		</section>
+	</main>
+
+	<!-- In-race HUD -->
+	<div id="hud" hidden>
+		<div class="draft-fx" id="draftFx" aria-hidden="true"></div>
+		<ol class="tower" id="tower" aria-label="Race order"></ol>
+		<div class="hud-lap">
+			<div class="lap-big"><span class="lbl" id="hudLapLabel">Lap</span><b id="hudLap">1</b><span class="of" id="hudLaps">/3</span></div>
+			<dl class="times">
+				<dt>Race</dt><dd id="hudTime">0.000</dd>
+				<dt>Lap</dt><dd id="hudCur">--.---</dd>
+				<dt>Last</dt><dd id="hudLast">--.---</dd>
+				<dt>Best</dt><dd class="best" id="hudBest">--.---</dd>
+			</dl>
+		</div>
+		<canvas id="minimap" aria-label="Track map"></canvas>
+		<div class="hud-speed">
+			<svg viewBox="0 0 190 170" aria-hidden="true">
+				<path class="track-arc" d="M 30 150 A 78 78 0 1 1 160 150" pathLength="100"/>
+				<path class="fill-arc" id="hudGauge" d="M 30 150 A 78 78 0 1 1 160 150" pathLength="100"/>
+			</svg>
+			<div class="speed-read"><b id="hudSpeed">0</b><span>km/h</span></div>
+			<div class="draft-meter" id="hudDraft" aria-hidden="true"><span>Slipstream</span><i><em></em></i></div>
+			<div class="pos-badge"><b id="hudPos">P1</b><span id="hudPosOf">/6</span></div>
+		</div>
+		<div class="lights" id="lights" hidden>
+			<span class="light"><i></i><i></i></span><span class="light"><i></i><i></i></span><span class="light"><i></i><i></i></span><span class="light"><i></i><i></i></span><span class="light"><i></i><i></i></span>
+		</div>
+		<div class="banner" id="banner" hidden><strong>Go</strong><span id="bannerSub"></span></div>
+		<div id="spectating" hidden></div>
+		<div id="hudToast" hidden></div>
+		<button class="icon-btn hud-pause" id="pauseBtn" aria-label="Pause">
+			<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+		</button>
+		<div class="hud-keys"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> or <kbd>A</kbd> <kbd>D</kbd> steer &middot; <kbd>R</kbd> reset car &middot; <kbd>C</kbd> camera &middot; <kbd>Esc</kbd> pause</div>
+	</div>
+	<div id="touch" hidden>
+		<button class="touch-zone left" id="touchLeft" aria-label="Steer left"></button>
+		<button class="touch-zone right" id="touchRight" aria-label="Steer right"></button>
+	</div>
+
+	<!-- Pause -->
+	<div class="modal" id="pause" hidden>
+		<div class="panel kerbed">
+			<h2 id="pauseTitle">Paused</h2>
+			<p id="pauseNote" hidden>The race keeps going for everyone else while this menu is open.</p>
+			<button class="go-btn" id="resumeBtn"><span>Resume</span></button>
+			<button class="go-btn ghost" id="restartBtn"><span>Restart race</span></button>
+			<button class="go-btn ghost" id="pauseSettings"><span>Settings</span></button>
+			<button class="go-btn ghost" id="quitBtn"><span>Quit to menu</span></button>
+		</div>
+	</div>
+
+	<!-- Settings -->
+	<div class="modal" id="settings" hidden>
+		<div class="panel kerbed">
+			<h2>Settings</h2>
+			<div class="opt-row"><span class="opt-label">Graphics</span>
+				<div class="seg" id="setQuality" role="radiogroup" aria-label="Graphics"><button data-v="auto">Auto</button><button data-v="low">Fast</button><button data-v="high">Pretty</button></div></div>
+			<p class="opt-help">Fast turns off shadows and thins out scenery. Use it on school laptops.</p>
+			<div class="opt-row"><span class="opt-label">Camera</span>
+				<div class="seg" id="setCamera" role="radiogroup" aria-label="Camera"><button data-v="classic">Classic</button><button data-v="far">Far</button><button data-v="hood">Bonnet</button></div></div>
+			<div class="opt-row"><label for="setVolume">Volume</label><input class="range" id="setVolume" type="range" min="0" max="1" step="0.05"></div>
+			<div class="opt-row"><span class="opt-label">Engine sound</span>
+				<div class="seg" id="setEngine" role="radiogroup" aria-label="Engine sound"><button data-v="1">On</button><button data-v="0">Off</button></div></div>
+			<div class="opt-row"><span class="opt-label">Camera shake</span>
+				<div class="seg" id="setShake" role="radiogroup" aria-label="Camera shake"><button data-v="1">On</button><button data-v="0">Off</button></div></div>
+			<div class="opt-row"><span class="opt-label">Phone steering</span>
+				<div class="seg" id="setTouch" role="radiogroup" aria-label="Phone steering"><button data-v="tilt">Tilt</button><button data-v="touch">Tap sides</button></div></div>
+			<button class="go-btn" data-close><span>Done</span></button>
+		</div>
+	</div>
+
+	<!-- Account -->
+	<div class="modal" id="account" hidden>
+		<div class="panel kerbed">
+			<h2>Your account</h2>
+			<p>Optional. With an account, your wins, podiums, lap records, name and car follow you to any computer. Your stats as a guest come with you when you create one.</p>
+			<p class="msg" id="acctOffline" hidden>Accounts need online play set up first (see <code>README.md</code>).</p>
+			<div id="acctSignedIn" hidden class="stack">
+				<div class="acct-card"><span class="tag" id="acctKind">BVS</span><b id="acctLabel">bvs-00000</b></div>
+				<button class="go-btn ghost" id="acctSignOut"><span>Sign out</span></button>
+			</div>
+			<div id="acctForms" class="stack">
+				<section class="acct-option" id="bvsOption">
+					<h3>BVS account</h3>
+					<div class="field">
+						<label class="eyebrow" for="bvsId">BVS number</label>
+						<input id="bvsId" class="text-input" placeholder="bvs-00000" autocomplete="username" spellcheck="false" autocapitalize="off">
+					</div>
+					<div class="field">
+						<label class="eyebrow" for="bvsPw">Password</label>
+						<input id="bvsPw" class="text-input" type="password" placeholder="At least 6 characters" autocomplete="current-password">
+					</div>
+					<div class="flex gap-3">
+						<button class="go-btn" id="bvsCreate"><span>Create account</span></button>
+						<button class="go-btn ghost" id="bvsLogin"><span>Log in</span></button>
+					</div>
+					<p class="opt-help">Your BVS number is only used to log in; other players see your driver name. There's no password reset, so pick one you'll remember.</p>
+				</section>
+				<section class="acct-option" id="hwbOption">
+					<h3>Hwb account</h3>
+					<button class="go-btn ghost hwb-btn" id="hwbLogin"><span>Sign in with Hwb</span></button>
+					<p class="opt-help">Uses your school Microsoft login. If your school hasn't allowed it, use a BVS account instead.</p>
+				</section>
+			</div>
+			<p class="msg err" id="acctErr" hidden></p>
+			<button class="go-btn ghost" data-close><span>Close</span></button>
+		</div>
+	</div>
+
+	<!-- Help -->
+	<div class="modal" id="help" hidden>
+		<div class="panel kerbed">
+			<h2>How to play</h2>
+			<h3>Driving</h3>
+			<ul>
+				<li>Your car always accelerates, same as the original. You only steer: <kbd>&larr;</kbd> <kbd>&rarr;</kbd> or <kbd>A</kbd> <kbd>D</kbd>.</li>
+				<li>Turning hard is how you slow down, so turn in early.</li>
+				<li>Stuck or spun round? <kbd>R</kbd> puts you back on the track, stopped. If you get knocked outside the walls, that happens on its own.</li>
+				<li>On a phone, tilt to steer or switch to tapping the screen sides in Settings.</li>
+				<li><b>Slipstream</b>: tuck in right behind another car and you get towed along a little faster (watch the meter under your speed). Pull out at the last moment to pass. The car you're pushing gets a small boost too.</li>
+			</ul>
+			<h3>Modes</h3>
+			<ul>
+				<li><b>Race</b>: most laps first wins. Everyone else gets 30 seconds to finish after the winner.</li>
+				<li><b>Elimination</b>: each time the leader completes a lap, the last car is out.</li>
+				<li><b>Time trial</b>: race a ghost of your best lap. Your fastest laps go on the track's public lap record board.</li>
+				<li><b>Leaderboards</b>: wins and podiums from online races with at least two real drivers.</li>
+			</ul>
+			<h3>Keys</h3>
+			<ul>
+				<li><kbd>C</kbd> change camera &middot; <kbd>M</kbd> mute &middot; <kbd>Esc</kbd> pause</li>
+			</ul>
+			<p class="credit">Physics and the Classic track are from <a href="https://github.com/jchabin/cars" target="_blank" rel="noopener">jchabin/cars</a> (GPL-3.0). Circuit shapes are simplified from the real layouts.</p>
+			<button class="go-btn" data-close><span>Got it</span></button>
+		</div>
+	</div>
+
+	<script type="module" src="js/main.js"></script>
+</body>
+</html>
