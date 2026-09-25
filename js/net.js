@@ -17,9 +17,11 @@ const bvsEmail = id => `${id}@${ACCOUNTS.bvsEmailDomain}`;
 function friendlyAuthError(e, what){
 	const code = (e && e.code) || "";
 	console.warn(`Sign-in problem (${what || "account"}):`, code || "", e && e.message);
-	if(code === "auth/operation-not-allowed" || code === "auth/admin-restricted-operation"){
+	if(code === "auth/admin-restricted-operation")
+		return new Error("New accounts are blocked in Firebase. Tick Enable create (sign-up) under Authentication → Settings → User actions, then Save.");
+	if(code === "auth/operation-not-allowed"){
 		if(what === "guest") return new Error("Guest sign-in is switched off in Firebase. Turn on Anonymous under Authentication → Sign-in method.");
-		if(what === "bvs") return new Error("BVS accounts are switched off in Firebase. Turn on Email/Password under Authentication → Sign-in method (and check Authentication → Settings → User actions allows sign-ups).");
+		if(what === "bvs") return new Error("BVS accounts are switched off in Firebase. Turn on Email/Password under Authentication → Sign-in method.");
 		if(what === "hwb") return new Error("Hwb sign-in is switched off in Firebase. Turn on Microsoft under Authentication → Sign-in method.");
 	}
 	const map = {
