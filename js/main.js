@@ -683,7 +683,7 @@ const typing = () => /INPUT|TEXTAREA/.test(document.activeElement && document.ac
 addEventListener("keydown", e => {
 	audio.unlock();
 	if(typing()) return;
-	const k = e.code;
+	const k = e.code || "";   // password autofill sends key events with no code
 	if(k === "ArrowLeft" || k === "KeyA") S.input.left = true;
 	if(k === "ArrowRight" || k === "KeyD") S.input.right = true;
 	if(k.startsWith("Arrow") && S.race) e.preventDefault();
@@ -695,7 +695,7 @@ addEventListener("keydown", e => {
 	if(k === "KeyM"){ S.muted = !S.muted; audio.setVolume(S.muted ? 0 : S.settings.volume); hud.toast(S.muted ? "Sound off" : "Sound on", 1200); }
 });
 addEventListener("keyup", e => {
-	const k = e.code;
+	const k = e.code || "";
 	if(k === "ArrowLeft" || k === "KeyA") S.input.left = false;
 	if(k === "ArrowRight" || k === "KeyD") S.input.right = false;
 });

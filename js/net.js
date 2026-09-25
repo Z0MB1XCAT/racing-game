@@ -13,15 +13,21 @@ export function normaliseBvs(id){
 }
 const bvsEmail = id => `${id}@${ACCOUNTS.bvsEmailDomain}`;
 
-function friendlyAuthError(e){
+// `what` says which sign-in method was being used, so "switched off" errors can name the right toggle.
+function friendlyAuthError(e, what){
 	const code = (e && e.code) || "";
+	if(code === "auth/operation-not-allowed" || code === "auth/admin-restricted-operation"){
+		if(what === "guest") return new Error("Guest sign-in is switched off in Firebase. Turn on Anonymous under Authentication → Sign-in method.");
+		if(what === "bvs") return new Error("BVS accounts are switched off in Firebase. Turn on Email/Password under Authentication → Sign-in method (and check Authentication → Settings → User actions allows sign-ups).");
+		if(what === "hwb") return new Error("Hwb sign-in is switched off in Firebase. Turn on Microsoft under Authentication → Sign-in method.");
+	}
 	const map = {
 		"auth/email-already-in-use": "That BVS number already has an account. Log in instead.",
 		"auth/credential-already-in-use": "That account is already in use.",
-		"auth/user-not-found": "There's no account for that BVS number yet. Create one first.",
+		"auth/user-not-found": "That BVS number or password isn't right. If you haven't made an account yet, use Create account.",
 		"auth/wrong-password": "That password isn't right.",
-		"auth/invalid-credential": "That BVS number or password isn't right.",
-		"auth/invalid-login-credentials": "That BVS number or password isn't right.",
+		"auth/invalid-credential": "That BVS number or password isn't right. If you haven't made an account yet, use Create account.",
+		"auth/invalid-login-credentials": "That BVS number or password isn't right. If you haven't made an account yet, use Create account.",
 		"auth/weak-password": "Passwords need at least 6 characters.",
 		"auth/too-many-requests": "Too many tries. Wait a minute and try again.",
 		"auth/popup-blocked": "Your browser blocked the sign-in window. Allow pop-ups for this site and try again.",
@@ -48,7 +54,11 @@ class FirebaseStore {
 		const store = new FirebaseStore(app);
 		// Keep whoever is already signed in on this browser (account or guest).
 		const existing = await new Promise(r => { const off = store.auth.onAuthStateChanged(u => { off(); r(u); }); });
-		const user = existing || (await store.auth.signInAnonymously()).user;
+		let user = existing;
+		if(!user){
+			try { user = (await store.auth.signInAnonymously()).user; }
+			catch(e){ throw friendlyAuthError(e, "guest"); }
+		}
 		store.uid = user.uid;
 		store.db.ref(".info/serverTimeOffset").on("value", s => { store.offset = s.val() || 0; });
 		return store;
@@ -70,12 +80,12 @@ class FirebaseStore {
 			// A guest keeps their stats: the guest account becomes the BVS account.
 			if(u && u.isAnonymous) await u.linkWithCredential(cred);
 			else await this.auth.createUserWithEmailAndPassword(bvsEmail(id), pw);
-		} catch(e){ throw friendlyAuthError(e); }
+		} catch(e){ throw friendlyAuthError(e, "bvs"); }
 		return this.auth.currentUser.uid;
 	}
 	async loginBvs(id, pw){
 		try { await this.auth.signInWithEmailAndPassword(bvsEmail(id), pw); }
-		catch(e){ throw friendlyAuthError(e); }
+		catch(e){ throw friendlyAuthError(e, "bvs"); }
 		return this.auth.currentUser.uid;
 	}
 	async loginHwb(){
@@ -90,8 +100,8 @@ class FirebaseStore {
 		} catch(e){
 			if(e && e.code === "auth/credential-already-in-use" && e.credential){
 				// This Hwb account already exists: switch to it.
-				try { result = await this.auth.signInWithCredential(e.credential); } catch(e2){ throw friendlyAuthError(e2); }
-			}else throw friendlyAuthError(e);
+				try { result = await this.auth.signInWithCredential(e.credential); } catch(e2){ throw friendlyAuthError(e2, "hwb"); }
+			}else throw friendlyAuthError(e, "hwb");
 		}
 		const user = result.user;
 		const ms = user.providerData.find(p => p.providerId === "microsoft.com");
