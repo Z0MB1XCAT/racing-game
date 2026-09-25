@@ -2,11 +2,11 @@
 // Until it's filled in, online play is switched off and everything else still works.
 // These values are safe to publish: access is controlled by database.rules.json.
 export const FIREBASE_CONFIG = {
-	apiKey: "",
-	authDomain: "",
-	databaseURL: "",
-	projectId: "",
-	appId: ""
+	apiKey: "AIzaSyAMZmH-oWShDvC8Nw53ZBckXfp-4iS82io",
+	authDomain: "racing-game-1ba96.firebaseapp.com",
+	databaseURL: "https://racing-game-1ba96-default-rtdb.europe-west1.firebasedatabase.app",
+	projectId: "racing-game-1ba96",
+	appId: "1:824716632189:web:447b1a4b2749d116af5114"
 };
 
 // The track editor is finished but switched off for now. Set this to true to bring
