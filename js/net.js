@@ -16,6 +16,7 @@ const bvsEmail = id => `${id}@${ACCOUNTS.bvsEmailDomain}`;
 // `what` says which sign-in method was being used, so "switched off" errors can name the right toggle.
 function friendlyAuthError(e, what){
 	const code = (e && e.code) || "";
+	console.warn(`Sign-in problem (${what || "account"}):`, code || "", e && e.message);
 	if(code === "auth/operation-not-allowed" || code === "auth/admin-restricted-operation"){
 		if(what === "guest") return new Error("Guest sign-in is switched off in Firebase. Turn on Anonymous under Authentication → Sign-in method.");
 		if(what === "bvs") return new Error("BVS accounts are switched off in Firebase. Turn on Email/Password under Authentication → Sign-in method (and check Authentication → Settings → User actions allows sign-ups).");
