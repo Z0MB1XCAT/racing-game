@@ -17,6 +17,8 @@ const bvsEmail = id => `${id}@${ACCOUNTS.bvsEmailDomain}`;
 function friendlyAuthError(e, what){
 	const code = (e && e.code) || "";
 	console.warn(`Sign-in problem (${what || "account"}):`, code || "", e && e.message);
+	if(/verify the new email/i.test((e && e.message) || ""))
+		return new Error("Firebase's email enumeration protection is blocking new accounts. Untick it under Authentication → Settings → User actions, then Save.");
 	if(code === "auth/admin-restricted-operation")
 		return new Error("New accounts are blocked in Firebase. Tick Enable create (sign-up) under Authentication → Settings → User actions, then Save.");
 	if(code === "auth/operation-not-allowed"){
