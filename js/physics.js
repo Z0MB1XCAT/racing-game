@@ -154,10 +154,12 @@ export function stepCars(cars, walls, lines, oob, warp, hit, contact){
 					d.xv = vel.x + BOUNCE_CORRECT * wall.plane.normal.x * Math.sign(wall.plane.normal.dot(play.pos.clone().sub(wall.position)));
 					d.yv = vel.z + BOUNCE_CORRECT * wall.plane.normal.z * Math.sign(wall.plane.normal.dot(play.pos.clone().sub(wall.position)));
 					let guard = 0;
-					while(Math.abs(wall.plane.distanceToPoint(new THREE.Vector3(d.x, 0, d.y).sub(wall.position))) < WALL_SIZE && guard++ < PUSH_LIMIT){
+					const limit = soft ? slideSteps(d) : PUSH_LIMIT;
+					while(Math.abs(wall.plane.distanceToPoint(new THREE.Vector3(d.x, 0, d.y).sub(wall.position))) < WALL_SIZE && guard++ < limit){
 						d.x += d.xv;
 						d.y += d.yv;
 					}
+					if(soft && guard > limit) clearOfPlane(d, wall);
 					d.xv *= BOUNCE;
 					d.yv *= BOUNCE;
 					if(hit) hit("wall", play, before * Math.abs(wall.plane.normal.x * Math.sin(d.dir) + wall.plane.normal.z * Math.cos(d.dir)) + before * 0.25);
@@ -173,10 +175,12 @@ export function stepCars(cars, walls, lines, oob, warp, hit, contact){
 				d.xv = vel.x + norm.x * BOUNCE_CORRECT * 1;
 				d.yv = vel.z + norm.z * BOUNCE_CORRECT * 1;
 				let guard = 0;
-				while((new THREE.Vector2(d.x, d.y)).distanceTo(wall.p1) < WALL_SIZE + 0.1 && guard++ < PUSH_LIMIT){
+				const limit = soft ? slideSteps(d) : PUSH_LIMIT;
+				while((new THREE.Vector2(d.x, d.y)).distanceTo(wall.p1) < WALL_SIZE + 0.1 && guard++ < limit){
 					d.x += d.xv;
 					d.y += d.yv;
 				}
+				if(soft && guard > limit) clearOfPoint(d, wall.p1);
 				d.xv *= BOUNCE;
 				d.yv *= BOUNCE;
 				if(hit) hit("wall", play, before * 0.6);
@@ -191,10 +195,12 @@ export function stepCars(cars, walls, lines, oob, warp, hit, contact){
 				d.xv = vel.x + norm.x * BOUNCE_CORRECT * 1;
 				d.yv = vel.z + norm.z * BOUNCE_CORRECT * 1;
 				let guard = 0;
-				while((new THREE.Vector2(d.x, d.y)).distanceTo(wall.p2) < WALL_SIZE + 0.1 && guard++ < PUSH_LIMIT){
+				const limit = soft ? slideSteps(d) : PUSH_LIMIT;
+				while((new THREE.Vector2(d.x, d.y)).distanceTo(wall.p2) < WALL_SIZE + 0.1 && guard++ < limit){
 					d.x += d.xv;
 					d.y += d.yv;
 				}
+				if(soft && guard > limit) clearOfPoint(d, wall.p2);
 				d.xv *= BOUNCE;
 				d.yv *= BOUNCE;
 				if(hit) hit("wall", play, before * 0.6);
@@ -219,8 +225,8 @@ export function stepCars(cars, walls, lines, oob, warp, hit, contact){
 
 		for(let m = 0; m < cars.length; m++){
 			const ply = cars[m];
-			if(soft && play != ply && play.pos.distanceTo(ply.pos) < 2){
-				softContact(play, ply, hit);
+			if(soft){
+				if(play != ply && (d.x - ply.data.x) ** 2 + (d.y - ply.data.y) ** 2 < 9) softContact(play, ply, hit);
 				continue;
 			}
 			if(play != ply && play.pos.distanceTo(ply.pos) < 2){
@@ -262,18 +268,55 @@ export function stepCars(cars, walls, lines, oob, warp, hit, contact){
 	}
 }
 
-// The original collision adds 1.1x the whole difference in speed to both cars,
-// sideways part included, so a light rub flings them apart. This one only pushes
-// along the line between the cars, only when they're closing, and loses most of
-// that energy: rubbing is a nudge, a hard hit still knocks you off line.
+// Wall glitch guard (soft contact mode only). Out of a wall, the original code slides the car
+// along its bounced velocity until it's clear. At a very shallow angle that can carry it a long
+// way in one frame (over 150 units, straight onto another part of the track). Normal hits slide
+// a few units and are untouched; past MAX_SLIDE the car is put just outside the wall instead.
+const MAX_SLIDE = 12;
+function slideSteps(d){ return Math.ceil(MAX_SLIDE / Math.max(0.02, Math.hypot(d.xv, d.yv))); }
+function clearOfPlane(d, wall){
+	const n = wall.plane.normal;
+	const dist = wall.plane.distanceToPoint(new THREE.Vector3(d.x, 0, d.y).sub(wall.position));
+	const target = (dist < 0 ? -1 : 1) * (WALL_SIZE + 0.02);
+	d.x += n.x * (target - dist);
+	d.y += n.z * (target - dist);
+}
+function clearOfPoint(d, p){
+	let dx = d.x - p.x, dz = d.y - p.y;
+	const l = Math.hypot(dx, dz) || 1;
+	d.x = p.x + dx / l * (WALL_SIZE + 0.12);
+	d.y = p.y + dz / l * (WALL_SIZE + 0.12);
+}
+
+// The original collision treats every car as a circle 2 units across and adds 1.1x the
+// whole difference in speed to both cars, sideways part included, so a light rub flings them
+// apart, and side by side you "touch" with a gap between you. Soft contact instead:
+//   - uses each car's real outline (a box the size of its body, wheels and wings included),
+//     so cars only touch when they visibly touch;
+//   - pushes only along the direction the boxes overlap, only when they're closing, and loses
+//     most of that energy: rubbing is a nudge, a hard hit still knocks you off line.
 export const SOFT_RESTITUTION = 0.3;
 export const SOFT_FRICTION = 0.08;
+// Half width and half length of each body's outline (from the models in cars.js).
+export const CAR_SIZE = { classic: [0.7, 1.1], formula: [0.8, 1.15], gt: [0.63, 1.02], stock: [0.61, 1.04] };
+function outline(p){
+	const d = p.data, fx = Math.sin(d.dir), fz = Math.cos(d.dir);
+	return { x: d.x, z: d.y, fx, fz, rx: fz, rz: -fx, hw: p.hw ?? CAR_SIZE.classic[0], hl: p.hl ?? CAR_SIZE.classic[1] };
+}
 function softContact(play, ply, hit){
 	const d = play.data, e = ply.data;
-	let nx = d.x - e.x, nz = d.y - e.y;
-	let len = Math.hypot(nx, nz);
-	if(len < 1e-6){ nx = Math.cos(d.dir); nz = -Math.sin(d.dir); len = 1; }
-	nx /= len; nz /= len;
+	const A = outline(play), B = outline(ply);
+	// Separating axis test on the two boxes. n ends up pointing from B to A along the
+	// direction they overlap least, and depth is how far they overlap.
+	let depth = Infinity, nx = 0, nz = 0;
+	for(const [ax, az] of [[A.fx, A.fz], [A.rx, A.rz], [B.fx, B.fz], [B.rx, B.rz]]){
+		const ra = A.hw * Math.abs(A.rx * ax + A.rz * az) + A.hl * Math.abs(A.fx * ax + A.fz * az);
+		const rb = B.hw * Math.abs(B.rx * ax + B.rz * az) + B.hl * Math.abs(B.fx * ax + B.fz * az);
+		const dist = (A.x - B.x) * ax + (A.z - B.z) * az;
+		const over = ra + rb - Math.abs(dist);
+		if(over <= 0) return;                  // a gap on this axis: not touching
+		if(over < depth){ depth = over; const sg = dist < 0 ? -1 : 1; nx = ax * sg; nz = az * sg; }
+	}
 	const rx = d.xv - e.xv, rz = d.yv - e.yv;
 	const closing = rx * nx + rz * nz;
 	if(closing < 0){
@@ -283,10 +326,9 @@ function softContact(play, ply, hit){
 		e.xv -= j * nx - tx; e.yv -= j * nz - tz;
 		if(hit && closing < -0.004) hit("car", play, -closing * 1.6, ply);
 	}
-	// Share the overlap between both cars instead of skipping one along its velocity.
-	if(len < 2){
-		const push = (2 - len) / 2;
-		d.x += nx * push; d.y += nz * push;
-		e.x -= nx * push; e.y -= nz * push;
-	}
+	// Share the overlap between both cars.
+	const push = depth / 2;
+	d.x += nx * push; d.y += nz * push;
+	e.x -= nx * push; e.y -= nz * push;
 }
+

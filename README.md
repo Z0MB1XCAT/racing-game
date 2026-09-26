@@ -40,7 +40,9 @@ original did).
 - **Direct connections (P2P)**: during races, players send car positions straight to each other
   over WebRTC. Firebase only introduces players, then carries no positions at all while everyone
   is connected directly. Anyone whose network blocks direct links automatically falls back to
-  Firebase, and the lobby shows each driver as *Direct* or *Via server*.
+  Firebase, and the lobby shows each driver as *Direct* or *Via server*. Direct links send 60 updates
+  a second (Firebase 15). Each update is moved on by how old it is when it arrives, using the same
+  handling maths as the game, so contact happens where the other car really is. Contact is sent at once.
 - **Qualifying** (host's choice, or in solo setup): a hotlap session before the race. Cars are
   see-through ghosts so nobody can block anyone, and slipstream is off. Everyone gets a flying
   lap plus two timed laps, and the best lap sets the grid. It works before championship rounds too.
@@ -74,11 +76,13 @@ original did).
   a full tow, so you gain roughly a car length a second. A car pushing right behind the leader
   helps them a little too. Nothing changes when you're alone. It's on by default, and the host
   can turn it off in the lobby (or you can in solo setup) for the pure original feel.
-- **Car contact**: in the original, touching another car added the whole difference in speed to
-  both cars, sideways included, so a light rub threw you across the track. **Soft** (the default)
-  only pushes cars apart along the line between them and soaks up most of the hit, so rubbing is a
-  nudge and a real hit still knocks you off line. Walls are unchanged. **Original** brings back the
-  old bounce exactly. It's in solo setup and the lobby (host's choice).
+- **Car contact**: the original treated every car as a circle 2 units across (so side by side you
+  "touched" with a gap between you) and added the whole difference in speed to both cars, sideways
+  included, so a light rub threw you across the track. **Soft** (the default) uses each car's real
+  outline, wheels and wings included, so cars only touch when they visibly touch; it pushes them apart
+  only where they overlap and soaks up most of the hit. It also stops a rare original-wall glitch
+  that could slide a car more than 150 units along a wall in one frame. Normal wall hits are unchanged.
+  **Original** brings back the old behaviour exactly. It's in solo setup and the lobby (host's choice).
 - **Leaderboards**: driver standings (wins, podiums, races, win rate) from online races with
   at least two real drivers, plus a lap-record board for every track in both directions. Lap
   records come from Time trial only.
@@ -130,6 +134,11 @@ On phones, tilt to steer or tap the screen sides (Settings).
 3. On GitHub: **Settings → Pages → Build and deployment → Source: Deploy from a branch**,
    pick **main** and **/ (root)**, then **Save**.
 4. After a minute the game is live at `https://YOUR-USERNAME.github.io/racing-game/`.
+
+**Updating:** when you push a new version, change `VERSION` in `js/config.js` and the same value in
+`version.json`. Anyone with the game already open then gets a "new version" bar with a Refresh button,
+and the lobby marks players on an older copy with *Needs refresh* (an old copy can miss new settings
+like weather).
 
 Bots, time trial and the editor work straight away. Online rooms need the next part.
 

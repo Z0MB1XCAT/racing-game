@@ -1,7 +1,7 @@
 // Online rooms. Everything goes through a tiny store interface with two backends:
 // Firebase Realtime Database (the real thing) and a same-computer version over
 // BroadcastChannel (open the game with ?localnet in two tabs to test without Firebase).
-import { FIREBASE_CONFIG, firebaseReady, MAX_CARS, ACCOUNTS, P2P, SEND_RATE } from "./config.js";
+import { FIREBASE_CONFIG, firebaseReady, MAX_CARS, ACCOUNTS, P2P, SEND_RATE, VERSION } from "./config.js";
 import { champStandings } from "./champ.js";
 import { packGhost, unpackGhost } from "./ghosts.js";
 
@@ -560,7 +560,7 @@ export class Net {
 	claimHost(){ return this.store.set(this.path("host"), this.uid); }
 
 	playerRecord(profile, ready){
-		return { name: profile.name, hue: profile.hue, body: profile.body, look: profile.look || null, ready: !!ready, joined: this.now(), owner: this.uid };
+		return { name: profile.name, hue: profile.hue, body: profile.body, look: profile.look || null, ready: !!ready, joined: this.now(), owner: this.uid, v: VERSION };
 	}
 
 	// cb(room) whenever anything except car positions changes; cb(null) if the room disappears.

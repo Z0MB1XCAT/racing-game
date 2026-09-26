@@ -33,6 +33,7 @@ export function race(track, tracker, skills, laps, opts = {}){
 		if(opts.draft) applySlipstream(cars, warp);
 		phys.stepCars(cars, track.walls, track.lines, track.oob, warp, (type, car, s) => { if(type === "car") car.contacts = (car.contacts || 0) + 1; if(type === "wall" && s > 0.05){ car.hits++; if(car === cars[0]) hitsAt.push([car.data.x, car.data.y]); } }, opts.contact);
 		t += dt * warp;
+		if(opts.frame) opts.frame(t, cars);
 		if(Math.round(t * 60) % 6 === 0) trail.push([cars[0].data.x, cars[0].data.y]);
 		if(cars.length > 1 && t > 3){ const L = cars.reduce((a, b) => raceProgress(b) > raceProgress(a) ? b : a); if(L !== leader){ if(leader) leadChanges++; leader = L; } }
 		for(const c of cars){
@@ -42,7 +43,7 @@ export function race(track, tracker, skills, laps, opts = {}){
 				c.offSince ??= t;
 				if(t - c.offSince > OFF_TRACK_GRACE){ c.escapes = (c.escapes || 0) + 1; rescue(track, tracker, c, cars); }
 			}else c.offSince = null;
-			if(!opts.noStuckRescue && t - (c.bestT || 0) > 4 && t > 5){ c.unsticks = (c.unsticks || 0) + 1; rescue(track, tracker, c, cars); c.bestT = t; }
+			if(!opts.noStuckRescue && t - (c.bestT || 0) > 4 && t > 5){ c.unsticks = (c.unsticks || 0) + 1; if(opts.log) opts.log(t, c, cars); rescue(track, tracker, c, cars); c.bestT = t; }
 		}
 		cars.forEach((c, k) => {
 			if(Math.hypot(c.data.x, c.data.y) < 0.001 && t > 1) c.oob++;

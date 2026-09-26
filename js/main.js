@@ -21,7 +21,7 @@ import { initGarage } from "./garage.js";
 import { initAdmin } from "./admin.js";
 import { minLapMs } from "./limits.js";
 import { Director, Replay, buildHighlights, pickFocus, SHOT_NAMES } from "./broadcast.js";
-import { GAME_NAME, MAX_CARS, EDITOR_ENABLED, ACCOUNTS } from "./config.js";
+import { GAME_NAME, MAX_CARS, EDITOR_ENABLED, ACCOUNTS, VERSION } from "./config.js";
 import * as phys from "./physics.js";
 
 const THREE = globalThis.THREE;
@@ -131,6 +131,7 @@ function carNumber(){ const n = S.profile.look && S.profile.look.number; return 
 // ---------- Screens ----------
 function showScreen(name){
 	S.screen = name;
+	setTimeout(() => { if(typeof showUpdateBar === "function") showUpdateBar(); }, 0);
 	audio.playMusic("menu");
 	document.querySelectorAll("[data-screen]").forEach(s => { s.hidden = s.dataset.screen !== name; });
 }
@@ -869,9 +870,17 @@ function showResults(results, online, opts = {}){
 		S.frozen = true;
 		audio.stopEngine();
 		$("touch").hidden = true;
-		startReplay("highlights", () => showResults(results, online, Object.assign({}, opts, { afterHighlights: true })));
+		S.latestResults = null;
+		startReplay("highlights", () => {
+			const l = S.latestResults || { results, online, opts };
+			S.latestResults = null;
+			showResults(l.results, l.online, Object.assign({}, l.opts, { afterHighlights: true }));
+		});
 		if(S.replay) return;
 	}
+	// Results can arrive again while the highlights are on (the host gets them once on
+	// finishing and again from the room). Keep the newest for afterwards; don't interrupt.
+	if(S.replay && S.replayKind === "highlights" && !opts.afterHighlights){ S.latestResults = { results, online, opts }; return; }
 	stopTv();
 	S.frozen = true;
 	audio.stopEngine();
@@ -1400,8 +1409,9 @@ function frame(now){
 			if(!S.paused && r.phase === "racing") fx.trail(c, dt);
 		}
 		fx.update(dt);
+		// (If the race just ended in this frame and the highlights started, leave the TV on.)
 		if(spectating()) updateSpectator(dt, r);
-		else { if(tv.live) stopTv(); followCamera(dt); }
+		else if(!S.replay){ if(tv.live) stopTv(); followCamera(dt); }
 		if(focus){
 			const d = focus.data;
 			const speed = Math.hypot(d.xv, d.yv);
@@ -1443,7 +1453,25 @@ function frame(now){
 
 // ---------- Online ----------
 const onlineMsg = msg => { $("onlineMsg").textContent = msg || ""; $("onlineMsg").hidden = !msg; };
+// ---------- Updates ----------
+// If the site has a newer version than the one running (a tab left open, or a cached page),
+// offer a refresh. It never interrupts a race: it waits for the menus.
+let updateReady = false;
+function checkForUpdate(){
+	fetch("version.json?t=" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.json() : null).then(v => {
+		if(v && v.version && v.version !== VERSION){ updateReady = true; showUpdateBar(); }
+	}).catch(() => {});
+}
+function showUpdateBar(){
+	if(!updateReady || (S.race && !S.frozen)) return;
+	$("updateBar").hidden = false;
+}
+$("updateGo").addEventListener("click", () => location.reload());
+checkForUpdate();
+setInterval(checkForUpdate, 4 * 60 * 1000);
+
 function openOnline(){
+	checkForUpdate();
 	showScreen("online");
 	camMode = "overview";
 	onlineMsg("");
@@ -1599,7 +1627,9 @@ function renderLobby(room){
 	for(const p of players){
 		const li = document.createElement("li");
 		li.className = "player";
-		const tags = [p.id === room.host ? '<span class="tag host">Host</span>' : "", p.bot ? `<span class="tag bot">AI · ${({ easy: "Rookie", medium: "Racer", hard: "Ace" })[p.bot]}</span>` : p.id === room.host ? "" : `<span class="tag ${p.ready ? "ready" : ""}">${p.ready ? "Ready" : "Not ready"}</span>`].join(" ");
+		const hostV = room.players[room.host] && room.players[room.host].v;
+		const stale = !p.bot && p.v !== hostV ? '<span class="tag old" title="A different version of the game from the host: refresh the page">Needs refresh</span>' : "";
+		const tags = [stale, p.id === room.host ? '<span class="tag host">Host</span>' : "", p.bot ? `<span class="tag bot">AI · ${({ easy: "Rookie", medium: "Racer", hard: "Ace" })[p.bot]}</span>` : p.id === room.host ? "" : `<span class="tag ${p.ready ? "ready" : ""}">${p.ready ? "Ready" : "Not ready"}</span>`].join(" ");
 		li.innerHTML = `<i class="chip" style="background:hsl(${p.hue},100%,55%)"></i>
 			<span class="pname">${garage && garage.crown === p.id ? CROWN_SVG : ""}${escapeHtml(cleanName(p.name, p.id))}${p.id === net.uid ? " (you)" : ""}<span class="pbody">${(BODIES.find(b => b.id === p.body) || BODIES[0]).name}${p.look && p.look.number != null ? " · #" + p.look.number : ""}</span>${lookTitle(p)}</span>
 			<span>${tags}${netTag(p)}</span>`;

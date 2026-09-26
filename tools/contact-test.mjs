@@ -29,6 +29,14 @@ for(const contact of [undefined, "soft"]){
 	console.log(`${name} | side hit: A thrown sideways at ${f(-side[0].xv)}/frame, B bounces back at ${f(side[1].xv)}/frame | rear tap: A speed ${f(Math.hypot(rear[0].xv, rear[0].yv))}, B speed ${f(Math.hypot(rear[1].xv, rear[1].yv))}`);
 }
 
+// Side by side with a visible gap (centres 1.5 apart, cars about 1.2-1.6 wide): do they touch?
+for(const contact of [undefined, "soft"]){
+	let touched = 0;
+	const cars = [0, 1.5].map(x => ({ data: { x, y: 0, xv: 0, yv: 0.35, dir: 0, steer: 0, checkpoint: 1, lap: 0 }, pos: new THREE.Vector3(x, 0.6, 0) }));
+	for(let i = 0; i < 60; i++) phys.stepCars(cars, [], [], 1e9, 1, (type) => { if(type === "car") touched++; }, contact);
+	console.log(`${contact ? "soft    " : "original"} | side by side with a small gap: ${touched ? `CONTACT (${touched} hits)` : "no contact"}, centres now ${f(cars[1].data.x - cars[0].data.x)} apart`);
+}
+
 const id = process.argv[2] || "monaco";
 const def = TRACKS.find(t => t.id === id);
 const track = buildTrack(def), tracker = makeTracker(track);

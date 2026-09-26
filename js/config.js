@@ -28,6 +28,10 @@ export const ACCOUNTS = {
 	admin: "bvs-11018"
 };
 
+// Bump this (and version.json) whenever you push an update. Players on an older copy are
+// told to refresh, and the lobby shows who needs to.
+export const VERSION = "2026.09.26-6";
+
 export const GAME_NAME = "Online Racing Game";
 export const EDITION = "Grand Prix";
 
@@ -40,7 +44,7 @@ export const SEND_RATE = 15;
 // used to introduce players, and takes over automatically for anyone who can't connect.
 export const P2P = {
 	enabled: true,
-	rate: 30,          // updates per second over direct links (Firebase fallback stays at SEND_RATE)
+	rate: 60,          // updates per second over direct links (Firebase fallback stays at SEND_RATE)
 	iceServers: [
 		{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
 		{ urls: "stun:stun.cloudflare.com:3478" }

@@ -79,6 +79,7 @@ export class Race {
 				finish: null, elim: null, best: null, lapStart: null, lapTimes: [],
 				vis: { x: 0, z: 0, r: 0 }, bestProg: 0, bestProgT: 0
 			};
+			[car.hw, car.hl] = phys.CAR_SIZE[car.body] || phys.CAR_SIZE.classic;   // outline for soft contact
 			car.model.position.set(data.x, 0, data.y);
 			this.scene.add(car.model);
 			this.cars.push(car);
@@ -176,6 +177,8 @@ export class Race {
 		if(t - last < 120) return;
 		this.hitCooldown.set(key, t);
 		this.onEvent("hit", { type, car, strength, other });
+		// Contact with another car: tell everyone straight away rather than at the next tick.
+		if(type === "car" && this.net && (car.local || (other && other.local))) this.sendTimer = 0;
 		const rt = this.raceTime;
 		if(this.mode !== "trial" && this.mode !== "quali" && rt > 2000){
 			const last = this.events[this.events.length - 1];
@@ -517,6 +520,18 @@ export class Race {
 		const ox = d.x + d.xv, oz = d.y + d.yv, od = d.dir;
 		d.x = s.x; d.y = s.y; d.xv = s.u; d.yv = s.v; d.dir = s.d; d.steer = s.s;
 		d.lap = s.l; d.checkpoint = s.c;
+		// The update is a moment old by the time it gets here. Move the car on by that much,
+		// with the same handling maths as everyone else, so contact happens where it really is.
+		if(s.q != null){
+			const frames = Math.min(18, Math.max(0, (this.raceTime - s.q) / (1000 / 60)));
+			for(let k = frames; k > 0; k--){
+				const w = Math.min(1, k);
+				d.dir += d.steer / 10 * w;
+				d.xv += Math.sin(d.dir) * phys.SPEED * w; d.yv += Math.cos(d.dir) * phys.SPEED * w;
+				d.xv *= Math.pow(0.99, w); d.yv *= Math.pow(0.99, w);
+				d.x += d.xv * w; d.y += d.yv * w;
+			}
+		}
 		c.pos.x = d.x + d.xv; c.pos.z = d.y + d.yv;
 		// Smooth the correction on screen instead of snapping.
 		c.vis.x += ox - c.pos.x; c.vis.z += oz - c.pos.z;
