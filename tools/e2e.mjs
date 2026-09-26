@@ -375,6 +375,49 @@ if(flow === "account"){
 	await shot(a, "title-weekly");
 }
 
+// Ghosts and the live delta: time trial chases the best lap ever, the weekly challenge
+// chases this week's best, and a slower lap never replaces the ghost.
+if(flow === "ghost"){
+	const page = await open(base);
+	const botDrive = () => page.evaluate(async () => {
+		const { Bot } = await import("/js/bots.js");
+		const g = window.__game, me = g.race.me;
+		me.bot = new Bot("hard");
+		const orig = g.race.update.bind(g.race);
+		g.race.update = (dt) => { g.race.tracker.update(me); return orig(dt, me.bot.steer(me, g.race.tracker, g.race.active, dt)); };
+	});
+	const lapsDone = () => page.evaluate(() => window.__game.race ? window.__game.race.me.lapTimes.length : -1);
+	const waitLaps = async n => { for(let i = 0; i < 150 && await lapsDone() < n; i++) await wait(1000); };
+	// Pretend there's an all-time best ghost that is hard to beat, then check it stays.
+	await page.click("#btnTrial"); await wait(500);
+	await page.click(`#setupTracks [data-id="${trackId}"]`); await wait(800);
+	await page.click("#setupGo"); await wait(1500);
+	await botDrive();
+	await waitLaps(1);
+	const first = await page.evaluate(() => { const r = window.__game.race; return { lap: r.me.lapTimes[0], ghost: r.ghostData && r.ghostData.ms, saved: !!localStorage.getItem("org-gp:ghost:" + r.key) }; });
+	console.log("after lap 1:", JSON.stringify(first));
+	const deltas = [];
+	for(let k = 0; k < 6; k++){ await wait(1500); deltas.push(await page.evaluate(() => { const d = window.__game.race.liveDelta(); return d == null ? null : Math.round(d); })); }
+	console.log("live delta during lap 2 (ms):", deltas.join(", "));
+	await shot(page, "delta");
+	// Make the ghost unbeatable: the next lap must not replace it.
+	await page.evaluate(() => { const r = window.__game.race; r.ghostData = Object.assign({}, r.ghostData, { ms: 1000 }); });
+	await waitLaps(3);
+	console.log("ghost after slower laps:", await page.evaluate(() => window.__game.race.ghostData.ms), "(should be 1000)");
+	console.log("delta label:", await page.$eval("#deltaLabel", e => e.textContent), "| shown:", await page.evaluate(() => document.body.classList.contains("delta-on")));
+	// Weekly challenge: its own ghost slot.
+	await page.evaluate(() => document.getElementById("quitBtn").click());
+	await wait(800);
+	const weeklyBefore = await page.evaluate(() => localStorage.getItem("org-gp:ghost:weekly"));
+	await page.evaluate(() => document.getElementById("weeklyGo").click()); await wait(1500);
+	await botDrive();
+	const startGhost = await page.evaluate(() => window.__game.race.ghostData ? window.__game.race.ghostData.ms : null);
+	await waitLaps(1);
+	const weekly = await page.evaluate(() => { const g = JSON.parse(localStorage.getItem("org-gp:ghost:weekly") || "null"); return g && { week: g.week, ms: g.ms, samples: g.s.length }; });
+	console.log("weekly: ghost at start", startGhost, "(before any weekly lap:", weeklyBefore ? "had one" : "none", ") | saved:", JSON.stringify(weekly));
+	console.log("weekly label:", await page.$eval("#deltaLabel", e => e.textContent));
+}
+
 // BVS number and Hwb email on the same account, linked from either side.
 if(flow === "link"){
 	const a = await open(base + "?localnet");

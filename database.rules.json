@@ -60,6 +60,16 @@
       }
     },
 
+    "ghosts": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$slot": {
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "newData.hasChildren(['ms', 's']) && newData.child('ms').isNumber() && newData.child('s').isString() && newData.child('s').val().length < 300000"
+        }
+      }
+    },
+
     "private": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",

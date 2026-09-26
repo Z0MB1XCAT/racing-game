@@ -13,13 +13,15 @@ original did).
   its crossover), Jeddah (at night), Daytona (tri-oval), Crossroads (a figure-8 with a flat
   crossing) and Glacier Pass (snowy switchbacks). Every track except Classic can also be raced in reverse.
 - **Modes**: Race, Elimination (last car is out every lap), Championship (2 to 6 rounds, F1
-  points, the leader starts at the back of the next round's grid) and Time trial with a ghost
-  of your best lap.
+  points, the leader starts at the back of the next round's grid) and Time trial against a ghost
+  of your fastest lap ever. A slower lap never replaces the ghost. A **delta bar** at the top shows
+  live how far ahead (green) or behind (red) of the ghost you are.
 - **Weekly challenge**: every Monday at 00:00 UTC a new track and direction are picked
   automatically from the date, with a fresh leaderboard. Last week's winner shows on the title
-  screen. You never need to update anything.
+  screen. You never need to update anything. The challenge has its own ghost and delta bar: your
+  best lap on it this week, starting fresh each Monday.
 - **Accounts (optional)**: sign in with a BVS number and password, or with your Hwb email and a
-  password (a verification link goes to your Hwb inbox), and your stats, lap records, name and car follow you to any computer.
+  password (a verification link goes to your Hwb inbox), and your stats, lap records, ghosts, name and car follow you to any computer.
   A guest's stats move onto the new account when they create one. A BVS number and an Hwb email
   can be **linked** to one account, so either logs in and a forgotten password can be reset through Hwb.
 - **Direct connections (P2P)**: during races, players send car positions straight to each other

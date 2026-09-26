@@ -455,10 +455,39 @@ function startChallenge(){
 	beginRace({
 		source: "solo", def: wk.def, reverse: wk.reverse, mode: "trial", laps: 1,
 		entrants: [{ id: "me", name: driverName(), hue: S.profile.hue, body: S.profile.body, look: S.profile.look, local: true }], myId: "me", draft: false,
-		startAt: soloNow() + 700 + COUNTDOWN, authority: true, restart: startChallenge
+		startAt: soloNow() + 700 + COUNTDOWN, authority: true, restart: startChallenge, weekly: wk.id
 	});
 }
 function soloNow(){ return performance.now() - S.pausedTotal; }
+
+// Ghost laps follow an account between computers. On starting a time trial, use the
+// account's ghost if it's faster than this computer's, and upload this one if it's faster.
+function signedIn(){ return onlineAvailable() && acct.info.kind !== "guest"; }
+function saveGhostToAccount(slot, ghost, extra){
+	if(!signedIn() || !ghost) return;
+	connect().then(net => net.saveGhost(slot, ghost, extra)).catch(e => console.warn("Couldn't save ghost", e));
+}
+function syncGhostFromAccount(race, key, week){
+	if(!signedIn()) return;
+	const slot = week ? "weekly" : "best-" + key;
+	connect().then(net => net.loadGhost(slot)).then(g => {
+		if(g && week && g.week !== week) g = null;
+		const local = race.ghostData;
+		if(g && (!local || g.ms < local.ms)){
+			if(S.race !== race) return;
+			race.ghostData = { ms: g.ms, s: g.s };
+			if(week){
+				store.setWeeklyGhost(week, g);
+				const wb = store.getBest("weekly:" + week);
+				if(wb == null || g.ms < wb) store.setBest("weekly:" + week, g.ms);
+			}else{
+				store.setGhost(key, g);
+				const b = store.getBest(key);
+				if(b == null || g.ms < b) store.setBest(key, g.ms);
+			}
+		}else if(local && (!g || local.ms < g.ms)) saveGhostToAccount(slot, local, week ? { week } : null);
+	}).catch(e => console.warn("Couldn't load ghost", e));
+}
 
 // ---------- Race ----------
 let camMode = "showcase";
@@ -473,7 +502,8 @@ function beginRace(opts){
 	S.lastDelta = null;
 	S.resultsShown = null;
 	const key = entry.key;
-	const ghost = opts.mode === "trial" ? store.getGhost(key) : null;
+	// Time trial chases your fastest lap ever; the weekly challenge chases your best this week.
+	const ghost = opts.mode !== "trial" ? null : opts.weekly ? store.getWeeklyGhost(opts.weekly) : store.getGhost(key);
 	S.race = new Race({
 		scene, track: entry.track, tracker: entry.tracker, laps: opts.laps, mode: opts.mode,
 		entrants: opts.entrants, myId: opts.myId, startAt: opts.startAt, authority: opts.authority,
@@ -482,6 +512,7 @@ function beginRace(opts){
 		onEvent: (t, d) => onRaceEvent(t, d)
 	});
 	S.race.key = key;
+	if(opts.mode === "trial") syncGhostFromAccount(S.race, key, opts.weekly);
 	S.showcase.visible = false;
 	fx.clear();
 	for(const c of S.race.cars){
@@ -511,6 +542,7 @@ function beginRace(opts){
 
 function endRace(keepTrack){
 	clearInterval(S.qualiTimer);
+	hud.setDelta(null);
 	stopTv();
 	S.replay = null;
 	if(S.race){ S.race.dispose(); S.race = null; }
@@ -574,14 +606,17 @@ function onRaceEvent(type, d){
 				isRecord = prevBest == null || d.ms < prevBest;
 				if(isRecord){
 					store.setBest(key, d.ms);
-					if(r.ghostData) store.setGhost(key, r.ghostData);
+					if(r.lastLap){ store.setGhost(key, r.lastLap); saveGhostToAccount("best-" + key, r.lastLap); }
 					submitRecord(key, d.ms);
 				}
 				if(isRecord && TRACKS.every(t => store.getBest(trackKey(t, false)) != null)) garageNote(garage.afterSolo(["allTracks"]), true);
 				const wk = weeklyChallenge();
 				if(S.ctx.def.id === wk.def.id && !!S.ctx.reverse === wk.reverse){
 					const wkKey = "weekly:" + wk.id, prev = store.getBest(wkKey);
-					if(prev == null || d.ms < prev){ store.setBest(wkKey, d.ms); submitWeekly(wk.id, d.ms, key); if(!isRecord) weeklyBest = true; }
+					if(prev == null || d.ms < prev){
+						store.setBest(wkKey, d.ms); submitWeekly(wk.id, d.ms, key); if(!isRecord) weeklyBest = true;
+						if(r.lastLap){ store.setWeeklyGhost(wk.id, r.lastLap); saveGhostToAccount("weekly", r.lastLap, { week: wk.id }); }
+					}
 				}
 			}
 			const sessionPrev = d.car.lapTimes.length > 1 ? Math.min(...d.car.lapTimes.slice(0, -1)) : null;
@@ -1216,6 +1251,7 @@ function frame(now){
 				pos: standings.findIndex(s => s.car === focus) + 1, of: standings.filter(s => !s.car.gone).length
 			});
 			hud.setTower(standings, focus.id);
+			hud.setDelta(r.mode === "trial" && focus.me ? { ms: r.liveDelta(), has: !!r.ghostData, label: S.ctx && S.ctx.weekly ? "vs your week best" : "vs your best" } : null);
 		}
 		hud.drawMinimap(r.cars, focus);
 		updateLabels(standings, focus);

@@ -41,6 +41,9 @@ export function getBest(key){ return load("best:" + key, null); }
 export function setBest(key, ms){ save("best:" + key, ms); }
 export function getGhost(key){ return load("ghost:" + key, null); }
 export function setGhost(key, ghost){ save("ghost:" + key, ghost); }
+// This week's challenge ghost: one slot, { week, ms, s }. Last week's is simply replaced.
+export function getWeeklyGhost(week){ const g = load("ghost:weekly", null); return g && g.week === week ? g : null; }
+export function setWeeklyGhost(week, ghost){ save("ghost:weekly", { week, ms: ghost.ms, s: ghost.s }); }
 
 // Tracks saved from the editor: [{ id, name, code, saved }]
 export function getCustomTracks(){ return load("customTracks", []); }

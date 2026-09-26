@@ -153,6 +153,25 @@ export class Hud {
 		}
 	}
 
+	// Live delta to the ghost (time trial and the weekly challenge).
+	// d: { ms (negative = ahead) or null, has: is there a ghost, label } or null to hide.
+	setDelta(d){
+		const on = !!d;
+		if(this._deltaOn !== on){ this._deltaOn = on; document.body.classList.toggle("delta-on", on); }
+		if(!on) return;
+		const el = this.el.deltaParts || (this.el.deltaParts = { root: $("delta"), label: $("deltaLabel"), num: $("deltaNum"), ahead: $("deltaAhead"), behind: $("deltaBehind") });
+		const ms = d.has ? d.ms : null;
+		setText(el.label, d.has ? d.label : "No ghost yet: finish a lap");
+		setText(el.num, ms == null ? "--.---" : (ms < 0 ? "\u2212" : "+") + (Math.abs(ms) / 1000).toFixed(3));
+		const state = ms == null ? "" : ms < -10 ? "ahead" : ms > 10 ? "behind" : "even";
+		if(el.root.dataset.state !== state) el.root.dataset.state = state;
+		// Full bar at 2 s; square root so small gaps still show.
+		const v = ms == null ? 0 : Math.round(Math.min(1, Math.sqrt(Math.abs(ms) / 2000)) * 200) / 200;
+		const a = ms != null && ms < 0 ? v : 0, b = ms != null && ms > 0 ? v : 0;
+		if(el.ahead._v !== a){ el.ahead._v = a; el.ahead.style.transform = `scaleX(${a})`; }
+		if(el.behind._v !== b){ el.behind._v = b; el.behind.style.transform = `scaleX(${b})`; }
+	}
+
 	// Slipstream meter and speed lines, 0..1. Called every frame, so it only touches styles.
 	setDraft(v){
 		const on = v > 0.08;

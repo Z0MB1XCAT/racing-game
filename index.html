@@ -511,6 +511,11 @@
 		<div id="hudToast" hidden></div>
 		<div class="hud-top">
 			<div class="mirror" id="mirror" aria-hidden="true"><div class="mirror-glass" id="mirrorGlass"></div></div>
+			<div class="delta" id="delta" aria-live="off">
+				<b class="delta-num" id="deltaNum">--.---</b>
+				<div class="delta-bar" aria-hidden="true"><i class="delta-fill ahead" id="deltaAhead"></i><i class="delta-fill behind" id="deltaBehind"></i></div>
+				<span class="delta-label" id="deltaLabel">vs your best</span>
+			</div>
 			<button class="icon-btn hud-pause" id="pauseBtn" aria-label="Pause">
 				<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
 			</button>

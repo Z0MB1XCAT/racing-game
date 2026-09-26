@@ -228,6 +228,20 @@ class FirebaseStore {
 		catch(e){ throw friendlyAuthError(e, "hwb"); }
 	}
 	async signOut(){ await this.auth.signOut(); }
+	// Ghost laps kept with an account, so they follow you to other computers.
+	// slot: "best-<trackKey>" or "weekly". The samples are stored as one string.
+	async saveGhost(slot, ghost, extra){
+		const u = this.auth.currentUser;
+		if(!u || u.isAnonymous) return;
+		await this.set(`ghosts/${u.uid}/${slot}`, Object.assign({ ms: Math.round(ghost.ms), s: JSON.stringify(ghost.s) }, extra || {}));
+	}
+	async loadGhost(slot){
+		const u = this.auth.currentUser;
+		if(!u || u.isAnonymous) return null;
+		const g = await this.get(`ghosts/${u.uid}/${slot}`);
+		if(!g || typeof g.s !== "string") return null;
+		try { return Object.assign({}, g, { s: JSON.parse(g.s) }); } catch { return null; }
+	}
 	now(){ return Date.now() + this.offset; }
 	set(p, v){ return this.db.ref(p).set(v); }
 	update(p, v){ return this.db.ref(p).update(v); }
@@ -364,6 +378,16 @@ class LocalStore {
 	async checkVerified(){ return true; }
 	async resetPassword(){}
 	async signOut(){ this.uid = "local-" + Math.random().toString(36).slice(2, 9); this.acct = { kind: "guest" }; this.saveId(); }
+	async saveGhost(slot, ghost, extra){
+		if(this.acct.kind === "guest") return;
+		await this.set(`ghosts/${this.uid}/${slot}`, Object.assign({ ms: Math.round(ghost.ms), s: JSON.stringify(ghost.s) }, extra || {}));
+	}
+	async loadGhost(slot){
+		if(this.acct.kind === "guest") return null;
+		const g = this.read(`ghosts/${this.uid}/${slot}`);
+		if(!g || typeof g.s !== "string") return null;
+		try { return Object.assign({}, g, { s: JSON.parse(g.s) }); } catch { return null; }
+	}
 
 	read(p){
 		let n = this.tree;
@@ -699,6 +723,8 @@ export class Net {
 	async createBvs(id, pw){ this.store.uid = await this.store.createBvs(id, pw); }
 	async loginBvs(id, pw){ this.store.uid = await this.store.loginBvs(id, pw); }
 	linkInfo(){ return this.store.linkInfo(); }
+	saveGhost(slot, ghost, extra){ return this.store.saveGhost(slot, ghost, extra); }
+	loadGhost(slot){ return this.store.loadGhost(slot); }
 	linkHwb(email, pw){ return this.store.linkHwb(email, pw); }
 	linkBvs(id, pw){ return this.store.linkBvs(id, pw); }
 	async createHwb(email, pw){ this.store.uid = await this.store.createHwb(email, pw); }

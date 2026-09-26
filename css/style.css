@@ -577,6 +577,26 @@ body.mirror-on .mirror{
 /* Keep the pause button centred when there's no mirror; with one, balance it on the left. */
 body.mirror-on .hud-top::before{ content: ""; width: 44px; flex: none; }
 body.mirror-on .lights{ top: calc(max(16px, env(safe-area-inset-top)) + var(--mirror-top-h, 125px)); }
+/* Delta to the ghost (time trial and weekly challenge), in the mirror's spot. */
+.delta{ display: none; }
+body.delta-on .delta{ display: grid; justify-items: center; gap: 4px; width: clamp(240px, 24vw, 360px); }
+body.delta-on .hud-top::before{ content: ""; width: 44px; flex: none; }
+.delta-num{
+	padding: 2px 16px 0; font-weight: 900; font-style: italic; font-size: 34px; line-height: 1.05; font-variant-numeric: tabular-nums;
+	background: rgba(14,18,26,.86); transform: skewX(var(--skew)); box-shadow: var(--elev-2); color: var(--chalk);
+}
+.delta[data-state="ahead"] .delta-num{ color: var(--green); }
+.delta[data-state="behind"] .delta-num{ color: #ff5a5f; }
+.delta-bar{
+	position: relative; width: 100%; height: 10px; overflow: hidden; background: rgba(14,18,26,.86);
+	transform: skewX(var(--skew)); box-shadow: var(--elev-2);
+}
+.delta-bar::after{ content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--chalk); }
+.delta-fill{ position: absolute; top: 0; bottom: 0; width: 50%; transform: scaleX(0); transition: transform .15s linear; }
+.delta-fill.ahead{ right: 50%; transform-origin: right center; background: linear-gradient(90deg, #1f9d5b, var(--green)); }
+.delta-fill.behind{ left: 50%; transform-origin: left center; background: linear-gradient(90deg, #ff5a5f, #c81e2b); }
+.delta-label{ font-weight: 700; font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: var(--mute); text-shadow: 0 1px 3px rgba(0,0,0,.6); }
+@media (max-width: 640px){ body.delta-on .delta{ width: 150px; } .delta-num{ font-size: 24px; } body.delta-on .hud-top::before{ display: none; } }
 @media (max-width: 900px){ .hud-top{ --mirror-w: 170px; } body.mirror-on .hud-top::before{ display: none; } }
 @media (max-width: 640px){ body.mirror-on .mirror{ display: none; } body.mirror-on .hud-top::before{ display: none; } body.mirror-on .lights{ top: 22%; } }
 

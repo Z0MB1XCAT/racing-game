@@ -67,8 +67,11 @@ export class Race {
 		});
 		this.me = this.byId.get(this.myId) || null;
 
-		// Ghost of your best lap (time trial).
+		// Ghost to chase (time trial): your fastest lap ever, or this week's best in the challenge.
+		// It only changes when you beat it. lastLap is the lap just driven, for saving.
 		this.ghostData = opts.ghost || null;
+		this.lastLap = null;
+		this.deltaIdx = 0;
 		this.ghostModel = null;
 		if(this.mode === "trial" && this.me){
 			this.ghostModel = makeCar(this.me.body, this.me.hue, { ghost: true });
@@ -158,18 +161,18 @@ export class Race {
 			c.lapTimes.push(lapMs);
 			const pb = c.best === null || lapMs < c.best;
 			if(pb) c.best = lapMs;
+			if(c.me && this.ghostModel){
+				this.lastLap = this.recording && this.recording.length > 1 ? { ms: lapMs, s: this.recording } : null;
+				if(this.lastLap && (!this.ghostData || lapMs < this.ghostData.ms)) this.ghostData = this.lastLap;
+			}
 			this.onEvent("lap", { car: c, ms: lapMs, best: pb });
 			if(this.mode !== "trial" && (this.bestLapAll === null || lapMs < this.bestLapAll)){
 				if(this.bestLapAll !== null) this.addEvent("fastest", t, { a: c.id, text: `${c.name} sets the fastest lap: ${fmtLap(lapMs)}` });
 				this.bestLapAll = lapMs;
 			}
-			if(c.me && this.ghostModel && this.recording){
-				if(pb) this.ghostData = { ms: lapMs, s: this.recording };
-				this.recording = [];
-			}
 		}
 		c.lapStart = t;
-		if(c.me && this.recording) this.recording = [];
+		if(c.me && this.ghostModel){ this.recording = []; this.deltaIdx = 0; }
 		if(this.mode === "quali" && c.lapTimes.length >= this.laps && c.finish === null){
 			c.finish = t;
 			this.onEvent("qualiDone", { car: c, ms: c.best });
@@ -244,6 +247,33 @@ export class Race {
 		while(dr > Math.PI) dr -= Math.PI * 2;
 		while(dr < -Math.PI) dr += Math.PI * 2;
 		this.ghostModel.rotation.y = a[3] + dr * f;
+	}
+
+	// Live gap to the ghost (ms, negative = ahead): where was the ghost's lap when it was
+	// at the point on the track where you are now? null when there's nothing to compare.
+	liveDelta(){
+		const c = this.me, g = this.ghostData;
+		if(!c || !g || !g.s || g.s.length < 3 || c.lapStart === null) return null;
+		const lt = this.raceTime - c.lapStart;
+		if(lt < 250) return null;
+		const s = g.s, x = c.data.x, z = c.data.y;
+		const near = (from, to) => {
+			let best = -1, bd = Infinity;
+			for(let i = Math.max(0, from); i <= Math.min(s.length - 2, to); i++){
+				const d = (s[i][1] - x) ** 2 + (s[i][2] - z) ** 2;
+				if(d < bd){ bd = d; best = i; }
+			}
+			return [best, bd];
+		};
+		// The ghost moves forward, so look just around where we matched last time.
+		let [i, d2] = near(this.deltaIdx - 4, this.deltaIdx + 60);
+		if(d2 > 15 * 15) [i, d2] = near(0, s.length - 2);        // after a reset: search the whole lap
+		if(i < 0 || d2 > 25 * 25) return null;
+		this.deltaIdx = i;
+		const a = s[i], b = s[i + 1];
+		const vx = b[1] - a[1], vz = b[2] - a[2], len2 = vx * vx + vz * vz;
+		const f = len2 > 0 ? Math.max(0, Math.min(1, ((x - a[1]) * vx + (z - a[2]) * vz) / len2)) : 0;
+		return lt - (a[0] + (b[0] - a[0]) * f);
 	}
 
 	// Host / solo only: eliminations and deciding when the race is over.
