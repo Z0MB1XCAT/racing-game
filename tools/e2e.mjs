@@ -15,6 +15,8 @@ async function open(url, w = 1440, h = 900){
 	await page.setViewport({ width: w, height: h });
 	page.on("pageerror", e => errors.push("pageerror: " + e.message));
 	page.on("console", m => { if(m.type() === "error") errors.push("console: " + m.text()); });
+	// NO_WORKLET=1 pretends to be a browser without AudioWorklet (simple engine sounds).
+	if(process.env.NO_WORKLET) await page.evaluateOnNewDocument(() => { delete window.AudioWorkletNode; });
 	await page.goto(url, { waitUntil: "networkidle0", timeout: 60000 });
 	return page;
 }
@@ -46,7 +48,7 @@ if(flow === "solo"){
 	});
 	await wait(5000);
 	await shot(page, "racing");
-	const state = await page.evaluate(() => ({ screen: window.__game.screen, lap: window.__game.race && window.__game.race.me.data.lap }));
+	const state = await page.evaluate(async () => ({ screen: window.__game.screen, lap: window.__game.race && window.__game.race.me.data.lap, engines: (await import("/js/audio.js")).engineMode() }));
 	console.log("state", JSON.stringify(state));
 	// wait for results (1 lap)
 	for(let i = 0; i < 120; i++){

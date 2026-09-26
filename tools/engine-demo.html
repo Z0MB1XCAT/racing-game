@@ -1,0 +1,85 @@
+<!doctype html><meta charset="utf-8"><body>
+<script type="module">
+import { ENGINES } from "../js/audio.js";
+const V8_AMPS = [1, 0.7, 1.12, 0.82, 0.96, 0.66, 1.16, 0.78];
+const V8_SHIFT = [0, 0.012, -0.01, 0.015, -0.006, 0.01, -0.014, 0.004];
+function wav(buf){
+	const ch = buf.getChannelData(0), n = ch.length, sr = buf.sampleRate;
+	const dv = new DataView(new ArrayBuffer(44 + n * 2));
+	const w = (o, s) => [...s].forEach((c, i) => dv.setUint8(o + i, c.charCodeAt(0)));
+	w(0, "RIFF"); dv.setUint32(4, 36 + n * 2, true); w(8, "WAVE"); w(12, "fmt ");
+	dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true); dv.setUint32(24, sr, true);
+	dv.setUint32(28, sr * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); w(36, "data"); dv.setUint32(40, n * 2, true);
+	for(let i = 0; i < n; i++) dv.setInt16(44 + i * 2, Math.max(-1, Math.min(1, ch[i])) * 32767, true);
+	let s = ""; const b = new Uint8Array(dv.buffer); for(let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000));
+	return btoa(s);
+}
+function stats(buf, from, to){
+	const ch = buf.getChannelData(0), sr = buf.sampleRate, a = Math.floor(from * sr), b = Math.floor(to * sr);
+	let sum = 0, peak = 0, nan = 0, zc = 0, l1 = 0, l2 = 0, eLo = 0, eHi = 0; const A1 = 1 - Math.exp(-2 * Math.PI * 400 / sr), A2 = 1 - Math.exp(-2 * Math.PI * 2500 / sr);
+	for(let i = a; i < b; i++){ const v = ch[i]; if(!isFinite(v)) nan++; sum += v * v; peak = Math.max(peak, Math.abs(v)); if(i > a && (ch[i - 1] < 0) !== (v < 0)) zc++; l1 += (v - l1) * A1; l2 += (v - l2) * A2; eLo += l1 * l1; eHi += (v - l2) * (v - l2); }
+	return { rms: +Math.sqrt(sum / (b - a)).toFixed(3), peak: +peak.toFixed(3), nan, lo: Math.round(100 * eLo / sum), hi: Math.round(100 * eHi / sum) };
+}
+window.render = async (body) => {
+	const p = ENGINES[body], sr = 44100, secs = 9;
+	const ctx = new OfflineAudioContext(1, sr * secs, sr);
+	await ctx.audioWorklet.addModule("../js/engine-worklet.js");
+	const opts = Object.assign({}, p.model, { cyl: p.cyl, idle: p.idle, max: p.max,
+		offsets: Array.from({ length: p.cyl }, (_, k) => k / p.cyl + (p.v8 ? V8_SHIFT[k] : 0)),
+		amps: Array.from({ length: p.cyl }, (_, k) => p.v8 ? V8_AMPS[k] : 1) });
+	const node = new AudioWorkletNode(ctx, "engine-model", { numberOfInputs: 0, outputChannelCount: [1], processorOptions: opts });
+	const g = ctx.createGain(); g.gain.value = 0.32 * p.vol; node.connect(g); g.connect(ctx.destination);
+	const rpmP = node.parameters.get("rpm"), thrP = node.parameters.get("throttle");
+	// 0-2 s: idle and two blips on the grid. 2-9 s: launch and accelerate through the gears (game physics).
+	let rpm = p.idle, gear = 0, v = 0, lastRev = 0;
+	for(let i = 0; i < secs * 60; i++){
+		const t = i / 60;
+		let target, thr = 1;
+		if(t < 2){
+			const rev = t < 0.4 ? 0 : 0.35 * Math.max(0, Math.sin((t - 0.4) * Math.PI / 0.8)) ** 2;
+			target = p.idle + (p.max * 0.85 - p.idle) * rev; thr = rev > lastRev || rev === 0 ? 1 : 0.04; lastRev = rev;
+			if(rev === 0) thr = 0.3;
+		}else{
+			v = (v + 0.004) * 0.99;
+			const s = v / 0.4;
+			let gg = gear;
+			while(gg < p.gears.length - 1 && s > p.gears[gg] * 0.97) gg++;
+			if(gg !== gear){ rpm = Math.max(p.idle, p.max * s / p.gears[gg]); thrP.setValueAtTime(0.03, t); thrP.setValueAtTime(1, t + 0.09); }
+			gear = gg;
+			target = Math.max(p.idle, p.max * Math.min(1, s / p.gears[gg]));
+		}
+		rpm += (target - rpm) * Math.min(1, 14 / 60);
+		rpmP.setValueAtTime(rpm, t);
+		if(t < 2) thrP.setValueAtTime(thr, t);
+	}
+	const buf = await ctx.startRendering();
+	return { wav: wav(buf), idle: stats(buf, 0, 0.4), rev: stats(buf, 0.6, 1.4), launch: stats(buf, 2, 3), top: stats(buf, 8, 9), all: stats(buf, 0, secs) };
+};
+
+function fft(re, im){
+	const n = re.length;
+	for(let i = 1, j = 0; i < n; i++){ let bit = n >> 1; for(; j & bit; bit >>= 1) j ^= bit; j ^= bit; if(i < j){ [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; } }
+	for(let len = 2; len <= n; len <<= 1){ const a = -2 * Math.PI / len; for(let i = 0; i < n; i += len) for(let k = 0; k < len / 2; k++){ const c = Math.cos(a * k), s = Math.sin(a * k); const xr = re[i + k + len / 2] * c - im[i + k + len / 2] * s, xi = re[i + k + len / 2] * s + im[i + k + len / 2] * c; re[i + k + len / 2] = re[i + k] - xr; im[i + k + len / 2] = im[i + k] - xi; re[i + k] += xr; im[i + k] += xi; } }
+}
+window.spectro = (b64, label) => {
+	const bin = atob(b64), n = (bin.length - 44) / 2, x = new Float32Array(n);
+	for(let i = 0; i < n; i++){ let v = bin.charCodeAt(44 + i * 2) | (bin.charCodeAt(45 + i * 2) << 8); if(v > 32767) v -= 65536; x[i] = v / 32768; }
+	const N = 4096, hop = 441, cols = Math.floor((n - N) / hop), H = 300, maxHz = 4000, sr = 44100;
+	const cv = document.createElement('canvas'); cv.width = cols; cv.height = H + 16; const g = cv.getContext('2d');
+	const img = g.createImageData(cols, H);
+	for(let c = 0; c < cols; c++){
+		const re = new Float32Array(N), im = new Float32Array(N);
+		for(let i = 0; i < N; i++) re[i] = x[c * hop + i] * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / N));
+		fft(re, im);
+		for(let y = 0; y < H; y++){
+			const hz = (H - 1 - y) / H * maxHz, k = Math.round(hz / sr * N);
+			const db = 10 * Math.log10(re[k] * re[k] + im[k] * im[k] + 1e-12);
+			const v = Math.max(0, Math.min(255, (db + 30) * 4));
+			const o = (y * cols + c) * 4; img.data[o] = v; img.data[o + 1] = v * 0.6; img.data[o + 2] = 255 - v; img.data[o + 3] = 255;
+		}
+	}
+	g.putImageData(img, 0, 16); g.fillStyle = '#fff'; g.fillText(label + '  (0-4 kHz, 9 s)', 4, 12);
+	return cv.toDataURL('image/png').split(',')[1];
+};
+window.ready = true;
+</script>

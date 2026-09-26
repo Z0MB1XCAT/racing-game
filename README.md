@@ -75,8 +75,9 @@ original did).
 - **Lap records** saved on your device, and shared with everyone on your site once Firebase is set up.
 - **Track editor** (hidden for now, see below) that reads and writes the original game's
   track codes, with a *Save & race* button.
-- **Sound**: every car body has its own engine, synthesised live with a gearbox, so you hear the
-  revs climb and the gear changes:
+- **Sound**: every car body has its own engine, modelled live cylinder by cylinder (firing pulses
+  through headers, pipes and a muffler, intake roar, engine-block knock, and no two firings alike),
+  with a gearbox, so you hear the revs climb and the gear changes:
   - **Formula:** high V6 turbo wail with a turbo whistle and eight quick gears.
   - **GT:** V8 burble with crackles on the upshift.
   - **Stock car:** deep, rough V8 with four long gears.
@@ -295,7 +296,7 @@ Once it's on, open **Track editor** from the menu.
 | `js/cosmetics.js`, `js/garage.js` | Unlockable looks, levels and the garage screen |
 | `js/filter.js`, `js/admin.js`, `js/limits.js` | Name filter, admin page, lap-time limits |
 | `js/champ.js`, `js/weekly.js` | Championship points and the automatic weekly challenge |
-| `js/audio.js`, `js/music.js` | Engines for each car body, sound effects and the music sequencer |
+| `js/audio.js`, `js/engine-worklet.js`, `js/music.js` | Engine model for each car body, sound effects and the music sequencer |
 | `js/main.js`, `js/hud.js` | Menus, HUD, camera and input |
 | `editor/` | Track editor |
 
@@ -306,6 +307,7 @@ The last two also need puppeteer installed.
 - `node tools/physics-equivalence.mjs` checks that the physics matches the original.
 - `node tools/track-sim.mjs` drives bots round every track and reports lap times, stuck cars and escapes.
 - `node tools/draft-test.mjs daytona` compares slipstream on and off (lap times, gaps, lead changes).
+- `node tools/engine-demo.mjs` renders a clip of each engine to WAV (with spectrograms) for tuning the sound. Engine settings are `ENGINES` in `js/audio.js`.
 - `node tools/contact-test.mjs monaco` compares original and soft car contact (side hit, rear tap, a bot race).
 - `node tools/e2e.mjs solo|online|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
 
