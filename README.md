@@ -217,7 +217,7 @@ WebRTC link. Firebase only passes a handful of small "introduction" messages per
 4. To change who the admin is, edit `ACCOUNTS.admin` in `js/config.js` **and** the
    `bvs-11018@bvs.invalid` address in `database.rules.json`, then publish the rules again.
 
-The BVS livery uses placeholder navy and gold. Put the school's real colours in
+The BVS livery is blue and white. To change it, edit
 `BVS_COLOURS` in `js/cosmetics.js`. Team colours are in the same file.
 
 ### How much can we play for free?

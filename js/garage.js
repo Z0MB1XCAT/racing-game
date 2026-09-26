@@ -183,7 +183,7 @@ export function initGarage(ctx){
 		const before = G.P;
 		G.loadedAt = 0;
 		await refresh(true);
-		return { unlocked: newlyUnlocked(before, G.P), levelUp: G.P.level > before.level ? G.P.level : null };
+		return { unlocked: newlyUnlocked(before, G.P), levelUp: G.P.level > before.level ? G.P.level : null, xp: G.P.xp - before.xp };
 	}
 	// After a solo result: tick off solo goals.
 	function afterSolo(flags){

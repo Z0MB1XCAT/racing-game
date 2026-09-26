@@ -1698,6 +1698,7 @@ const garage = initGarage({
 function garageNote(res, toast){
 	if(!res) return;
 	const bits = [];
+	if(res.xp > 0) bits.push(`+${res.xp} XP.`);
 	if(res.levelUp) bits.push(`Level ${res.levelUp}!`);
 	if(res.unlocked && res.unlocked.length) bits.push("New in your garage: " + res.unlocked.join(", ") + ".");
 	if(!bits.length) return;

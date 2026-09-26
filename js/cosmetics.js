@@ -45,8 +45,8 @@ const TEAMS = [
 	{ id: "team-fishers",     name: "Fishers Black",        main: "#141518", second: "#e9eaec", accent: "#b8b9bc", level: 19 }
 ];
 
-// School livery. Change these three colours to the real BVS colours.
-export const BVS_COLOURS = { main: "#1c2b5a", second: "#f2c230", accent: "#f4f6fa" };
+// School livery: BVS blue and white (blue body, white wings/roof and stripe).
+export const BVS_COLOURS = { main: "#1f4fbf", second: "#f4f6fa", accent: "#f4f6fa" };
 
 export const LIVERIES = [
 	{ id: "factory", name: "Factory", pattern: "solid", unlock: [{ free: true }] },
