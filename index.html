@@ -566,6 +566,13 @@
 			<p class="msg" id="acctOffline" hidden>Accounts need online play set up first (see <code>README.md</code>).</p>
 			<div id="acctSignedIn" hidden class="stack">
 				<div class="acct-card"><span class="tag" id="acctKind">BVS</span><b id="acctLabel">bvs-00000</b></div>
+				<div class="verify-box" id="verifyBox" hidden>
+					<p class="msg"><b>Check your Hwb inbox.</b> Click the link in the email from the game (it can take a minute; look in Junk too). Then press the button below.</p>
+					<div class="flex gap-3" style="flex-wrap:wrap">
+						<button class="go-btn" id="verifyCheck"><span>I've clicked the link</span></button>
+						<button class="go-btn ghost" id="verifyResend"><span>Send it again</span></button>
+					</div>
+				</div>
 				<button class="go-btn ghost" id="acctSignOut"><span>Sign out</span></button>
 			</div>
 			<div id="acctForms" class="stack">
@@ -587,8 +594,20 @@
 				</section>
 				<section class="acct-option" id="hwbOption">
 					<h3>Hwb account</h3>
-					<button class="go-btn ghost hwb-btn" id="hwbLogin"><span>Sign in with Hwb</span></button>
-					<p class="opt-help">Uses your school Microsoft login. If your school hasn't allowed it, use a BVS account instead.</p>
+					<div class="field">
+						<label class="eyebrow" for="hwbEmail">Hwb email</label>
+						<input id="hwbEmail" class="text-input" type="email" placeholder="you@hwbcymru.net" autocomplete="username" spellcheck="false" autocapitalize="off">
+					</div>
+					<div class="field">
+						<label class="eyebrow" for="hwbPw">Password for this game</label>
+						<input id="hwbPw" class="text-input" type="password" placeholder="At least 6 characters" autocomplete="current-password">
+					</div>
+					<div class="flex gap-3">
+						<button class="go-btn" id="hwbCreate"><span>Create account</span></button>
+						<button class="go-btn ghost" id="hwbLogin"><span>Log in</span></button>
+					</div>
+					<button class="link-btn" id="hwbForgot">Forgot password?</button>
+					<p class="opt-help">We send a link to your Hwb inbox to check it's yours. Make up a new password: don't use your real Hwb password here.</p>
 				</section>
 			</div>
 			<p class="msg err" id="acctErr" hidden></p>

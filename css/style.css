@@ -643,3 +643,9 @@ kbd{ font-family: var(--f-display); font-weight: 700; font-size: 13px; padding: 
 @media (prefers-reduced-motion: reduce){
 	*, *::before, *::after{ animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Hwb account extras */
+.link-btn{ align-self: flex-start; background: none; border: 0; padding: 0; color: var(--mute); font-size: 13px; text-decoration: underline; cursor: pointer; }
+.link-btn:hover{ color: var(--chalk); }
+.verify-box{ display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-left: 4px solid #ffcf5c; background: rgba(255,207,92,.08); }
+.verify-box .go-btn{ width: auto; font-size: 17px; padding: 10px 14px; }

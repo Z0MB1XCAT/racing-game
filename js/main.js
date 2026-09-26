@@ -9,7 +9,7 @@ import { Hud, fmtTime } from "./hud.js";
 import { Effects } from "./fx.js";
 import * as audio from "./audio.js";
 import * as store from "./storage.js";
-import { connect, onlineAvailable, normaliseBvs } from "./net.js";
+import { connect, onlineAvailable, normaliseBvs, normaliseHwb } from "./net.js";
 import { newChamp, scoreRound, champStandings, champGrid } from "./champ.js";
 import { weeklyChallenge, timeLeft } from "./weekly.js";
 import { Mesh } from "./p2p.js";
@@ -1572,6 +1572,7 @@ const acct = { info: { kind: "guest" } };
 function renderAccount(){
 	const a = acct.info;
 	$("acctText").innerHTML = a.kind === "guest" ? "Playing as a guest"
+		: a.kind === "hwb" && !a.verified ? `<b>Hwb</b> · check your inbox for the link`
 		: `<b>${a.kind === "bvs" ? escapeHtml(a.label.toUpperCase()) : "Hwb"}</b> · stats saved to your account`;
 	$("acctBtn").textContent = a.kind === "guest" ? "Sign in" : "Account";
 }
@@ -1603,6 +1604,7 @@ function openAccount(){
 	$("hwbOption").hidden = !ACCOUNTS.hwb;
 	$("acctKind").textContent = a.kind === "bvs" ? "BVS" : "Hwb";
 	$("acctLabel").textContent = a.label || "";
+	$("verifyBox").hidden = !(a.kind === "hwb" && !a.verified);
 	acctMsg("");
 	openModal("account");
 }
@@ -1629,7 +1631,7 @@ async function afterSignIn(net, uidBefore){
 	acctMsg("Account ready. Your stats now follow you to any computer.", true);
 }
 async function acctAction(btn, fn){
-	const buttons = document.querySelectorAll("#acctForms button, #acctSignOut");
+	const buttons = document.querySelectorAll("#acctForms button, #acctSignOut, #verifyBox button");
 	buttons.forEach(b => { b.disabled = true; });
 	acctMsg("");
 	try { await fn(); } catch(e){ acctMsg(e.message || String(e)); }
@@ -1655,10 +1657,44 @@ $("bvsLogin").addEventListener("click", e => acctAction(e.currentTarget, async (
 	await afterSignIn(net, before);
 }));
 $("bvsPw").addEventListener("keydown", e => { if(e.key === "Enter") $("bvsLogin").click(); });
-$("hwbLogin").addEventListener("click", e => acctAction(e.currentTarget, async () => {
+function hwbInputs(needPassword = true){
+	const raw = $("hwbEmail").value;
+	const email = normaliseHwb(raw);
+	if(!email) throw new Error(`Use your Hwb email (ending ${ACCOUNTS.hwbDomains.map(d => "@" + d).join(" or ")}).`);
+	const pw = $("hwbPw").value;
+	if(needPassword && pw.length < 6) throw new Error("Passwords need at least 6 characters.");
+	return [email, pw];
+}
+$("hwbCreate").addEventListener("click", e => acctAction(e.currentTarget, async () => {
+	const [email, pw] = hwbInputs();
 	const net = await connect(), before = net.uid;
-	await net.loginHwb();
+	await net.createHwb(email, pw);
 	await afterSignIn(net, before);
+	if(!acct.info.verified) acctMsg(`Account made. We've sent a link to ${email}: click it, then press "I've clicked the link".`, true);
+}));
+$("hwbLogin").addEventListener("click", e => acctAction(e.currentTarget, async () => {
+	const [email, pw] = hwbInputs();
+	const net = await connect(), before = net.uid;
+	await net.loginHwb(email, pw);
+	await afterSignIn(net, before);
+}));
+$("hwbPw").addEventListener("keydown", e => { if(e.key === "Enter") $("hwbLogin").click(); });
+$("hwbForgot").addEventListener("click", e => acctAction(e.currentTarget, async () => {
+	const [email] = hwbInputs(false);
+	await (await connect()).resetPassword(email);
+	acctMsg(`If ${email} has an account, a password reset link is on its way. Check Junk too.`, true);
+}));
+$("verifyCheck").addEventListener("click", e => acctAction(e.currentTarget, async () => {
+	const net = await connect();
+	const ok = await net.checkVerified();
+	acct.info = net.account();
+	renderAccount();
+	openAccount();
+	acctMsg(ok ? "Email confirmed. Your stats now follow you to any computer." : "Not confirmed yet. Click the link in the email first (check Junk), then try again.", ok);
+}));
+$("verifyResend").addEventListener("click", e => acctAction(e.currentTarget, async () => {
+	await (await connect()).resendVerification();
+	acctMsg("Sent again. It can take a minute to arrive.", true);
 }));
 $("acctSignOut").addEventListener("click", e => acctAction(e.currentTarget, async () => {
 	const net = await connect();

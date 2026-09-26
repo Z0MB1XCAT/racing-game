@@ -17,8 +17,8 @@ top of the original handling and can be switched off per race.
 - **Weekly challenge**: every Monday at 00:00 UTC a new track and direction are picked
   automatically from the date, with a fresh leaderboard. Last week's winner shows on the title
   screen. You never need to update anything.
-- **Accounts (optional)**: sign in with a BVS number and password, or with Hwb (school
-  Microsoft login), and your stats, lap records, name and car follow you to any computer.
+- **Accounts (optional)**: sign in with a BVS number and password, or with your Hwb email and a
+  password (a verification link goes to your Hwb inbox), and your stats, lap records, name and car follow you to any computer.
   A guest's stats move onto the new account when they create one.
 - **Direct connections (P2P)**: during races, players send car positions straight to each other
   over WebRTC. Firebase only introduces players, then carries no positions at all while everyone
@@ -166,44 +166,23 @@ their user under **Authentication → Users** and they can make the account agai
 with the old account ID, so they will lose them. The BVS format is set by `ACCOUNTS.bvsPattern` in
 `js/config.js`: "bvs-" plus 3 to 8 digits.
 
-**Hwb accounts** (school Microsoft login)
-1. In Firebase: **Authentication → Sign-in method → Add new provider → Microsoft**. Leave that page
-   open and copy the **redirect URI** it shows (`https://YOUR-PROJECT.firebaseapp.com/__/auth/handler`).
-2. Go to <https://entra.microsoft.com> and sign in with a **personal** Microsoft account
-   (outlook.com/hotmail), not your Hwb one. Hwb won't let pupils register apps.
-   **App registrations → New registration**:
-   - Name: anything.
-   - Supported account types: **Accounts in any organizational directory (multitenant)**.
-   - Redirect URI: **Web**, then paste the Firebase URI.
-   - Click **Register**.
-3. Copy the **Application (client) ID**. Then **Certificates & secrets → New client secret** and copy
-   its **Value**.
-4. Back in Firebase, paste both into the Microsoft provider → **Enable** → **Save**.
+**Hwb accounts** (Hwb email + a password made up for the game)
 
-**Heads-up:** Hwb is run centrally, and school Microsoft setups often stop pupils from signing
-in to apps the school hasn't approved. You'd see a "Need admin approval" screen. The game then tells
-players to use a BVS account instead. Only Hwb/school IT can approve the app. If it's blocked for
-good, set `hwb: false` in `ACCOUNTS` (`js/config.js`) to hide the button. Only addresses ending
-`@hwbmail.net` or `@hwbcymru.net` are accepted (`ACCOUNTS.hwbDomains`).
+Players type their Hwb email and a new password. The game then emails a link to their Hwb inbox to
+prove the address is theirs. They also get a working **Forgot password?** link.
 
-If Microsoft won't let you register an app with a personal account, you may need to create a free
-Azure account first. App registrations themselves are free.
+1. This uses the same **Email/Password** sign-in as BVS accounts, so nothing else needs switching on.
+2. Leave **Email enumeration protection** switched off (Authentication → Settings → User actions),
+   the same as for BVS.
+3. Recommended: **Authentication → Templates → Email address verification**. Set the sender
+   name to "Online Racing Game" and write a friendly message. Do the same for **Password reset**.
+   Emails come from `noreply@YOUR-PROJECT.firebaseapp.com`, and school email filters sometimes
+   put them in Junk, so tell people to check there.
+4. Only addresses ending `@hwbmail.net` or `@hwbcymru.net` are accepted (`ACCOUNTS.hwbDomains` in
+   `js/config.js`). Set `hwb: false` there to hide the option.
 
-### 6. Direct connections (P2P)
-
-This is on by default and needs no setup. When a room starts, every pair of players tries a direct
-WebRTC link. Firebase only passes a handful of small "introduction" messages per pair.
-
-- **Everyone Direct**: car positions never touch Firebase during the race, so data use during a race
-  drops to almost nothing. Updates also go out twice as often (30 a second), so other cars look smoother.
-- **Anyone Via server**: positions go through Firebase exactly as before, so the race still works.
-  School Wi-Fi often blocks devices from talking to each other, so expect this at school some of
-  the time. The game keeps retrying in the background.
-- To make direct links work on stricter networks you can add a **TURN relay** in `P2P.iceServers`
-  (`js/config.js`). Free tiers exist (for example Metered or Cloudflare Calls). Without one, those
-  players simply use Firebase.
-- To switch direct links off completely, set `P2P.enabled = false`. To test the fallback, add
-  `&nop2p` to one tab's address with `?localnet`.
+Pupils' Hwb addresses are stored in Firebase Authentication only. Other players never see them,
+but you can, as the owner of the Firebase project.
 
 ### 7. Admin and lap limits
 

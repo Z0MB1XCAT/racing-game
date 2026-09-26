@@ -16,15 +16,13 @@ export const EDITOR_ENABLED = false;
 // Optional accounts, so stats follow a player between devices. Guests can still play.
 export const ACCOUNTS = {
 	bvs: true,                       // "bvs-12345" + password (Firebase Email/Password sign-in)
-	hwb: true,                       // Hwb = school Microsoft 365 account (Firebase Microsoft sign-in)
+	hwb: true,                       // Hwb email + password, with a verification link sent to the Hwb inbox
 	// "bvs-" followed by 3 to 8 digits. Adjust if your school's numbers look different.
 	bvsPattern: /^bvs-\d{3,8}$/,
 	// BVS logins are stored in Firebase as this made-up address. No email is ever sent.
 	bvsEmailDomain: "bvs.invalid",
-	// Only Microsoft accounts with these endings count as Hwb.
+	// Only email addresses with these endings count as Hwb.
 	hwbDomains: ["hwbmail.net", "hwbcymru.net"],
-	// "organizations" = any school or work Microsoft account (the domain check above then limits it to Hwb).
-	hwbTenant: "organizations",
 	// This BVS account gets the Admin page (rename/ban players, remove records).
 	// If you change it, change the same address in database.rules.json too.
 	admin: "bvs-11018"

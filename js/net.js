@@ -14,6 +14,14 @@ export function normaliseBvs(id){
 }
 const bvsEmail = id => `${id}@${ACCOUNTS.bvsEmailDomain}`;
 
+// Hwb addresses: a real school email ending in one of ACCOUNTS.hwbDomains.
+export function normaliseHwb(email){
+	const v = String(email || "").trim().toLowerCase();
+	return /^[^@\s]+@[^@\s]+$/.test(v) && ACCOUNTS.hwbDomains.some(d => v.endsWith("@" + d)) ? v : null;
+}
+// Links in verification and reset emails bring people back to the game.
+const backToGame = () => ({ url: location.origin + location.pathname });
+
 // `what` says which sign-in method was being used, so "switched off" errors can name the right toggle.
 function friendlyAuthError(e, what){
 	const code = (e && e.code) || "";
@@ -25,10 +33,23 @@ function friendlyAuthError(e, what){
 	if(code === "auth/operation-not-allowed"){
 		if(what === "guest") return new Error("Guest sign-in is switched off in Firebase. Turn on Anonymous under Authentication → Sign-in method.");
 		if(what === "bvs") return new Error("BVS accounts are switched off in Firebase. Turn on Email/Password under Authentication → Sign-in method.");
-		if(what === "hwb") return new Error("Hwb sign-in is switched off in Firebase. Turn on Microsoft under Authentication → Sign-in method.");
+		if(what === "hwb") return new Error("Hwb accounts are switched off in Firebase. Turn on Email/Password under Authentication → Sign-in method.");
+	}
+	if(what === "hwb"){
+		const hwb = {
+			"auth/email-already-in-use": "That Hwb email already has an account. Log in instead, or use Forgot password.",
+			"auth/user-not-found": "That Hwb email or password isn't right. New here? Use Create account. Forgotten it? Use Forgot password.",
+			"auth/invalid-credential": "That Hwb email or password isn't right. New here? Use Create account. Forgotten it? Use Forgot password.",
+			"auth/invalid-login-credentials": "That Hwb email or password isn't right. New here? Use Create account. Forgotten it? Use Forgot password."
+		};
+		if(hwb[code]) return new Error(hwb[code]);
 	}
 	const map = {
 		"auth/email-already-in-use": "That BVS number already has an account. Log in instead.",
+		"auth/invalid-email": "That doesn't look like an email address.",
+		"auth/missing-email": "Type your Hwb email first.",
+		"auth/unauthorized-continue-uri": "Add this site's address under Authentication → Settings → Authorized domains in Firebase.",
+		"auth/invalid-continue-uri": "Add this site's address under Authentication → Settings → Authorized domains in Firebase.",
 		"auth/credential-already-in-use": "That account is already in use.",
 		"auth/user-not-found": "That BVS number or password isn't right. If you haven't made an account yet, use Create account.",
 		"auth/wrong-password": "That password isn't right.",
@@ -36,17 +57,11 @@ function friendlyAuthError(e, what){
 		"auth/invalid-login-credentials": "That BVS number or password isn't right. If you haven't made an account yet, use Create account.",
 		"auth/weak-password": "Passwords need at least 6 characters.",
 		"auth/too-many-requests": "Too many tries. Wait a minute and try again.",
-		"auth/popup-blocked": "Your browser blocked the sign-in window. Allow pop-ups for this site and try again.",
-		"auth/popup-closed-by-user": "The sign-in window was closed before you finished.",
-		"auth/cancelled-popup-request": "The sign-in window was closed before you finished.",
 		"auth/operation-not-allowed": "This sign-in option isn't switched on in Firebase yet (see README, Accounts).",
 		"auth/network-request-failed": "Couldn't reach the sign-in server. Check your connection."
 	};
 	if(map[code]) return new Error(map[code]);
 	const msg = (e && e.message) || String(e);
-	// Microsoft returns AADSTS errors when the school hasn't allowed the app.
-	if(/AADSTS(65001|90094|90095|50105|500011|700016)|admin(istrator)? (consent|approval)/i.test(msg))
-		return new Error("Your school's Microsoft settings don't allow signing in to this game with Hwb. Use a BVS account instead.");
 	return new Error(msg.replace(/^Firebase: /, ""));
 }
 
@@ -74,10 +89,9 @@ class FirebaseStore {
 	account(){
 		const u = this.auth.currentUser;
 		if(!u || u.isAnonymous) return { kind: "guest" };
-		const ms = u.providerData.find(p => p.providerId === "microsoft.com");
-		if(ms) return { kind: "hwb", label: ms.email || u.email || "Hwb account" };
-		const email = u.email || "";
-		return { kind: "bvs", label: email.split("@")[0] };
+		const email = (u.email || "").toLowerCase();
+		if(email.endsWith("@" + ACCOUNTS.bvsEmailDomain)) return { kind: "bvs", label: email.split("@")[0] };
+		return { kind: "hwb", label: email, verified: !!u.emailVerified };
 	}
 	async createBvs(id, pw){
 		const u = this.auth.currentUser;
@@ -94,35 +108,34 @@ class FirebaseStore {
 		catch(e){ throw friendlyAuthError(e, "bvs"); }
 		return this.auth.currentUser.uid;
 	}
-	async loginHwb(){
-		const fb = window.firebase;
-		const provider = new fb.auth.OAuthProvider("microsoft.com");
-		// Work/school Microsoft accounts only, then check it's an Hwb address.
-		provider.setCustomParameters({ tenant: ACCOUNTS.hwbTenant, prompt: "select_account" });
+	// Hwb: real school email + password. A verification link goes to their inbox.
+	async createHwb(email, pw){
 		const u = this.auth.currentUser;
-		let result;
+		const cred = window.firebase.auth.EmailAuthProvider.credential(email, pw);
 		try {
-			result = u && u.isAnonymous ? await u.linkWithPopup(provider) : await this.auth.signInWithPopup(provider);
-		} catch(e){
-			if(e && e.code === "auth/credential-already-in-use" && e.credential){
-				// This Hwb account already exists: switch to it.
-				try { result = await this.auth.signInWithCredential(e.credential); } catch(e2){ throw friendlyAuthError(e2, "hwb"); }
-			}else throw friendlyAuthError(e, "hwb");
-		}
-		const user = result.user;
-		const ms = user.providerData.find(p => p.providerId === "microsoft.com");
-		const email = ((ms && ms.email) || user.email || "").toLowerCase();
-		if(!ACCOUNTS.hwbDomains.some(d => email.endsWith("@" + d))){
-			// Not an Hwb account: undo the link (or sign out) and say why.
-			const linkedToGuest = u && u.isAnonymous && u.uid === user.uid;
-			try {
-				if(linkedToGuest) await user.unlink("microsoft.com");
-				else if(result.additionalUserInfo && result.additionalUserInfo.isNewUser) await user.delete();
-				else await this.auth.signOut();
-			} catch { await this.auth.signOut().catch(() => {}); }
-			throw new Error(`That isn't an Hwb account. Sign in with your school address (ending ${ACCOUNTS.hwbDomains.map(d => "@" + d).join(" or ")}).`);
-		}
-		return user.uid;
+			if(u && u.isAnonymous) await u.linkWithCredential(cred);
+			else await this.auth.createUserWithEmailAndPassword(email, pw);
+		} catch(e){ throw friendlyAuthError(e, "hwb"); }
+		await this.auth.currentUser.sendEmailVerification(backToGame()).catch(e => { throw friendlyAuthError(e, "hwb"); });
+		return this.auth.currentUser.uid;
+	}
+	async loginHwb(email, pw){
+		try { await this.auth.signInWithEmailAndPassword(email, pw); }
+		catch(e){ throw friendlyAuthError(e, "hwb"); }
+		return this.auth.currentUser.uid;
+	}
+	async resendVerification(){
+		try { await this.auth.currentUser.sendEmailVerification(backToGame()); }
+		catch(e){ throw friendlyAuthError(e, "hwb"); }
+	}
+	// Re-read the account after they've clicked the link in their email.
+	async checkVerified(){
+		await this.auth.currentUser.reload();
+		return !!this.auth.currentUser.emailVerified;
+	}
+	async resetPassword(email){
+		try { await this.auth.sendPasswordResetEmail(email, backToGame()); }
+		catch(e){ throw friendlyAuthError(e, "hwb"); }
 	}
 	async signOut(){ await this.auth.signOut(); }
 	now(){ return Date.now() + this.offset; }
@@ -207,7 +220,24 @@ class LocalStore {
 		this.uid = a.uid; this.acct = { kind: "bvs", label: id }; this.saveId();
 		return this.uid;
 	}
-	async loginHwb(){ throw new Error("Hwb sign-in needs the real Firebase project; it can't be tested with ?localnet."); }
+	// No real emails here: Hwb accounts count as verified straight away.
+	async createHwb(email, pw){
+		if(pw.length < 6) throw new Error("Passwords need at least 6 characters.");
+		const key = "_accounts/" + email.replace(/[.@]/g, "_");
+		if(this.read(key)) throw new Error("That Hwb email already has an account. Log in instead, or use Forgot password.");
+		await this.set(key, { pw, uid: this.uid });
+		this.acct = { kind: "hwb", label: email, verified: true }; this.saveId();
+		return this.uid;
+	}
+	async loginHwb(email, pw){
+		const a = this.read("_accounts/" + email.replace(/[.@]/g, "_"));
+		if(!a || a.pw !== pw) throw new Error("That Hwb email or password isn't right. New here? Use Create account. Forgotten it? Use Forgot password.");
+		this.uid = a.uid; this.acct = { kind: "hwb", label: email, verified: true }; this.saveId();
+		return this.uid;
+	}
+	async resendVerification(){}
+	async checkVerified(){ return true; }
+	async resetPassword(){}
 	async signOut(){ this.uid = "local-" + Math.random().toString(36).slice(2, 9); this.acct = { kind: "guest" }; this.saveId(); }
 
 	read(p){
@@ -543,7 +573,11 @@ export class Net {
 	account(){ return this.store.account(); }
 	async createBvs(id, pw){ this.store.uid = await this.store.createBvs(id, pw); }
 	async loginBvs(id, pw){ this.store.uid = await this.store.loginBvs(id, pw); }
-	async loginHwb(){ this.store.uid = await this.store.loginHwb(); }
+	async createHwb(email, pw){ this.store.uid = await this.store.createHwb(email, pw); }
+	async loginHwb(email, pw){ this.store.uid = await this.store.loginHwb(email, pw); }
+	resendVerification(){ return this.store.resendVerification(); }
+	checkVerified(){ return this.store.checkVerified(); }
+	resetPassword(email){ return this.store.resetPassword(email); }
 	async signOut(){ await this.store.signOut(); }
 	// Your driver name, colour and car follow your account between devices.
 	saveProfile(p){
