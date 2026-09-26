@@ -509,10 +509,13 @@
 		<div class="banner" id="banner" hidden><strong>Go</strong><span id="bannerSub"></span></div>
 		<div id="spectating" hidden></div>
 		<div id="hudToast" hidden></div>
-		<button class="icon-btn hud-pause" id="pauseBtn" aria-label="Pause">
-			<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
-		</button>
-		<div class="hud-keys"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> or <kbd>A</kbd> <kbd>D</kbd> steer &middot; <kbd>R</kbd> reset car &middot; <kbd>C</kbd> camera &middot; <kbd>Esc</kbd> pause</div>
+		<div class="hud-top">
+			<div class="mirror" id="mirror" aria-hidden="true"><div class="mirror-glass" id="mirrorGlass"></div></div>
+			<button class="icon-btn hud-pause" id="pauseBtn" aria-label="Pause">
+				<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+			</button>
+		</div>
+		<div class="hud-keys"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> or <kbd>A</kbd> <kbd>D</kbd> steer &middot; <kbd>R</kbd> reset car &middot; <kbd>B</kbd> look back &middot; <kbd>C</kbd> camera &middot; <kbd>Esc</kbd> pause</div>
 	</div>
 	<!-- TV coverage: live spectating, highlights and replays -->
 	<div id="tv" hidden>
@@ -567,6 +570,8 @@
 			<div class="opt-row"><label for="setMusic">Music</label><input class="range" id="setMusic" type="range" min="0" max="1" step="0.05"></div>
 			<div class="opt-row"><span class="opt-label">Music in races</span>
 				<div class="seg" id="setRaceMusic" role="radiogroup" aria-label="Music in races"><button data-v="1">On</button><button data-v="0">Off</button></div></div>
+			<div class="opt-row"><span class="opt-label">Rear-view mirror</span>
+				<div class="seg" id="setMirror" role="radiogroup" aria-label="Rear-view mirror"><button data-v="1">On</button><button data-v="0">Off</button></div></div>
 			<div class="opt-row"><span class="opt-label">Camera shake</span>
 				<div class="seg" id="setShake" role="radiogroup" aria-label="Camera shake"><button data-v="1">On</button><button data-v="0">Off</button></div></div>
 			<div class="opt-row"><span class="opt-label">Phone steering</span>
@@ -670,6 +675,7 @@
 			</ul>
 			<h3>Keys</h3>
 			<ul>
+				<li>Hold <kbd>B</kbd> to look behind you. The mirror at the top shows who's close (switch it off in Settings).</li>
 				<li><kbd>C</kbd> change camera &middot; <kbd>M</kbd> mute &middot; <kbd>Esc</kbd> pause</li>
 			</ul>
 			<p class="credit">Physics and the Classic track are from <a href="https://github.com/jchabin/cars" target="_blank" rel="noopener">jchabin/cars</a> (GPL-3.0). Circuit shapes are simplified from the real layouts.</p>

@@ -27,7 +27,13 @@ export class Effects {
 		this.sparkVel = new Float32Array(this.maxSparks * 3);
 		this.sparkLife = new Float32Array(this.maxSparks);
 		pg.setAttribute("position", new THREE.BufferAttribute(this.sparkPos, 3));
-		this.sparks = new THREE.Points(pg, new THREE.PointsMaterial({ color: 0xffc46b, size: 0.28, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+		// Round, glowing sparks (plain points draw as squares).
+		const dot = document.createElement("canvas"); dot.width = dot.height = 32;
+		const dc = dot.getContext("2d"), rg = dc.createRadialGradient(16, 16, 0, 16, 16, 16);
+		rg.addColorStop(0, "rgba(255,255,255,1)"); rg.addColorStop(0.35, "rgba(255,220,150,0.9)"); rg.addColorStop(1, "rgba(255,160,60,0)");
+		dc.fillStyle = rg; dc.fillRect(0, 0, 32, 32);
+		this.sparkTex = new THREE.CanvasTexture(dot);
+		this.sparks = new THREE.Points(pg, new THREE.PointsMaterial({ color: 0xffc46b, map: this.sparkTex, size: 0.22, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
 		this.sparks.frustumCulled = false;
 		this.sparkHead = 0;
 		scene.add(this.sparks);
@@ -135,6 +141,6 @@ export class Effects {
 		this.skidMesh.geometry.dispose(); this.skidMesh.material.dispose();
 		this.sparks.geometry.dispose(); this.sparks.material.dispose();
 		for(const pf of this.puffs){ this.scene.remove(pf.s); pf.s.material.dispose(); }
-		this.smokeTex.dispose();
+		this.smokeTex.dispose(); this.sparkTex.dispose();
 	}
 }

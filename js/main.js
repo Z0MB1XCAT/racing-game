@@ -223,6 +223,7 @@ seg($("setQuality"), S.settings.quality, v => { S.settings.quality = v; saveSett
 seg($("setCamera"), S.settings.camera, v => { S.settings.camera = v; saveSettings(); });
 seg($("setRaceMusic"), S.settings.raceMusic ? "1" : "0", v => { S.settings.raceMusic = v === "1"; saveSettings(); if(S.screen === "race" && S.race && S.race.phase !== "countdown") audio.playMusic(S.settings.raceMusic ? "race" : null); });
 seg($("setShake"), S.settings.shake ? "1" : "0", v => { S.settings.shake = v === "1"; saveSettings(); });
+seg($("setMirror"), S.settings.mirror ? "1" : "0", v => { S.settings.mirror = v === "1"; saveSettings(); });
 seg($("setTouch"), S.settings.touch, v => { S.settings.touch = v; saveSettings(); updateTouchZones(); });
 $("setVolume").value = S.settings.volume;
 $("setVolume").addEventListener("input", e => { S.settings.volume = +e.target.value; saveSettings(); audio.setVolume(S.settings.volume); });
@@ -550,6 +551,7 @@ function onRaceEvent(type, d){
 			if(r.mode === "quali"){ hud.banner("Qualifying", "Best lap sets the grid", "go", 1800); audio.sfx.go(); break; }
 			hud.banner("Go", "", "go", 900);
 			audio.sfx.go();
+			if(S.world) S.world.cheer(0.8);
 			break;
 		case "hit": {
 			const c = d.car;
@@ -606,6 +608,7 @@ function onRaceEvent(type, d){
 			audio.musicIntensity(1);
 			break;
 		case "finish":
+			if(S.world && (d.position === 1 || d.car.me)) S.world.cheer(0.9);
 			if(d.car.me){
 				const pos = d.position || (r.standings().findIndex(s => s.car === d.car) + 1);
 				hud.banner(pos === 1 ? "Winner" : "Finished P" + pos, fmtTime(d.ms), "finish", 4000);
@@ -804,6 +807,7 @@ addEventListener("keydown", e => {
 	const k = e.code || "";   // password autofill sends key events with no code
 	if(k === "ArrowLeft" || k === "KeyA") S.input.left = true;
 	if(k === "ArrowRight" || k === "KeyD") S.input.right = true;
+	if(k === "KeyB") S.input.back = true;
 	if(k.startsWith("Arrow") && S.race) e.preventDefault();
 	if(e.repeat) return;
 	if((k === "Escape" || k === "KeyP") && S.race && !S.frozen){ $("pause").hidden ? pause() : resume(); }
@@ -820,8 +824,9 @@ addEventListener("keyup", e => {
 	const k = e.code || "";
 	if(k === "ArrowLeft" || k === "KeyA") S.input.left = false;
 	if(k === "ArrowRight" || k === "KeyD") S.input.right = false;
+	if(k === "KeyB") S.input.back = false;
 });
-addEventListener("blur", () => { S.input.left = S.input.right = false; });
+addEventListener("blur", () => { S.input.left = S.input.right = S.input.back = false; });
 addEventListener("pointerdown", () => audio.unlock(), { once: false, passive: true });
 
 for(const [id, key] of [["touchLeft", "tl"], ["touchRight", "tr"]]){
@@ -865,12 +870,22 @@ function snapCamera(){
 	camera.position.set(p.x - Math.sin(d) * 5, 3, p.z - Math.cos(d) * 5);
 	camera.lookAt(p.x, 0.6, p.z);
 }
+let lookingBack = false;
 function followCamera(dt){
 	const c = focusCar();
 	if(!c) return;
 	const warp = dt * 1000 / 16;
 	const p = c.model.position, dir = c.model.rotation.y;
 	const mode = S.settings.camera;
+	// Holding B: look behind, from just in front of the car.
+	if(S.input.back){
+		lookingBack = true;
+		const fx_ = Math.sin(dir), fz = Math.cos(dir);
+		camera.position.set(p.x + fx_ * 5.5, 2.6, p.z + fz * 5.5);
+		camera.lookAt(p.x - fx_ * 6, 0.8, p.z - fz * 6);
+		return;
+	}
+	if(lookingBack){ lookingBack = false; snapCamera(); if(mode !== "hood") return; }
 	if(mode === "hood"){
 		const fx_ = Math.sin(dir), fz = Math.cos(dir);
 		camera.position.set(p.x + fx_ * 0.3, 1.25, p.z + fz * 0.3);
@@ -915,10 +930,68 @@ function menuCamera(dt){
 	}
 }
 
+// ---------- Rear-view mirror ----------
+// The view behind your car, rendered into a small texture and drawn flipped (like a
+// real mirror) inside the #mirrorGlass box at the top of the screen.
+const mirror = { cam: new THREE.PerspectiveCamera(42, 4, 0.5, 340), rt: null, scene: new THREE.Scene(), view: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), quad: null, tick: 0 };
+{
+	const g = new THREE.PlaneBufferGeometry(2, 2);
+	const uv = g.attributes.uv;
+	for(let i = 0; i < uv.count; i++) uv.setX(i, 1 - uv.getX(i));
+	mirror.quad = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ depthTest: false, depthWrite: false }));
+	mirror.scene.add(mirror.quad);
+}
+function mirrorWanted(){
+	const r = S.race;
+	return !!(S.settings.mirror && r && !S.frozen && !S.replay && r.me && r.me.elim === null && !r.me.gone && !S.input.back && !spectating() && r.mode !== "trial");
+}
+function renderMirror(){
+	const want = mirrorWanted();
+	document.body.classList.toggle("mirror-on", want);
+	if(!want) return;
+	const glass = $("mirrorGlass").getBoundingClientRect();
+	if(glass.width < 40 || glass.height < 10) return;      // hidden on small screens
+	const pr = renderer.getPixelRatio() * (quality() === "high" ? 1 : 0.7);
+	const w = Math.round(glass.width * pr), h = Math.round(glass.height * pr);
+	if(!mirror.rt || mirror.rt.width !== w || mirror.rt.height !== h){
+		if(mirror.rt) mirror.rt.dispose();
+		mirror.rt = new THREE.WebGLRenderTarget(w, h);
+		mirror.quad.material.map = mirror.rt.texture;
+		mirror.quad.material.needsUpdate = true;
+	}
+	// Slower machines refresh the mirror every other frame.
+	if(quality() === "high" || (mirror.tick++ & 1) === 0){
+		const car = S.race.me, p = car.model.position, dir = car.model.rotation.y;
+		const fx_ = Math.sin(dir), fz = Math.cos(dir);
+		mirror.cam.aspect = glass.width / glass.height;
+		mirror.cam.far = Math.min(340, camera.far);
+		mirror.cam.updateProjectionMatrix();
+		mirror.cam.position.set(p.x - fx_ * 0.4, 1.7, p.z - fz * 0.4);
+		mirror.cam.lookAt(p.x - fx_ * 30, 0.7, p.z - fz * 30);
+		car.model.visible = false;
+		renderer.shadowMap.autoUpdate = false;
+		renderer.setRenderTarget(mirror.rt);
+		renderer.render(scene, mirror.cam);
+		renderer.setRenderTarget(null);
+		renderer.shadowMap.autoUpdate = true;
+		car.model.visible = true;
+	}
+	const bottom = innerHeight - glass.bottom;
+	renderer.setScissorTest(true);
+	renderer.setScissor(glass.left, bottom, glass.width, glass.height);
+	renderer.setViewport(glass.left, bottom, glass.width, glass.height);
+	const auto = renderer.autoClear;
+	renderer.autoClear = false;
+	renderer.render(mirror.scene, mirror.view);
+	renderer.autoClear = auto;
+	renderer.setScissorTest(false);
+	renderer.setViewport(0, 0, innerWidth, innerHeight);
+}
+
 // ---------- TV coverage ----------
 const tv = { director: null, live: false, focusId: null, holdUntil: 0, manualUntil: 0 };
 function director(){
-	if(!tv.director || tv.director.track !== S.track) tv.director = new Director(camera, S.track, S.tracker);
+	if(!tv.director || tv.director.track !== S.track || tv.director.occ !== (S.world && S.world.occluders)) tv.director = new Director(camera, S.track, S.tracker, S.world);
 	return tv.director;
 }
 function showTv(kind){
@@ -1092,6 +1165,7 @@ function frame(now){
 		fx.update(dt);
 		if(S.world) S.world.update(dt, camera.position);
 		renderer.render(scene, camera);
+		document.body.classList.remove("mirror-on");
 		return;
 	}
 	if(r && !S.frozen){
@@ -1152,6 +1226,7 @@ function frame(now){
 	}
 	if(S.world) S.world.update(dt, focus ? focus.model.position : (S.showcase && camMode === "showcase" ? S.showcase.position : null));
 	renderer.render(scene, camera);
+	renderMirror();
 }
 
 // ---------- Online ----------

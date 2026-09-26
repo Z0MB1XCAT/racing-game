@@ -2,6 +2,7 @@
 // Nothing here affects driving; walls are drawn where the physics walls are.
 import { GRID } from "./physics.js";
 import { START_Z, seededRandom } from "./trackgen.js";
+import { buildScenery, canvasTexture } from "./scenery.js";
 
 const THREE = globalThis.THREE;
 
@@ -9,31 +10,23 @@ export const THEMES = {
 	classic: { sky: 0x7fb0ff, ground: 0x57c115, stripes: true, wall: 0xf48342, wallH: 1.5, trees: "classic", mountains: "cubes", mountainColor: 0x888888, sun: 0.7, amb: 0.5 },
 	monaco: { sky: [0x4f9dea, 0xd6ebff], ground: 0xcdc3ae, wall: "redwhite", road: 0x45484f, trees: "palm", treeDensity: 0.25,
 		buildings: { density: 0.9, palette: [0xf2d7b6, 0xf0c9a8, 0xe8e0cf, 0xf5e6c8, 0xd9b99b, 0xf4efe6, 0xe9c9c0] },
-		sea: { dir: [0.25, -1], color: 0x1f6fb0 }, mountains: "hills", mountainColor: 0x7f956a, fog: [0xd6ebff, 500, 1600], grandstand: 1 },
+		sea: { dir: [0.25, -1], color: 0x1f6fb0 }, mountains: "hills", mountainColor: 0x7f956a, fog: [0xd6ebff, 500, 1600], grandstand: 2, standColor: 0xd8342f, fans: false },
 	spa: { sky: [0x7f90a6, 0xcbd4dd], ground: 0x3f7b34, stripes: true, wall: 0xa9b1ba, road: 0x3c4047, trees: "pine", treeDensity: 1.3,
-		mountains: "hills", mountainColor: 0x3d663a, fog: [0xbcc6d0, 320, 1300], grandstand: 1, sun: 0.55, amb: 0.6 },
+		mountains: "hills", mountainColor: 0x3d663a, fog: [0xbcc6d0, 320, 1300], grandstand: 2, standColor: 0xf4c542, sun: 0.55, amb: 0.6 },
 	monza: { sky: [0x4a9eff, 0xd2eaff], ground: 0x5ea94a, stripes: true, wall: 0xb9c1c9, road: 0x41444b, trees: "round", treeDensity: 1.0,
-		mountains: "hills", mountainColor: 0x7c9a68, fog: [0xd2eaff, 500, 1700], grandstand: 2 },
+		mountains: "hills", mountainColor: 0x7c9a68, fog: [0xd2eaff, 500, 1700], grandstand: 3, standColor: 0xc8102e },
 	suzuka: { sky: [0x5aa7ff, 0xe4f2ff], ground: 0x5a9d43, stripes: true, wall: "bluewhite", road: 0x3f4249, trees: "sakura", treeDensity: 0.9,
-		mountains: "hills", mountainColor: 0x5b8757, fog: [0xe4f2ff, 450, 1600], grandstand: 1, ferris: true },
+		mountains: "hills", mountainColor: 0x5b8757, fog: [0xe4f2ff, 450, 1600], grandstand: 2, standColor: 0x2f63c9, ferris: true },
 	jeddah: { night: true, sky: [0x03040c, 0x1c2250], ground: 0x1f2129, wall: "concrete", road: 0x2d3038, trees: "palm", treeDensity: 0.25,
 		buildings: { density: 0.7, night: true, palette: [0x2a2f3d, 0x343a4a, 0x22262f, 0x3a3346] },
-		sea: { dir: [0.47, -0.88], color: 0x0a1830 }, lights: true, mountains: "none", fog: [0x121634, 280, 1300], sun: 0.18, amb: 0.4, grandstand: 1 },
+		sea: { dir: [0.47, -0.88], color: 0x0a1830 }, lights: true, mountains: "none", fog: [0x121634, 280, 1300], sun: 0.18, amb: 0.4, grandstand: 2, standColor: 0x0e7c86, fans: false },
 	daytona: { sky: [0x4aa6ff, 0xdcf0ff], ground: 0x68a94c, stripes: true, wall: 0xf1f3f6, road: 0x3a3d44, trees: "palm", treeDensity: 0.15,
-		lake: true, grandstand: 5, mountains: "none", fog: [0xdcf0ff, 500, 1700] },
+		lake: true, grandstand: 4, standColor: 0x2f63c9, mountains: "none", fog: [0xdcf0ff, 500, 1700] },
 	dusk: { sky: [0x241a45, 0xff8a4c], ground: 0x86684a, wall: "tyres", road: 0x4e4540, trees: "none", mountains: "hills", mountainColor: 0x5a3f4a,
-		fog: [0xd98160, 220, 900], sun: 0.85, sunColor: 0xffb27a, amb: 0.45, grandstand: 2, lights: true },
+		fog: [0xd98160, 220, 900], sun: 0.85, sunColor: 0xffb27a, amb: 0.45, grandstand: 2, standColor: 0xf48342, lights: true },
 	snow: { sky: [0x93acc6, 0xe7eff7], ground: 0xe9eff5, wall: 0x2f6fbd, road: 0x5a5f68, trees: "snowpine", treeDensity: 1.1,
-		mountains: "peaks", mountainColor: 0x6d7c8e, fog: [0xdfe8f0, 240, 1100], snowfall: true, sun: 0.6, amb: 0.65 }
+		mountains: "peaks", mountainColor: 0x6d7c8e, fog: [0xdfe8f0, 240, 1100], snowfall: true, sun: 0.6, amb: 0.65, grandstand: 1, standColor: 0x2f6fbd }
 };
-
-function canvasTexture(w, h, draw){
-	const c = document.createElement("canvas");
-	c.width = w; c.height = h;
-	draw(c.getContext("2d"), w, h);
-	const t = new THREE.CanvasTexture(c);
-	return t;
-}
 
 // Merge many boxes into one mesh (one draw call). Each item: {x, y, z, w, h, d, ry, color}
 function mergedBoxes(items){
@@ -83,6 +76,7 @@ function instanced(geometry, material, list, shadow){
 	mesh.count = list.length;
 	mesh.castShadow = !!shadow;
 	mesh.receiveShadow = !!shadow;
+	mesh.frustumCulled = false;
 	return mesh;
 }
 
@@ -262,111 +256,21 @@ export function buildWorld(track, opts = {}){
 		group.add(new THREE.Mesh(keep(mergedBoxes(strip)), keep(new THREE.MeshBasicMaterial({ vertexColors: true }))));
 	}
 
-	// Trees, buildings and other scenery.
-	const trunkMat = keep(new THREE.MeshLambertMaterial({ color: 0x6b4a2f }));
+	// Trees, grandstands, pits, billboards, buildings (see scenery.js).
 	const scenery = track.scenery || [];
-	const lowQ = quality === "low" ? 0.5 : 1;
-	const treeSpots = [], buildSpots = [];
-	for(const s of scenery){
-		if(theme.buildings && s.off < 34 && s.r < theme.buildings.density) buildSpots.push(s);
-		else if(s.r2 < (theme.treeDensity ?? 0) * 0.8 * lowQ) treeSpots.push(s);
-	}
+	const extras = buildScenery(track, theme, { group, keep, shadows, quality, rand });
+	const occluders = extras.occluders;
+	updaters.push(...extras.updaters);
 	if(theme.trees === "classic"){
 		const cone = keep(new THREE.CylinderBufferGeometry(0, 4, 15, 8));
 		const mat = keep(new THREE.MeshLambertMaterial({ color: 0x1bad2c }));
 		group.add(instanced(cone, mat, (track.trees || []).map(t => ({ x: t.x, z: t.z, s: t.s })), shadows));
+		for(const t of track.trees || []) occluders.add({ x: t.x, z: t.z, ry: 0, hw: 2.4 * t.s, hd: 2.4 * t.s, y0: 0, y1: 11 * t.s });
 		const sign = keep(new THREE.ConeBufferGeometry(0.7, 2, 5));
 		const smat = keep(new THREE.MeshLambertMaterial({ color: 0xff0000 }));
 		group.add(instanced(sign, smat, (track.signs || []).map(s => ({ x: s.x, y: s.y, z: s.z, rx: Math.PI / 2, ry: s.rot })), shadows));
-	}else if(theme.trees && theme.trees !== "none" && treeSpots.length){
-		const kind = theme.trees;
-		const list = treeSpots.map(s => ({ x: s.x, z: s.z, s: 0.75 + s.r * 0.8, ry: s.r2 * 6 }));
-		let trunk, crown, crownMat, trunkH;
-		if(kind === "palm"){
-			trunkH = 9;
-			trunk = keep(new THREE.CylinderBufferGeometry(0.25, 0.4, trunkH, 6)); trunk.translate(0, trunkH / 2, 0);
-			crown = keep(new THREE.ConeBufferGeometry(4, 1.6, 7)); crown.translate(0, trunkH + 0.4, 0);
-			crownMat = keep(new THREE.MeshLambertMaterial({ color: theme.night ? 0x1e4a2c : 0x2f7d3a }));
-		}else if(kind === "round" || kind === "sakura"){
-			trunkH = 3;
-			trunk = keep(new THREE.CylinderBufferGeometry(0.35, 0.5, trunkH, 6)); trunk.translate(0, trunkH / 2, 0);
-			crown = keep(new THREE.IcosahedronBufferGeometry(3.4, 0)); crown.translate(0, trunkH + 2.4, 0);
-			crownMat = keep(new THREE.MeshLambertMaterial({ color: 0xffffff }));
-			list.forEach(t => { t.color = kind === "sakura" ? (rand() < 0.65 ? 0xf6a9c6 : rand() < 0.5 ? 0xfbd3e2 : 0x4d8f3c) : (rand() < 0.5 ? 0x3d7f2c : 0x4f9435); });
-		}else{
-			trunkH = 2.5;
-			trunk = keep(new THREE.CylinderBufferGeometry(0.35, 0.45, trunkH, 6)); trunk.translate(0, trunkH / 2, 0);
-			crown = keep(new THREE.ConeBufferGeometry(3.4, 10, 7)); crown.translate(0, trunkH + 5, 0);
-			crownMat = keep(new THREE.MeshLambertMaterial({ color: kind === "snowpine" ? 0x2f5a44 : 0x24532e }));
-		}
-		group.add(instanced(trunk, trunkMat, list.map(t => Object.assign({}, t, { color: undefined })), shadows));
-		group.add(instanced(crown, crownMat, list, shadows));
-		if(kind === "snowpine"){
-			const cap = keep(new THREE.ConeBufferGeometry(2.1, 5, 7)); cap.translate(0, trunkH + 7.6, 0);
-			group.add(instanced(cap, keep(new THREE.MeshLambertMaterial({ color: 0xf4f8fb })), list.map(t => Object.assign({}, t, { color: undefined }))));
-		}
 	}
-
-	if(theme.buildings && buildSpots.length){
-		const bdef = theme.buildings;
-		const win = keep(canvasTexture(64, 128, (g, w, h) => {
-			g.fillStyle = bdef.night ? "#141821" : "#ffffff"; g.fillRect(0, 0, w, h);
-			for(let y = 6; y < h - 4; y += 12) for(let x = 5; x < w - 4; x += 12){
-				const lit = Math.random() < (bdef.night ? 0.55 : 0);
-				g.fillStyle = bdef.night ? (lit ? "#ffd98a" : "#20242e") : "#8fa7c0";
-				g.fillRect(x, y, 6, 7);
-			}
-		}));
-		const bmat = bdef.night
-			? keep(new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveMap: win, map: win }))
-			: keep(new THREE.MeshLambertMaterial({ color: 0xffffff, map: win }));
-		const bgeo = keep(new THREE.BoxBufferGeometry(1, 1, 1)); bgeo.translate(0, 0.5, 0);
-		const list = buildSpots.map(s => {
-			const h = 10 + s.r2 * (bdef.night ? 60 : 30);
-			const w = 8 + s.r * 10;
-			return { x: s.x, z: s.z, sx: w, sy: h, sz: 8 + s.r2 * 8, ry: s.face, color: bdef.palette[Math.floor(s.r2 * 97) % bdef.palette.length] };
-		});
-		group.add(instanced(bgeo, bmat, list, shadows));
-	}
-
-	// Grandstands along the start straight.
-	if(track.center && theme.grandstand){
-		const c = track.center, hw = c.hw;
-		const crowd = keep(canvasTexture(128, 32, (g, w, h) => {
-			g.fillStyle = "#3a3f4c"; g.fillRect(0, 0, w, h);
-			const cols = ["#e23b3b", "#f4f6fa", "#f4c542", "#2580db", "#f48342", "#6bd06b", "#c86bd0"];
-			for(let i = 0; i < 380; i++){ g.fillStyle = cols[i % cols.length]; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
-		}));
-		crowd.wrapS = THREE.RepeatWrapping;
-		const standMat = keep(new THREE.MeshLambertMaterial({ map: crowd }));
-		const frameMat = keep(new THREE.MeshLambertMaterial({ vertexColors: true }));
-		const count = theme.grandstand;
-		for(let k = 0; k < count; k++){
-			const along = (k - (count - 1) / 2) * 34 - 20;
-			const i = ((Math.round(along) % c.n) + c.n) % c.n;
-			const side = k % 2 === 0 ? -1 : 1;
-			const off = hw + (side < 0 ? 8 : 9);
-			const nx = c.tz[i] * side, nz = -c.tx[i] * side;
-			const x = c.x[i] + nx * off, z = c.z[i] + nz * off;
-			const ry = Math.atan2(nx, nz);
-			const stand = new THREE.Group();
-			const steps = [];
-			for(let s = 0; s < 5; s++) steps.push({ x: 0, y: 0.6 + s * 1.2, z: 1.2 + s * 1.6, w: 30, h: 1.2 + s * 2.4, d: 1.6, color: 0x8d939e });
-			steps.push({ x: 0, y: 10.5, z: 5, w: 31, h: 0.4, d: 10, color: 0x2a2e38 });
-			steps.push({ x: 15, y: 5, z: 7, w: 0.4, h: 10, d: 0.4, color: 0x2a2e38 });
-			steps.push({ x: -15, y: 5, z: 7, w: 0.4, h: 10, d: 0.4, color: 0x2a2e38 });
-			stand.add(new THREE.Mesh(keep(mergedBoxes(steps)), frameMat));
-			const face = new THREE.Mesh(keep(new THREE.PlaneBufferGeometry(30, 9.2)), standMat);
-			face.position.set(0, 4.8, 3.9);
-			face.rotation.x = -0.93;
-			face.rotation.y = Math.PI;
-			stand.add(face);
-			stand.position.set(x, 0, z);
-			stand.rotation.y = ry;
-			stand.traverse(o => { o.castShadow = o.receiveShadow = shadows; });
-			group.add(stand);
-		}
-	}
+	const roomFor = (x, z, m) => !extras.clearOfRoad || extras.clearOfRoad(x, z, m);
 
 	// Sea beyond one side of the circuit, in real compass terms.
 	if(theme.sea && track.toMap){
@@ -409,7 +313,7 @@ export function buildWorld(track, opts = {}){
 			const nx = c.tz[i] * side, nz = -c.tx[i] * side;
 			const off = hw + 3;
 			const x = c.x[i] + nx * off, z = c.z[i] + nz * off;
-			if(!track.keep[side > 0 ? 0 : 1][i]) continue;
+			if(!track.keep[side > 0 ? 0 : 1][i] || !roomFor(x, z, 0.8)) continue;
 			poles.push({ x, y: 5, z, sx: 0.3, sy: 10, sz: 0.3 });
 			heads.push({ x: x - nx * 1.2, y: 10, z: z - nz * 1.2, sx: 1.4, sy: 0.4, sz: 1.4 });
 			pools.push({ x: x - nx * (hw * 0.7 + 3), y: 0.07, z: z - nz * (hw * 0.7 + 3), rx: -Math.PI / 2, s: hw * 1.6 });
@@ -427,8 +331,8 @@ export function buildWorld(track, opts = {}){
 	}
 
 	// A big wheel in the paddock at Suzuka.
-	if(theme.ferris && scenery.length){
-		const spot = scenery.find(s => s.off > 50) || scenery[0];
+	if(theme.ferris && scenery.some(s => s.off > 40 && roomFor(s.x, s.z, 22))){
+		const spot = scenery.find(s => s.off > 40 && roomFor(s.x, s.z, 22));
 		const wheel = new THREE.Group();
 		const ringMat = keep(new THREE.MeshLambertMaterial({ color: 0xf4f6fa }));
 		const ring = new THREE.Mesh(keep(new THREE.TorusBufferGeometry(18, 0.5, 6, 40)), ringMat);
@@ -453,6 +357,7 @@ export function buildWorld(track, opts = {}){
 		]);
 		holder.add(new THREE.Mesh(keep(legs), keep(new THREE.MeshLambertMaterial({ vertexColors: true }))));
 		group.add(holder);
+		occluders.add({ x: spot.x, z: spot.z, ry: spot.face, hw: 19, hd: 2, y0: 2, y1: 40 });
 		updaters.push(dt => { wheel.rotation.z += dt * 0.08; wheel.children.forEach(o => { if(o.geometry && o.geometry.parameters && o.geometry.parameters.width === 2) o.rotation.z = -wheel.rotation.z; }); });
 	}
 
@@ -490,7 +395,9 @@ export function buildWorld(track, opts = {}){
 	}
 
 	return {
-		group, theme, sun, fog, farPlane,
+		group, theme, sun, fog, farPlane, occluders, info: extras.info,
+		// Crowd excitement 0..1 (the start, a finish).
+		cheer(v){ extras.cheer(v); },
 		skyColor: new THREE.Color(skyBottom),
 		center: { x: cx, z: cz }, radius,
 		update(dt, focus){

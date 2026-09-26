@@ -88,11 +88,13 @@ original did).
   beeps, a white-flag bell, a finish fanfare and crowd, and music for menus and races, all made in
   the browser (no audio files). **Settings** has separate Engines, Effects and Music volumes, and
   can turn music off during races.
+- **Rear-view mirror** at the top of the screen (switch it off in Settings), and hold **B** to look behind you.
+- **Scenery**: every circuit gets a pit building with team garages, grandstands full of fans (who cheer at the start and the finish), fans behind the fences at corners, billboards, a bridge over the track, and trees or city blocks to suit the place. Nothing is allowed to stick onto the road: every piece is checked against the whole circuit, including where it doubles back. The TV cameras only use positions that can see the cars, and cut away if a tree or building gets in the way.
 - Skid marks, sparks, tyre smoke, three cameras and four car bodies (looks only).
 - **R** puts your car back on the track if you get stuck. If a crash knocks you outside
   the walls, it happens automatically.
 
-Controls: **← →** or **A D** steer, **R** reset car, **C** camera, **M** mute, **Esc** pause.
+Controls: **← →** or **A D** steer, **R** reset car, hold **B** look back, **C** camera, **M** mute, **Esc** pause.
 On phones, tilt to steer or tap the screen sides (Settings).
 
 ---
@@ -287,7 +289,7 @@ Once it's on, open **Track editor** from the menu.
 | `js/slipstream.js` | Slipstream, applied on top of the physics each frame |
 | `js/tracks.js` | Track list: circuit shapes and the Classic track code |
 | `js/trackgen.js` | Turns a circuit into walls, kerbs, checkpoints and a racing line |
-| `js/world.js` | 3D scenery and themes for each track |
+| `js/world.js`, `js/scenery.js` | Sky, road and themes for each track; pits, grandstands, fans, billboards, buildings and trees |
 | `js/race.js` | Race rules: laps, finishing, elimination, ghosts, syncing cars |
 | `js/bots.js`, `js/progress.js`, `js/navfield.js`, `js/rescue.js` | AI drivers, race order, getting cars back on track |
 | `js/net.js` | Online rooms, accounts, leaderboards (Firebase, or `?localnet` for testing) |
@@ -307,6 +309,7 @@ The last two also need puppeteer installed.
 - `node tools/physics-equivalence.mjs` checks that the physics matches the original.
 - `node tools/track-sim.mjs` drives bots round every track and reports lap times, stuck cars and escapes.
 - `node tools/draft-test.mjs daytona` compares slipstream on and off (lap times, gaps, lead changes).
+- `node tools/scenery-shots.mjs [trackId ...]` takes screenshots of each track (overview, racing with the mirror, looking back, highlights).
 - `node tools/engine-demo.mjs` renders a clip of each engine to WAV (with spectrograms) for tuning the sound. Engine settings are `ENGINES` in `js/audio.js`.
 - `node tools/contact-test.mjs monaco` compares original and soft car contact (side hit, rear tap, a bot race).
 - `node tools/e2e.mjs solo|online|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.

@@ -7,27 +7,52 @@ const THREE = globalThis.THREE;
 const SHOTS = ["auto", "track", "chase", "heli", "onboard"];
 export const SHOT_NAMES = { auto: "Auto", track: "Trackside", chase: "Chase", heli: "Helicopter", onboard: "Onboard" };
 
-// Camera spots every ~55 units, alternating sides, a bit back from the barriers.
-function makeSpots(track, path){
+// Camera spots every ~55 units, a bit back from the barriers. Each one tries both sides,
+// a few distances and heights, and keeps the position that can see the most of the road
+// on either side of it without trees, buildings or grandstands in the way.
+function makeSpots(track, path, occ){
 	if(!path) return [];
 	const hw = track.center ? track.center.hw : 5;
 	const rand = seededRandom("tv:" + track.id);
 	const every = Math.max(20, Math.round(55 / path.step));
-	const out = [];
-	for(let i = 0; i < path.n; i += every){
-		const side = out.length % 2 ? 1 : -1;
-		const off = hw + 6 + rand() * 7;
-		out.push({ i, x: path.x[i] + path.tz[i] * off * side, z: path.z[i] - path.tx[i] * off * side, y: 3.5 + rand() * 5 });
+	const n = path.n, out = [];
+	const wrap = i => ((i % n) + n) % n;
+	for(let i = 0; i < n; i += every){
+		let best = null;
+		const pref = out.length % 2 ? 1 : -1;
+		for(const side of [pref, -pref]) for(const off of [hw + 6 + rand() * 3, hw + 10, hw + 14]) for(const y of [4 + rand(), 6.5, 9.5]){
+			const x = path.x[i] + path.tz[i] * off * side, z = path.z[i] - path.tx[i] * off * side;
+			if(occ && occ.hit(x, y, z)) continue;
+			if(track.center && tooCloseToRoad(track, x, z, 2.5)) continue;
+			let seen = 0;
+			for(let k = -36; k <= 24; k += 4){
+				const j = wrap(i + Math.round(k / path.step));
+				if(!occ || occ.clear(x, y, z, path.x[j], 0.9, path.z[j])) seen++;
+			}
+			const score = seen - (y > 7 ? 0.5 : 0) - (off > hw + 12 ? 0.5 : 0) + (side === pref ? 0.25 : 0);
+			if(!best || score > best.score) best = { i, x, z, y, score, seen };
+		}
+		if(best && best.seen >= 5) out.push(best);
 	}
 	return out;
 }
+function tooCloseToRoad(track, x, z, m){
+	const c = track.center;
+	let near = false;
+	c.hash.near(x, z, c.hw + m, j => { if(!near && Math.hypot(c.x[j] - x, c.z[j] - z) < c.hw + m) near = true; });
+	return near;
+}
 
 export class Director {
-	constructor(camera, track, tracker){
+	constructor(camera, track, tracker, world){
 		this.camera = camera;
 		this.track = track;
 		this.path = tracker.path;
-		this.spots = makeSpots(track, tracker.path);
+		this.occ = world && world.occluders || null;
+		this.spots = makeSpots(track, tracker.path, this.occ);
+		this.blocked = 0;
+		this.losTimer = 0;
+		this.losOk = true;
 		this.shot = "auto";          // what the viewer asked for
 		this.current = "track";      // what is on screen now
 		this.nextSwitch = 0;
@@ -43,7 +68,9 @@ export class Director {
 		return this.shot;
 	}
 	// Called when the focused car changes, so the next frame cuts instead of panning.
-	newFocus(){ this.cut = true; this.spot = null; }
+	newFocus(){ this.cut = true; this.spot = null; this.blocked = 0; }
+	// Can a camera at (x, y, z) see the car?
+	sees(x, y, z, f){ return !this.occ || this.occ.clear(x, y, z, f.x, 0.9, f.z); }
 
 	// focus: { x, z, dir, speed }. t: seconds (only used to time shot changes).
 	update(dt, t, focus){
@@ -70,11 +97,34 @@ export class Director {
 			// Nearest camera the car is driving towards; move on once it's well past.
 			const n = path.n, ahead = s => ((s.i - this.hint) % n + n) % n;
 			const passedBy = s => { const a = ahead(s); return a > n / 2 ? n - a : 0; };
+			// Nearest camera ahead that can see the car (or the nearest at all).
+			const pick = skip => {
+				let best = null, bestA = Infinity, open = null, openA = Infinity;
+				for(const s of this.spots){
+					if(s === skip) continue;
+					const a = ahead(s);
+					if(a <= 8 || a > n * 0.6) continue;
+					if(a < bestA){ bestA = a; best = s; }
+					if(a < openA && this.sees(s.x, s.y, s.z, focus)){ openA = a; open = s; }
+				}
+				return open && openA < bestA + 90 / path.step ? open : best;
+			};
 			if(!this.spot || passedBy(this.spot) * path.step > 22){
-				let best = null, bestA = Infinity;
-				for(const s of this.spots){ const a = ahead(s); if(a > 8 && a < bestA){ bestA = a; best = s; } }
-				if(best !== this.spot){ this.spot = best; this.cut = true; }
+				const best = pick(null);
+				if(best !== this.spot){ this.spot = best; this.cut = true; this.blocked = 0; }
 			}
+			// Something in the way for a moment: cut to another camera, or to a chase shot.
+			this.losTimer -= dt;
+			if(this.spot && this.losTimer <= 0){ this.losTimer = 0.12; this.losOk = this.sees(this.spot.x, this.spot.y, this.spot.z, focus); }
+			this.blocked = this.losOk ? 0 : this.blocked + dt;
+			if(this.spot && this.blocked > 0.3){
+				const other = pick(this.spot);
+				if(other && this.sees(other.x, other.y, other.z, focus)){ this.spot = other; this.cut = true; }
+				else if(this.shot === "auto"){ this.current = "chase"; this.nextSwitch = t + 3; this.cut = true; }
+				this.blocked = 0;
+			}
+		}
+		if(this.current === "track" && this.spots.length && path && this.spot){
 			const s = this.spot;
 			px = s.x; py = s.y; pz = s.z;
 			const dist = Math.hypot(focus.x - s.x, focus.z - s.z);
@@ -91,6 +141,7 @@ export class Director {
 			fov = 80; smooth = 1000;
 		}else{
 			px = focus.x - sx * 7; py = 2.8; pz = focus.z - cz * 7;
+			if(!this.sees(px, py, pz, focus)) py = 7.5;
 			fov = 70; smooth = 5;
 		}
 		const k = this.cut ? 1 : Math.min(1, dt * smooth);

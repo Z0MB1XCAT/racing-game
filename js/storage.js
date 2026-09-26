@@ -22,7 +22,7 @@ export function save(key, value){
 
 export const defaults = {
 	profile: { name: "", hue: Math.floor(Math.random() * 360), body: "classic" },
-	settings: { quality: "auto", camera: "classic", volume: 0.7, music: 0.5, sfx: 0.8, engineVol: 0.8, raceMusic: true, shake: true, fps: false, touch: "tilt" }
+	settings: { quality: "auto", camera: "classic", volume: 0.7, music: 0.5, sfx: 0.8, engineVol: 0.8, raceMusic: true, mirror: true, shake: true, fps: false, touch: "tilt" }
 };
 
 export function getProfile(){ return Object.assign({}, defaults.profile, load("profile", {})); }
