@@ -159,10 +159,11 @@ function circDist(a, b, n){
 
 export function buildCircuit(def, reverse = false){
 	let src = def.px ? def.px.map(p => [p[0] / 100, -p[1] / 100]) : def.pts.map(p => [p[0], p[1]]);
-	let elevSrc = def.elev ? def.elev.slice() : null;
+	let elevSrc = def.elev ? def.elev.slice() : null, camberSrc = def.camber ? def.camber.slice() : null;
 	if(reverse){
 		src = [src[0], ...src.slice(1).reverse()];
 		if(elevSrc) elevSrc = [elevSrc[0], ...elevSrc.slice(1).reverse()];
+		if(camberSrc) camberSrc = [camberSrc[0], ...camberSrc.slice(1).reverse()];
 	}
 
 	// Map coords (x east, y north) -> world before alignment: X = -east so that a
@@ -222,12 +223,13 @@ export function buildCircuit(def, reverse = false){
 		const cum = [0];
 		for(let i = 1; i <= src.length; i++){ const a = src[i - 1], b = src[i % src.length]; cum.push(cum[i - 1] + Math.hypot(b[0] - a[0], b[1] - a[1])); }
 		const total = cum[src.length];
-		const raw = new Float64Array(n);
+		const raw = new Float64Array(n), camber = new Float64Array(n);
 		for(let i = 0, j = 0; i < n; i++){
 			const d = i / n * total;
 			while(j < src.length - 1 && cum[j + 1] <= d) j++;
 			const f = (d - cum[j]) / Math.max(1e-9, cum[j + 1] - cum[j]);
 			raw[i] = (elevSrc[j] + (elevSrc[(j + 1) % src.length] - elevSrc[j]) * f) * scale;
+			if(camberSrc) camber[i] = camberSrc[j] + (camberSrc[(j + 1) % src.length] - camberSrc[j]) * f;
 		}
 		h = new Float32Array(n);
 		for(let i = 0; i < n; i++){
@@ -235,17 +237,28 @@ export function buildCircuit(def, reverse = false){
 			for(let o = -10; o <= 10; o++){ const ww = 11 - Math.abs(o); sum += raw[(i + o + n) % n] * ww; w += ww; }
 			h[i] = sum / w;
 		}
-		// Banking: corners lean in a little, more the tighter they are (up to about 6 degrees).
+		// Camber only on the corners that really have it (def.camber: + leans into the corner,
+		// - away from it); which way that is comes from the way the corner turns. Level elsewhere.
 		bank = new Float32Array(n);
-		for(let i = 0; i < n; i++){
+		if(camberSrc) for(let i = 0; i < n; i++){
+			if(!camber[i]) continue;
 			let c = 0;
-			for(let o = -6; o <= 6; o++) c += curv[(i + o + n) % n];
-			bank[i] = -Math.max(-0.1, Math.min(0.1, c / 13 * 5));
+			for(let o = -20; o <= 20; o++) c += curv[(i + o + n) % n];
+			bank[i] = -Math.sign(c) * camber[i];
 		}
 		const frac = f => { const v = reverse ? (1 - f) % 1 : f; return Math.round(v * n) % n; };
 		features = {};
 		if(def.tunnel){ const [a, b] = def.tunnel.map(frac); features.tunnel = reverse ? [b, a] : [a, b]; }
-		if(def.bridge) features.bridge = def.bridge.map(frac);    // [lower road, upper road]
+		if(def.bridge){
+			// [lower road, upper road]: start from the given fractions, then find where the two
+			// pieces of road actually cross (the fractions are only roughly placed).
+			let [lo, up] = def.bridge.map(frac), best = Infinity;
+			for(let a = -60; a <= 60; a++) for(let b = -60; b <= 60; b++){
+				const i = (lo + a + n) % n, j = (up + b + n) % n, d = (xs[i] - xs[j]) ** 2 + (zs[i] - zs[j]) ** 2;
+				if(d < best){ best = d; features.bridge = [i, j]; }
+			}
+			if(h[features.bridge[0]] > h[features.bridge[1]]) features.bridge.reverse();
+		}
 	}
 
 	// Distance from (x, z) to the nearest bit of road that isn't near sample `self`.
@@ -262,7 +275,7 @@ export function buildCircuit(def, reverse = false){
 	const sides = [[], []], keep = [new Uint8Array(n), new Uint8Array(n)];
 	for(let i = 0; i < n; i++){
 		const nx = tz[i], nz = -tx[i];
-		const L = [xs[i] + nx * hw, zs[i] + nz * hw], R = [xs[i] - nx * hw, zs[i] - nz * hw];
+		const L = [xs[i] + nx * hw, zs[i] + nz * hw, i], R = [xs[i] - nx * hw, zs[i] - nz * hw, i];   // (x, z, sample)
 		sides[0].push(L); sides[1].push(R);
 		keep[0][i] = clearOfOtherRoad(L[0], L[1], -1, 0, hw - 0.35) ? 1 : 0;
 		keep[1][i] = clearOfOtherRoad(R[0], R[1], -1, 0, hw - 0.35) ? 1 : 0;
@@ -293,7 +306,7 @@ export function buildCircuit(def, reverse = false){
 				const [x1, z1] = simp[k], [x2, z2] = simp[k + 1];
 				if(Math.hypot(x2 - x1, z2 - z1) < 0.05) continue;
 				walls.push(wallFromWorld(x1, z1, x2, z2));
-				wallSegs.push([x1, z1, x2, z2, s]);
+				wallSegs.push([x1, z1, x2, z2, s, simp[k][2], simp[k + 1][2]]);   // (side, first and last sample)
 			}
 		}
 	}

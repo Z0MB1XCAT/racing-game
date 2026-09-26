@@ -1084,9 +1084,10 @@ function camHeight(p, dt){
 	S.camY = S.camY == null ? p.y : S.camY + (p.y - S.camY) * Math.min(1, dt * 10);
 	return S.camY;
 }
-function keepAboveGround(min = 1){
+// (hint: the followed car's road sample, so under a bridge it's that road's height, not the deck's.)
+function keepAboveGround(min = 1, hint = -1){
 	if(!S.world || !S.track || !S.track.elevated) return;
-	const g = Math.max(S.world.groundAt(camera.position.x, camera.position.z), S.world.heightAt(camera.position.x, camera.position.z));
+	const g = Math.max(S.world.groundAt(camera.position.x, camera.position.z), S.world.heightAt(camera.position.x, camera.position.z, hint));
 	if(camera.position.y < g + min) camera.position.y = g + min;
 }
 let lookingBack = false;
@@ -1103,7 +1104,7 @@ function followCamera(dt){
 		const fx_ = Math.sin(dir), fz = Math.cos(dir);
 		camera.position.set(p.x + fx_ * 5.5, 2.6 + cy, p.z + fz * 5.5);
 		camera.lookAt(p.x - fx_ * 6, 0.8 + cy, p.z - fz * 6);
-		keepAboveGround();
+		keepAboveGround(1, c.hh ?? -1);
 		return;
 	}
 	if(lookingBack){ lookingBack = false; snapCamera(); if(mode !== "hood") return; }
@@ -1119,7 +1120,7 @@ function followCamera(dt){
 		const tx = p.x + Math.sin(-dir) * back, tz = p.z - Math.cos(-dir) * back;
 		const l = Math.pow(lag, warp);
 		camera.position.set(camera.position.x * l + tx * (1 - l), up + cy, camera.position.z * l + tz * (1 - l));
-		keepAboveGround(1.2);
+		keepAboveGround(1.2, c.hh ?? -1);
 		if(mode === "far") camera.lookAt(p.x + Math.sin(dir) * 4, 0.6 + cy, p.z + Math.cos(dir) * 4);
 		else camera.lookAt(p.x, 0.6 + cy, p.z);
 	}

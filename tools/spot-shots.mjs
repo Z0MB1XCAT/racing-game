@@ -5,7 +5,9 @@
 import puppeteer from "puppeteer";
 import { mkdirSync } from "node:fs";
 
-const [id = "monaco", ...wanted] = process.argv.slice(2);
+// Add "rev" to shoot the track reversed (files get a -rev suffix).
+const args = process.argv.slice(2), rev = args.includes("rev");
+const [id = "monaco", ...wanted] = args.filter(a => a !== "rev");
 const spots = wanted.length ? wanted : ["0", "0.25", "0.5", "0.75", "high", "tunnel", "bridge"];
 mkdirSync("temporary screenshots/spots", { recursive: true });
 const b = await puppeteer.launch({ headless: "new" });
@@ -16,6 +18,7 @@ await p.setViewport({ width: 1440, height: 900 });
 await p.goto("http://localhost:3000/", { waitUntil: "networkidle0" });
 await p.click("#btnBots"); await new Promise(r => setTimeout(r, 400));
 await p.click(`#setupTracks [data-id="${id}"]`); await new Promise(r => setTimeout(r, 800));
+if(rev){ await p.click('#setupDir [data-v="1"]'); await new Promise(r => setTimeout(r, 400)); }
 await p.evaluate(() => { window.__game.setup.bots = 5; });
 await p.click("#setupGo");
 await new Promise(r => setTimeout(r, 6000));
@@ -27,6 +30,15 @@ for(const spot of spots){
 		else if(spot === "bridge" && f.bridge) i = (f.bridge[0] - 30 + n) % n;
 		else if(spot === "high" && c.h) i = c.h.indexOf(Math.max(...c.h));
 		else if(spot === "low" && c.h) i = c.h.indexOf(Math.min(...c.h));
+		else if(spot === "over" && f.bridge) i = (f.bridge[1] - 30 + n) % n;
+		else if(spot === "bridgeside" && f.bridge){
+			// From off to the side of the crossing, along the lower road's line, a little raised.
+			const lo = f.bridge[0], up = f.bridge[1];
+			g.freeCam = { p: [c.x[lo] + c.tx[up] * 45 + c.tz[up] * 8, c.h[lo] + 5, c.z[lo] + c.tz[up] * 45 - c.tx[up] * 8], t: [c.x[lo], c.h[lo] + 2, c.z[lo]] };
+			g.frozen = true;
+			return true;
+		}
+		else if(spot.startsWith("s") && !isNaN(+spot.slice(1))) i = +spot.slice(1) % n;
 		else if(spot === "top"){
 			const w = g.world, r = w.radius;
 			g.freeCam = { p: [w.center.x, r * 1.6, w.center.z + r * 0.35], t: [w.center.x, 0, w.center.z] };
@@ -46,7 +58,7 @@ for(const spot of spots){
 	}, spot);
 	if(!ok){ console.log(id, spot, "not on this track"); continue; }
 	await new Promise(r => setTimeout(r, 700));
-	await p.screenshot({ path: `temporary screenshots/spots/${id}-${spot}.png` });
+	await p.screenshot({ path: `temporary screenshots/spots/${id}${rev ? "-rev" : ""}-${spot}.png` });
 	console.log(id, spot, "ok");
 }
 console.log(errors.length ? errors : "no page errors");

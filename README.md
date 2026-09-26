@@ -15,7 +15,11 @@ original did).
 - **The five F1 tracks are the real circuits**: built from their real centrelines and real
   elevation. Spa drops into Eau Rouge and climbs Raidillon (about 100 m of climb), Monaco climbs
   from Ste Devote to the Casino and runs through the tunnel, Suzuka's back straight crosses the
-  Degner section on a bridge, and corners are gently banked. Hills, banking, the tunnel and the
+  Degner section on a bridge, and Jeddah is flat apart from its 12-degree banked Turn 13. Hills are
+  kept to the real climbs and descents (small wobbles in the elevation data are smoothed out), and
+  only corners that really have camber get it (Casino, Eau Rouge/Raidillon, Pouhon, Blanchimont,
+  the Lesmos, Suzuka Turn 1, the Reverse Bank, Spoon and 130R); the rest are level side to side,
+  and raised road edges get retaining walls. Hills, camber, the tunnel and the
   bridge are looks only: the handling is the same flat physics as always. Corners are still opened
   up where the original car (which can't brake) needs room, and a few spots where two parts of a
   circuit run side by side are eased apart to fit barriers between them. These tracks have new lap
@@ -345,7 +349,10 @@ The last two also need puppeteer installed.
 - `node tools/track-sim.mjs` drives bots round every track and reports lap times, stuck cars and escapes.
 - `node tools/draft-test.mjs daytona` compares slipstream on and off (lap times, gaps, lead changes).
 - `node tools/build-circuits.mjs` rebuilds `js/circuits.js` from `data/circuits/` (real layouts and elevation).
-- `node tools/spot-shots.mjs <trackId> [tunnel|bridge|high|low|top|0.25 ...]` screenshots chosen places round a track.
+- `node tools/build-circuits.mjs --corners` also lists each circuit's corners by distance from the start line (for placing camber).
+- `node tools/spot-shots.mjs <trackId> [rev] [tunnel|bridge|over|bridgeside|high|low|top|0.25|s700 ...]` screenshots chosen places round a track.
+- `node tools/terrain-check.mjs` checks the ground never pokes through the road on the F1 tracks (both directions).
+- `node tools/montage.mjs out.png cols a.png b.png ...` puts several screenshots on one sheet.
 - `node tools/walls-plot.mjs <trackId> <x> <z> [radius]` draws the physics walls around a point.
 - `node tools/sky-shots.mjs [trackId] [tod-weather ...]` screenshots a track at different times and weather (e.g. `monza night-rain`).
 - `node tools/scenery-shots.mjs [trackId ...]` takes screenshots of each track (overview, racing with the mirror, looking back, highlights).

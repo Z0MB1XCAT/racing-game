@@ -56,35 +56,35 @@ export const TRACKS = [
 		blurb: "Up the hill to the Casino, down through the hairpin and the tunnel. Barriers everywhere.",
 		realLength: "3.337 km", length: 1300, width: 11, laps: 3, theme: "monaco",
 		// The real circuit (js/circuits.js): centreline, elevation, the tunnel.
-		pts: CIRCUITS.monaco.pts, elev: CIRCUITS.monaco.elev, tunnel: CIRCUITS.monaco.tunnel
+		pts: CIRCUITS.monaco.pts, elev: CIRCUITS.monaco.elev, camber: CIRCUITS.monaco.camber, tunnel: CIRCUITS.monaco.tunnel
 	},
 	{
 		id: "spa", key: "spa-v2", name: "Spa-Francorchamps", place: "Belgium", kind: "gp", flag: "BE",
 		blurb: "Down to Eau Rouge, up Raidillon, the Kemmel straight and a long run through the forest.",
 		realLength: "7.004 km", length: 1700, width: 14, laps: 2, theme: "spa",
 		// The real circuit (js/circuits.js): centreline, elevation.
-		pts: CIRCUITS.spa.pts, elev: CIRCUITS.spa.elev
+		pts: CIRCUITS.spa.pts, elev: CIRCUITS.spa.elev, camber: CIRCUITS.spa.camber
 	},
 	{
 		id: "monza", key: "monza-v2", name: "Monza", place: "Italy", kind: "gp", flag: "IT",
 		blurb: "The Temple of Speed. Long straights, chicanes and the Parabolica.",
 		realLength: "5.793 km", length: 1350, width: 14, laps: 3, theme: "monza",
 		// The real circuit (js/circuits.js): centreline, elevation.
-		pts: CIRCUITS.monza.pts, elev: CIRCUITS.monza.elev
+		pts: CIRCUITS.monza.pts, elev: CIRCUITS.monza.elev, camber: CIRCUITS.monza.camber
 	},
 	{
 		id: "suzuka", key: "suzuka-v2", name: "Suzuka", place: "Japan", kind: "gp", flag: "JP",
 		blurb: "The only figure-of-eight on the calendar: the back straight crosses the Degner run on a bridge.",
 		realLength: "5.807 km", length: 1650, width: 13, laps: 2, theme: "suzuka",
 		// The real circuit (js/circuits.js): centreline, elevation, the crossover bridge.
-		pts: CIRCUITS.suzuka.pts, elev: CIRCUITS.suzuka.elev, bridge: CIRCUITS.suzuka.bridge
+		pts: CIRCUITS.suzuka.pts, elev: CIRCUITS.suzuka.elev, camber: CIRCUITS.suzuka.camber, bridge: CIRCUITS.suzuka.bridge
 	},
 	{
 		id: "jeddah", key: "jeddah-v2", name: "Jeddah", place: "Saudi Arabia", kind: "gp", flag: "SA",
 		blurb: "A night race on the seafront. Fast, blind and lined with walls.",
 		realLength: "6.174 km", length: 1900, width: 13, laps: 2, theme: "jeddah",
 		// The real circuit (js/circuits.js): centreline, elevation.
-		pts: CIRCUITS.jeddah.pts, elev: CIRCUITS.jeddah.elev
+		pts: CIRCUITS.jeddah.pts, elev: CIRCUITS.jeddah.elev, camber: CIRCUITS.jeddah.camber
 	},
 	{
 		id: "daytona", name: "Daytona", place: "Florida, USA", kind: "oval", flag: "US",

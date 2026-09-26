@@ -4,7 +4,7 @@ import { GRID } from "./physics.js";
 import { START_Z, seededRandom } from "./trackgen.js";
 import { buildScenery, canvasTexture } from "./scenery.js";
 import { naturalHour } from "./atmosphere.js";
-import { buildTerrain, buildTunnel, buildBridge } from "./terrain.js";
+import { buildTerrain, buildTunnel, buildBridge, buildSkirts } from "./terrain.js";
 
 const THREE = globalThis.THREE;
 
@@ -78,7 +78,8 @@ function wallStrips(track, items, h, heightAt){
 		const hx = it.w / 2 * cs, hz = -it.w / 2 * sn;            // along the piece
 		const tx = it.d / 2 * sn, tz = it.d / 2 * cs;             // across it
 		const ax = it.x - hx, az = it.z - hz, bx = it.x + hx, bz = it.z + hz;
-		const ya = heightAt(ax, az), yb = heightAt(bx, bz);
+		// (it.seg: the road sample the wall belongs to, so near a bridge it takes its own road's height.)
+		const ya = heightAt(ax, az, it.seg ?? -1), yb = heightAt(bx, bz, it.seg ?? -1);
 		const y0a = ya + it.y - h / 2, y0b = yb + it.y - h / 2, y1a = y0a + h, y1b = y0b + h;
 		const P = (x, y, z) => [x, y, z];
 		// Both faces, the top, and the two ends.
@@ -343,15 +344,18 @@ export function buildWorld(track, opts = {}){
 	const wallH = theme.wallH || 1.2;
 	const style = theme.wall;
 	const pairs = { redwhite: [0xd8342f, 0xf2f2f2], bluewhite: [0x2f63c9, 0xf2f2f2], tyres: [0x1d1e22, 0xe9e9e9], concrete: [0xc9ccd2, 0xc9ccd2] };
-	for(const [x1, z1, x2, z2] of track.wallSegs){
+	for(const [x1, z1, x2, z2, , i1, i2] of track.wallSegs){
 		const len = Math.hypot(x2 - x1, z2 - z1);
+		// The road sample a point part way along the segment belongs to (for its height).
+		const n = track.center ? track.center.n : 1, span = i1 === undefined ? 0 : ((i2 - i1) % n + n) % n;
+		const sampleAt = t => i1 === undefined ? -1 : Math.round(i1 + span * t) % n;
 		const ry = Math.atan2(z1 - z2, x2 - x1);
 		if(typeof style === "number" && track.elevated){
 			// On hills a long straight piece would float or sink in the middle: use short ones.
 			const pieces = Math.max(1, Math.round(len / 3));
 			for(let p = 0; p < pieces; p++){
 				const t = (p + 0.5) / pieces;
-				wallItems.push({ x: x1 + (x2 - x1) * t, y: wallH / 2, z: z1 + (z2 - z1) * t, w: len / pieces + 0.04, h: wallH, d: 0.3, ry, color: style });
+				wallItems.push({ x: x1 + (x2 - x1) * t, y: wallH / 2, z: z1 + (z2 - z1) * t, w: len / pieces + 0.04, h: wallH, d: 0.3, ry, color: style, seg: sampleAt(t) });
 			}
 		}else if(typeof style === "number"){
 			wallItems.push({ x: (x1 + x2) / 2, y: wallH / 2, z: (z1 + z2) / 2, w: len + 0.3, h: wallH, d: 0.3, ry, color: style });
@@ -360,7 +364,7 @@ export function buildWorld(track, opts = {}){
 			const pieces = Math.max(1, Math.round(len / 3));
 			for(let p = 0; p < pieces; p++){
 				const t = (p + 0.5) / pieces;
-				wallItems.push({ x: x1 + (x2 - x1) * t, y: wallH / 2, z: z1 + (z2 - z1) * t, w: len / pieces + 0.04, h: wallH, d: 0.3, ry, color: p % 2 ? ca : cb });
+				wallItems.push({ x: x1 + (x2 - x1) * t, y: wallH / 2, z: z1 + (z2 - z1) * t, w: len / pieces + 0.04, h: wallH, d: 0.3, ry, color: p % 2 ? ca : cb, seg: sampleAt(t) });
 			}
 		}
 	}
@@ -393,6 +397,14 @@ export function buildWorld(track, opts = {}){
 		for(const m of t.meshes){ m.receiveShadow = shadows; group.add(m); }
 		for(const o of t.occluders) occluders.add(o);
 	}
+	if(terrain && track.center){
+		// Retaining walls where the road stands above the ground beside it (left open under the bridge deck).
+		const br = track.features && track.features.bridge, n = track.center.n;
+		const skip = br ? i => Math.min(Math.abs(i - br[1]), n - Math.abs(i - br[1])) <= 60 && track.center.h[i] - groundAt(track.center.x[i], track.center.z[i]) > 1.2 : undefined;
+		const sk = new THREE.Mesh(keep(buildSkirts(track, groundAt, skip, { ground: theme.ground, stone: theme.skirt })), keep(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })));
+		sk.receiveShadow = shadows;
+		group.add(sk);
+	}
 	if(track.features && track.features.bridge && terrain){
 		const br = buildBridge(track, track.features.bridge, groundAt, keep);
 		if(br.items.length){
@@ -400,6 +412,9 @@ export function buildWorld(track, opts = {}){
 			m.castShadow = m.receiveShadow = shadows;
 			group.add(m);
 		}
+		const deck = new THREE.Mesh(keep(br.deck), keep(new THREE.MeshLambertMaterial({ color: 0x9aa1ab, side: THREE.DoubleSide })));
+		deck.castShadow = deck.receiveShadow = shadows;
+		group.add(deck);
 		for(const o of br.occluders) occluders.add(o);
 	}
 
@@ -441,7 +456,9 @@ export function buildWorld(track, opts = {}){
 			const gy = Math.max(groundAt(x, z), c.h ? c.h[i] - 1 : 0), py = c.h ? c.h[i] : 0;
 			poles.push({ x, y: gy + 5 + (py - gy) / 2, z, sx: 0.3, sy: 10 + (py - gy), sz: 0.3 });
 			heads.push({ x: x - nx * 1.2, y: py + 10, z: z - nz * 1.2, sx: 1.4, sy: 0.4, sz: 1.4 });
-			pools.push({ x: x - nx * (hw * 0.7 + 3), y: py + 0.07, z: z - nz * (hw * 0.7 + 3), rx: -Math.PI / 2, s: hw * 1.6 });
+			// The pool of light lies on the road, tilted with its camber (so it doesn't clip into it).
+			const lat = -side * (hw * 0.7 + 3) + side * off, bank = c.bank ? c.bank[i] : 0;
+			pools.push({ x: x - nx * (hw * 0.7 + 3), y: py + lat * bank + 0.07, z: z - nz * (hw * 0.7 + 3), rx: -Math.PI / 2 + Math.atan(bank), ry: Math.atan2(-c.tz[i], c.tx[i]), s: hw * 1.6 });
 		}
 		const unit = keep(new THREE.BoxBufferGeometry(1, 1, 1));
 		group.add(instanced(unit, keep(new THREE.MeshLambertMaterial({ color: 0x3a3f4a })), poles));

@@ -14,15 +14,88 @@ const CONF = {
 	// Monaco's data starts at Casino Square; the start line is ~140 m before Ste Devote (point 120).
 	// The town is too steep for a 25 m DEM (it has the pit straight climbing the hillside), so the
 	// heights come from the corners' real elevations instead (metres, by data point).
-	monaco: { file: "mc-1929", length: 1300, width: 11, startPoint: 120, dem: "eudem25m", tunnel: [640, 1080],
-		profile: { 0: 45, 10: 36, 20: 25, 30: 17, 40: 8, 50: 5, 58: 3, 70: 2, 85: 1, 100: 2, 110: 3, 120: 6, 130: 11, 140: 27, 150: 41 } },
-	spa: { file: "be-1925", length: 1700, width: 14, dem: "eudem25m" },
-	monza: { file: "it-1922", length: 1350, width: 14, dem: "eudem25m" },
-	suzuka: { file: "jp-1962", length: 1650, width: 13, dem: "srtm30m", bridge: 7 },
-	// Jeddah is flat; the 30 m DEM mostly picks up buildings, so keep only a hint of it.
-	jeddah: { file: "sa-2021", length: 1900, width: 13, dem: "srtm30m", flatten: 0.2 }
+	// camber: [from m, to m, degrees] along the lap from the start line (see --corners), only on
+	// corners that really have it: + leans into the corner (banked), - away from it (off-camber).
+	// Everywhere else the road is level side to side. From track guides and onboard laps.
+	// hills: the smallest rise or dip (m) kept from the DEM; anything smaller is noise and is
+	// smoothed out, so the road runs in clean climbs and descents.
+	monaco: { file: "mc-1929", length: 1300, width: 11, startPoint: 120, dem: "eudem25m", tunnel: [640, 1080], hills: 1,
+		profile: { 0: 45, 10: 36, 20: 25, 30: 17, 40: 8, 50: 5, 58: 3, 70: 2, 85: 1, 100: 2, 110: 3, 120: 6, 130: 11, 140: 27, 150: 41 },
+		camber: [[792, 864, -4]] },                                      // Casino: off-camber over the crest
+	spa: { file: "be-1925", length: 1700, width: 14, dem: "eudem25m", hills: 5,
+		camber: [[876, 924, 5], [960, 1080, 3], [1104, 1152, -3],        // Eau Rouge left, Raidillon right, off-camber crest left
+			[3600, 3972, 2],                                             // Pouhon
+			[5628, 6060, 3]] },                                          // Blanchimont
+	monza: { file: "it-1922", length: 1350, width: 14, dem: "eudem25m", hills: 5,
+		camber: [[2172, 2304, 3], [2532, 2592, 3]] },                    // the Lesmos
+	suzuka: { file: "jp-1962", length: 1650, width: 13, dem: "srtm30m", bridge: 22, hills: 5,   // bridge lift in metres (about 6 units at game scale)
+		camber: [[408, 684, 3],                                          // Turns 1-2
+			[1464, 1584, -4],                                            // Reverse Bank (gyaku bank)
+			[3540, 3828, 3],                                             // Spoon
+			[4704, 4920, 2]] },                                          // 130R
+	// Jeddah is flat (the 30 m DEM mostly picks up buildings); Turn 13 is banked at 12 degrees.
+	jeddah: { file: "sa-2021", length: 1900, width: 13, dem: "srtm30m", flatten: 0,
+		camber: [[2292, 2556, 12]] }
 };
 const STEP = 5, ELEV_STEP = 25, OUT_STEP = 12;
+
+// A loop of heights with every rise and dip smaller than `min` removed: find the turning points
+// that matter, then between each pair make the road climb (or descend) steadily, following the
+// DEM's shape but never reversing, and smooth it lightly.
+function cleanHills(h, min){
+	const M = h.length;
+	// Work from the highest point (always a real crest) round to itself again.
+	const top = h.indexOf(Math.max(...h));
+	const H = Array.from({ length: M + 1 }, (_, i) => h[(top + i) % M]);
+	let ext = [0];
+	for(let i = 1; i < M; i++){
+		const a = H[i - 1], b = H[i], c = H[i + 1];
+		if((b >= a && b > c) || (b <= a && b < c)) ext.push(i);
+	}
+	ext.push(M);
+	const fix = list => {
+		// Alternate high/low, keeping the more extreme of any run going the same way.
+		const out = [list[0]];
+		for(let k = 1; k < list.length; k++){
+			const i = list[k], last = out.at(-1), before = out.at(-2);
+			if(before !== undefined && (H[last] - H[before]) * (H[i] - H[last]) >= 0 && k < list.length - 1){ out[out.length - 1] = i; continue; }
+			out.push(i);
+		}
+		return out;
+	};
+	ext = fix(ext);
+	for(;;){
+		let k = -1, best = min;
+		for(let j = 0; j < ext.length - 1; j++){ const d = Math.abs(H[ext[j + 1]] - H[ext[j]]); if(d < best){ best = d; k = j; } }
+		if(k < 0 || ext.length <= 3) break;
+		// Remove that rise or dip (never the end points).
+		const j = Math.min(Math.max(k, 1), ext.length - 3);
+		ext.splice(j, 2);
+		ext = fix(ext);
+	}
+	// Between turning points: the closest steady climb (or descent) to the DEM (a least-squares
+	// monotone fit), held between the two end heights.
+	if(process.env.DEBUG_HILLS) console.log("turning points", ext.map(i => ((i + top) % M) * 12 + ":" + H[i].toFixed(1)).join(" "));
+	const out = H.slice();
+	for(let j = 0; j < ext.length - 1; j++){
+		const a = ext[j], b = ext[j + 1], sgn = H[b] > H[a] ? 1 : -1;
+		const blocks = [];
+		for(let q = a; q <= b; q++){
+			blocks.push({ v: sgn * H[q], n: 1 });
+			while(blocks.length > 1 && blocks.at(-2).v > blocks.at(-1).v){
+				const y = blocks.pop(), x = blocks.at(-1);
+				x.v = (x.v * x.n + y.v * y.n) / (x.n + y.n); x.n += y.n;
+			}
+		}
+		let q = a;
+		for(const blk of blocks) for(let t = 0; t < blk.n; t++, q++) out[q] = Math.max(Math.min(H[a], H[b]), Math.min(Math.max(H[a], H[b]), sgn * blk.v));
+	}
+	const res = new Array(M);
+	for(let i = 0; i < M; i++) res[(top + i) % M] = out[i];
+	// Light smoothing keeps it monotonic between turning points and rounds off the crests.
+	return res.map((_, i) => { let s = 0, w = 0; for(let o = -5; o <= 5; o++){ const ww = 6 - Math.abs(o); s += res[(i + o + M) % M] * ww; w += ww; } return s / w; });
+}
+
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const out = {};
 
@@ -140,10 +213,34 @@ for(const [id, conf] of Object.entries(CONF)){
 	// ----- Elevation profile on the output points -----
 	const M = Math.round(L / OUT_STEP);
 	const idx = Array.from({ length: M }, (_, i) => Math.round(i * N / M) % N);
+	// Signed curvature at each output point (+ = turning left), over about 24 m either way.
+	const curvAt = m => {
+		const a = Q[idx[(m - 2 + M) % M]], b = Q[idx[m]], c = Q[idx[(m + 2) % M]];
+		const h1 = Math.atan2(b.y - a.y, b.x - a.x), h2 = Math.atan2(c.y - b.y, c.x - b.x);
+		let d = h2 - h1; while(d > Math.PI) d -= 2 * Math.PI; while(d < -Math.PI) d += 2 * Math.PI;
+		return d / (2 * OUT_STEP);
+	};
+	const curv = Array.from({ length: M }, (_, m) => curvAt(m));
+	if(process.argv.includes("--corners")){
+		// Corners in lap order: runs tighter than a 400 m radius (numbered as the game sees them).
+		const list = [];
+		for(let m = 0; m < M; m++){
+			if(Math.abs(curv[m]) < 1 / 400) continue;
+			const dir = Math.sign(curv[m]), last = list.at(-1);
+			if(last && last.dir === dir && m - last.to <= 3){ last.to = m; last.turn += curv[m] * OUT_STEP; last.minR = Math.min(last.minR, 1 / Math.abs(curv[m])); }
+			else list.push({ from: m, to: m, dir, turn: curv[m] * OUT_STEP, minR: 1 / Math.abs(curv[m]) });
+		}
+		console.log(id, "corners (metres from the start line):");
+		for(const [k, c] of list.entries()) if(Math.abs(c.turn) > 0.25)
+			console.log(`  #${k} ${c.dir > 0 ? "L" : "R"} ${Math.round(c.from * OUT_STEP)}-${Math.round(c.to * OUT_STEP)} m, turns ${Math.round(Math.abs(c.turn) * 180 / Math.PI)} deg, tightest radius ${Math.round(c.minR)} m`);
+	}
 	let h = idx.map(i => E(start + Q[i].s));
 	// Smooth over about 50 m either way (the DEM is noisy, especially in towns).
 	const smooth = (arr, r) => arr.map((_, i) => { let s = 0, w = 0; for(let o = -r; o <= r; o++){ const q = (i + o + arr.length) % arr.length, ww = 1 - Math.abs(o) / (r + 1); s += arr[q] * ww; w += ww; } return s / w; });
 	h = smooth(h, 4);
+	// Keep only real hills: drop any rise or dip smaller than conf.hills, then make each climb and
+	// descent run one way only (no ripples), and ease it.
+	if(conf.hills) h = cleanHills(h, conf.hills);
 	// Monaco tunnel: the DEM reads the hillside above it; the road runs level-ish underneath.
 	let tunnel = null;
 	if(conf.tunnel){
@@ -155,14 +252,26 @@ for(const [id, conf] of Object.entries(CONF)){
 	// Suzuka: lift the later road over the earlier one on a bridge.
 	if(cross){
 		const up = Math.round(cross[1] * M / N), low = Math.round(cross[0] * M / N);
-		const span = Math.round(160 / OUT_STEP);
+		const span = Math.round(220 / OUT_STEP);
 		const base = Math.max(h[up], h[low]);
 		for(let o = -span; o <= span; o++){
 			const q = (up + o + M) % M, f = 0.5 + 0.5 * Math.cos(Math.PI * o / span);
 			h[q] = h[q] + (base + conf.bridge - h[q]) * f;
 		}
 	}
-	if(conf.flatten){ const mean = h.reduce((a, b) => a + b, 0) / h.length; h = h.map(v => mean + (v - mean) * conf.flatten); }
+	// (Again after the bridge, so its ramps join the hills either side without a dip.)
+	if(cross && conf.hills) h = cleanHills(h, conf.hills);
+	if(conf.flatten !== undefined){ const mean = h.reduce((a, b) => a + b, 0) / h.length; h = h.map(v => mean + (v - mean) * conf.flatten); }
+	// Camber, per output point: tan of the angle (+ = into the corner), eased in and out over ~30 m.
+	let camber = null;
+	if(conf.camber){
+		camber = new Array(M).fill(0);
+		for(const [a, b, deg] of conf.camber) for(let m = 0; m < M; m++){
+			const s = m * OUT_STEP, ramp = 30;
+			const w = Math.max(0, Math.min(1, (s - a + ramp) / ramp, (b + ramp - s) / ramp));
+			if(w > 0) camber[m] += Math.tan(deg * Math.PI / 180) * (0.5 - 0.5 * Math.cos(Math.PI * w));
+		}
+	}
 	const min = Math.min(...h);
 	h = h.map(v => +(v - min).toFixed(2));
 
@@ -171,6 +280,7 @@ for(const [id, conf] of Object.entries(CONF)){
 		pts: idx.map(i => [+Q[i].x.toFixed(1), +Q[i].y.toFixed(1)]),
 		elev: h,
 		...(tunnel ? { tunnel: tunnel.map(v => +v.toFixed(4)) } : {}),
+		...(camber ? { camber: camber.map(v => +v.toFixed(3)) } : {}),
 		...(cross ? { bridge: [+(cross[0] / N).toFixed(4), +(cross[1] / N).toFixed(4)] } : {})
 	};
 	console.log(`${id}: ${Math.round(L)} m, ${M} points, climb ${(Math.max(...h)).toFixed(1)} m, ${passes} easing passes, tightest gap ${worst.toFixed(0)} m (needed ${minSep.toFixed(0)} m)`);
