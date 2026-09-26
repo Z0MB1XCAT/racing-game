@@ -23,6 +23,7 @@
 </head>
 <body>
 	<div id="stage"></div>
+	<div class="menu-toast" id="menuToast" role="status" hidden></div>
 	<div id="labels"></div>
 
 	<main id="ui">
@@ -109,6 +110,7 @@
 					<ol class="board" id="weeklyBoard"><li class="empty">Loading…</li></ol>
 					<p class="opt-help weekly-last" id="weeklyLast"></p>
 					<button class="go-btn" id="weeklyGo"><span>Take the challenge</span></button>
+					<button class="link-btn" id="weeklyRival">Race the leader's ghost</button>
 				</section>
 				<div class="showcase-tag" aria-hidden="true">
 					<span class="num" id="showNum">07</span>
@@ -184,6 +186,13 @@
 						<div class="seg" id="setupDir" role="radiogroup" aria-label="Direction">
 							<button data-v="0" aria-checked="true">Normal</button>
 							<button data-v="1" aria-checked="false">Reverse</button>
+						</div>
+					</div>
+					<div class="opt-row" data-for="trial">
+						<span class="opt-label">Ghost</span>
+						<div class="seg" id="setupChase" role="radiogroup" aria-label="Ghost to race">
+							<button data-v="mine" aria-checked="true">My best</button>
+							<button data-v="record" aria-checked="false">Track record</button>
 						</div>
 					</div>
 					<div data-for="trial">
@@ -413,7 +422,7 @@
 					</div>
 					<div class="table-wrap">
 						<table class="results standings">
-							<thead><tr><th>Pos</th><th>Driver</th><th>Lap</th><th>Gap</th><th>Set</th></tr></thead>
+							<thead><tr><th>Pos</th><th>Driver</th><th>Lap</th><th>Gap</th><th>Set</th><th><span class="sr-only">Ghost</span></th></tr></thead>
 							<tbody id="wkBody"></tbody>
 						</table>
 					</div>
@@ -442,7 +451,7 @@
 					</div>
 					<div class="table-wrap">
 						<table class="results standings">
-							<thead><tr><th>Pos</th><th>Driver</th><th>Lap</th><th>Gap</th><th>Set</th></tr></thead>
+							<thead><tr><th>Pos</th><th>Driver</th><th>Lap</th><th>Gap</th><th>Set</th><th><span class="sr-only">Ghost</span></th></tr></thead>
 							<tbody id="lapBody"></tbody>
 						</table>
 					</div>
@@ -492,6 +501,9 @@
 				<dt>Last</dt><dd id="hudLast">--.---</dd>
 				<dt>Best</dt><dd class="best" id="hudBest">--.---</dd>
 			</dl>
+			<div class="sectors" id="sectors" aria-label="Sector times">
+				<span class="sec"><em>S1</em><b>--.---</b></span><span class="sec"><em>S2</em><b>--.---</b></span><span class="sec"><em>S3</em><b>--.---</b></span>
+			</div>
 		</div>
 		<canvas id="minimap" aria-label="Track map"></canvas>
 		<div class="hud-speed">

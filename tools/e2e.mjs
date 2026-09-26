@@ -418,6 +418,61 @@ if(flow === "ghost"){
 	console.log("weekly label:", await page.$eval("#deltaLabel", e => e.textContent));
 }
 
+// A best time with no ghost behind it (how older versions saved), sectors, and racing
+// someone else's ghost from the leaderboard (two tabs on ?localnet).
+if(flow === "rival"){
+	const drive = p => p.evaluate(async () => {
+		const { Bot } = await import("/js/bots.js");
+		const g = window.__game, me = g.race.me;
+		me.bot = new Bot("hard");
+		const orig = g.race.update.bind(g.race);
+		g.race.update = (dt) => { g.race.tracker.update(me); return orig(dt, me.bot.steer(me, g.race.tracker, g.race.active, dt)); };
+	});
+	const laps = p => p.evaluate(() => window.__game.race ? window.__game.race.me.lapTimes.length : -1);
+	const waitLaps = async (p, n) => { for(let i = 0; i < 150 && await laps(p) < n; i++) await wait(1000); };
+	const a = await open(base + "?localnet");
+	await wait(800);
+	// Old save: a (very fast) best time but no ghost.
+	await a.evaluate(k => { localStorage.setItem("org-gp:best:" + k, "20000"); localStorage.removeItem("org-gp:ghost:" + k); }, trackId);
+	await a.click("#btnTrial"); await wait(500);
+	await a.click(`#setupTracks [data-id="${trackId}"]`); await wait(800);
+	await a.click("#setupGo"); await wait(1500);
+	await drive(a);
+	await waitLaps(a, 1);
+	await wait(500);
+	console.log("old best, no ghost -> ghost saved after a slower lap:", await a.evaluate(k => !!localStorage.getItem("org-gp:ghost:" + k), trackId));
+	await wait(12000);
+	console.log("sectors mid-lap 2:", JSON.stringify(await a.evaluate(() => { const r = window.__game.race, v = r.sectorView(r.me); return { cells: v.cells.map(c => c && [Math.round(c.ms), c.color]), cur: v.cur }; })));
+	await shot(a, "sectors");
+	await waitLaps(a, 2);
+	console.log("sectors saved:", await a.evaluate(k => localStorage.getItem("org-gp:sectors:" + k), trackId));
+	// Put a record on the shared board with its ghost (the stored best of 20 s blocked it above).
+	await a.evaluate(async k => {
+		const net = window.__game.net || await (await import("/js/net.js")).connect();
+		const r = window.__game.race, g = r.lastLap;
+		await net.submitLap(k, g.ms, { name: "Speedy Sam", hue: 200 });
+		await net.uploadLapGhost(k, g, { name: "Speedy Sam", hue: 200, body: "formula" });
+	}, trackId);
+	// Second driver races that ghost from the leaderboard.
+	const b = await open(base + "?localnet");
+	await wait(1000);
+	await b.click("#btnBoards"); await wait(600);
+	await b.evaluate(() => document.querySelector('button[data-v="tracks"]').click());
+	await wait(600);
+	await b.evaluate(id => { const t = document.querySelector(`#boardTrackGrid [data-id="${id}"]`); if(t) t.click(); }, trackId);
+	await wait(1500);
+	const btn = await b.$("#lapBody .ghost-btn");
+	console.log("race-ghost button on the board:", !!btn);
+	if(btn){
+		await btn.click(); await wait(2500);
+		console.log("racing:", JSON.stringify(await b.evaluate(() => { const r = window.__game.race; return r && { rival: r.rival && r.rival.name, body: r.rival && r.rival.body, samples: r.rival && r.rival.s.length }; })));
+		await drive(b);
+		await wait(9000);
+		console.log("delta label:", await b.$eval("#deltaLabel", e => e.textContent), "| delta:", await b.evaluate(() => Math.round(window.__game.race.liveDelta())));
+		await shot(b, "rival");
+	}
+}
+
 // BVS number and Hwb email on the same account, linked from either side.
 if(flow === "link"){
 	const a = await open(base + "?localnet");

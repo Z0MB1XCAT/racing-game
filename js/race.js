@@ -15,6 +15,25 @@ const FINISH_WAIT = 30000;              // after the winner, everyone else gets 
 const AVG_SPEED = 21;
 const fmtLap = ms => { const m = Math.floor(ms / 60000), sec = (ms % 60000) / 1000; return m ? m + ":" + sec.toFixed(3).padStart(6, "0") : sec.toFixed(3); };                   // world units per second, for gap estimates
 
+// Put a ghost car where the recorded lap was lt ms in (hidden before and after the lap).
+function playGhost(model, g, lt){
+	if(!model) return;
+	if(!g || lt === null || lt > g.ms || !g.s || g.s.length < 2){ model.visible = false; return; }
+	const s = g.s;
+	let i = Math.min(s.length - 2, Math.max(0, g.pi || 0));
+	while(i > 0 && s[i][0] > lt) i--;
+	while(i < s.length - 2 && s[i + 1][0] < lt) i++;
+	g.pi = i;
+	const a = s[i], b = s[i + 1] || a;
+	const f = b[0] > a[0] ? Math.min(1, Math.max(0, (lt - a[0]) / (b[0] - a[0]))) : 0;
+	model.visible = true;
+	model.position.set(a[1] + (b[1] - a[1]) * f, 0, a[2] + (b[2] - a[2]) * f);
+	let dr = b[3] - a[3];
+	while(dr > Math.PI) dr -= Math.PI * 2;
+	while(dr < -Math.PI) dr += Math.PI * 2;
+	model.rotation.y = a[3] + dr * f;
+}
+
 export class Race {
 	// opts: { scene, track, tracker?, laps, mode: "race"|"elim"|"trial", entrants, myId, now(), startAt,
 	//         authority, net?, ghost?, onEvent(type, data) }
@@ -71,13 +90,24 @@ export class Race {
 		// It only changes when you beat it. lastLap is the lap just driven, for saving.
 		this.ghostData = opts.ghost || null;
 		this.lastLap = null;
-		this.deltaIdx = 0;
+		// Someone else's ghost to race (from a leaderboard): { name, hue, body, look, ms, s }.
+		this.rival = opts.mode === "trial" && opts.rival ? opts.rival : null;
+		this.rivalModel = null;
+		// Sectors: session bests for purple, and (time trial) reference times from outside:
+		// { pb: your all-time best sectors, purple: the best anyone's done that we know of }.
+		this.bestSec = [Infinity, Infinity, Infinity];
+		this.sectorRef = null;
 		this.ghostModel = null;
 		if(this.mode === "trial" && this.me){
 			this.ghostModel = makeCar(this.me.body, this.me.hue, { ghost: true });
 			this.ghostModel.visible = false;
 			this.scene.add(this.ghostModel);
 			this.recording = [];
+			if(this.rival){
+				this.rivalModel = makeCar(this.rival.body || "classic", this.rival.hue ?? 0, { ghost: true, look: this.rival.look || undefined });
+				this.rivalModel.visible = false;
+				this.scene.add(this.rivalModel);
+			}
 		}
 	}
 
@@ -118,6 +148,7 @@ export class Race {
 				this.rescueRules(c, t);
 				if(c.data.lap > lapsBefore[k]) this.onLap(c, t);
 			}
+			this.trackSectors(c, t);
 			const p = raceProgress(c);
 			if(p > c.bestProg + 0.001){ c.bestProg = p; c.bestProgT = t; }
 		});
@@ -172,7 +203,7 @@ export class Race {
 			}
 		}
 		c.lapStart = t;
-		if(c.me && this.ghostModel){ this.recording = []; this.deltaIdx = 0; }
+		if(c.me && this.ghostModel){ this.recording = []; if(this.ghostData) this.ghostData.di = 0; if(this.rival) this.rival.di = 0; }
 		if(this.mode === "quali" && c.lapTimes.length >= this.laps && c.finish === null){
 			c.finish = t;
 			this.onEvent("qualiDone", { car: c, ms: c.best });
@@ -232,28 +263,60 @@ export class Race {
 			if(!last || lt - last[0] >= 50) this.recording.push([Math.round(lt), +c.data.x.toFixed(2), +c.data.y.toFixed(2), +c.data.dir.toFixed(3)]);
 			if(this.recording.length > 6000) this.recording = null;
 		}
-		const g = this.ghostData;
-		if(!g || c.lapStart === null){ this.ghostModel.visible = false; return; }
-		const lt = t - c.lapStart, s = g.s;
-		if(lt > g.ms || !s.length){ this.ghostModel.visible = false; return; }
-		let i = Math.min(s.length - 2, Math.max(0, Math.floor(lt / 50)));
-		while(i > 0 && s[i][0] > lt) i--;
-		while(i < s.length - 2 && s[i + 1][0] < lt) i++;
-		const a = s[i], b = s[i + 1] || a;
-		const f = b[0] > a[0] ? Math.min(1, Math.max(0, (lt - a[0]) / (b[0] - a[0]))) : 0;
-		this.ghostModel.visible = true;
-		this.ghostModel.position.set(a[1] + (b[1] - a[1]) * f, 0, a[2] + (b[2] - a[2]) * f);
-		let dr = b[3] - a[3];
-		while(dr > Math.PI) dr -= Math.PI * 2;
-		while(dr < -Math.PI) dr += Math.PI * 2;
-		this.ghostModel.rotation.y = a[3] + dr * f;
+		const lt = c.lapStart === null ? null : t - c.lapStart;
+		playGhost(this.ghostModel, this.ghostData, lt);
+		if(this.rivalModel) playGhost(this.rivalModel, this.rival, lt);
+	}
+
+	// Sector times for every car (your own, and others' for purple in a race).
+	// A lap is split at a third and two thirds of the way round.
+	trackSectors(c, t){
+		const lap = c.data.lap;
+		if(c.secLapNo !== lap){
+			const first = c.secLapNo === undefined;
+			c.secLapNo = lap;
+			if(!first && c.secT0 != null && c.s2t != null) this.sectorDone(c, 2, t - c.s2t, t);
+			c.secPrev = c.secLap || null;
+			c.secHold = t + 3500;
+			c.secLap = [null, null, null];
+			c.secT0 = lap >= 1 && !first ? t : null;     // timing starts at the line, like the lap timer
+			c.s1t = c.s2t = null;
+			c.secIdx = 0;
+			return;
+		}
+		if(c.secT0 == null) return;
+		const f = c.frac || 0;
+		if(c.s1t == null && f >= 1 / 3 && f < 0.6){ c.s1t = t; c.secIdx = 1; this.sectorDone(c, 0, t - c.secT0, t); }
+		else if(c.s1t != null && c.s2t == null && f >= 2 / 3 && f < 0.95){ c.s2t = t; c.secIdx = 2; this.sectorDone(c, 1, t - c.s1t, t); }
+	}
+	sectorDone(c, idx, ms, t){
+		c.bestSec = c.bestSec || [Infinity, Infinity, Infinity];
+		const ref = this.mode === "trial" ? this.sectorRef : null;
+		const purple = Math.min(ref && ref.purple ? ref.purple[idx] ?? Infinity : Infinity, this.bestSec[idx]);
+		const mine = Math.min(ref && ref.pb ? ref.pb[idx] ?? Infinity : Infinity, c.bestSec[idx]);
+		const color = ms <= purple ? "purple" : ms <= mine ? "green" : "yellow";
+		if(ms < c.bestSec[idx]) c.bestSec[idx] = ms;
+		if(ms < this.bestSec[idx]) this.bestSec[idx] = ms;
+		const cell = { ms, color };
+		if(idx === 2 && c.secPrev && t < c.secHold) c.secPrev[2] = cell;   // the lap just ended
+		else if(c.secLap) c.secLap[idx] = cell;
+		if(c.me) this.onEvent("sector", { car: c, idx, ms, color });
+	}
+	// What the sector boxes should show for car c: three cells and the running time.
+	sectorView(c){
+		const t = this.raceTime;
+		if(c.secPrev && t < c.secHold) return { cells: c.secPrev, cur: -1, running: null };
+		const cur = c.secT0 == null ? -1 : c.secIdx;
+		const since = cur === 0 ? c.secT0 : cur === 1 ? c.s1t : cur === 2 ? c.s2t : null;
+		return { cells: c.secLap || [null, null, null], cur, running: since == null ? null : t - since };
 	}
 
 	// Live gap to the ghost (ms, negative = ahead): where was the ghost's lap when it was
 	// at the point on the track where you are now? null when there's nothing to compare.
 	liveDelta(){
-		const c = this.me, g = this.ghostData;
+		const c = this.me, g = this.rival || this.ghostData;
 		if(!c || !g || !g.s || g.s.length < 3 || c.lapStart === null) return null;
+		g.di = g.di || 0;
 		const lt = this.raceTime - c.lapStart;
 		if(lt < 250) return null;
 		const s = g.s, x = c.data.x, z = c.data.y;
@@ -266,10 +329,10 @@ export class Race {
 			return [best, bd];
 		};
 		// The ghost moves forward, so look just around where we matched last time.
-		let [i, d2] = near(this.deltaIdx - 4, this.deltaIdx + 60);
+		let [i, d2] = near(g.di - 4, g.di + 60);
 		if(d2 > 15 * 15) [i, d2] = near(0, s.length - 2);        // after a reset: search the whole lap
 		if(i < 0 || d2 > 25 * 25) return null;
-		this.deltaIdx = i;
+		g.di = i;
 		const a = s[i], b = s[i + 1];
 		const vx = b[1] - a[1], vz = b[2] - a[2], len2 = vx * vx + vz * vz;
 		const f = len2 > 0 ? Math.max(0, Math.min(1, ((x - a[1]) * vx + (z - a[2]) * vz) / len2)) : 0;
@@ -499,5 +562,6 @@ export class Race {
 			if(c.label) c.label.remove();
 		}
 		if(this.ghostModel){ this.scene.remove(this.ghostModel); disposeCar(this.ghostModel); }
+		if(this.rivalModel){ this.scene.remove(this.rivalModel); disposeCar(this.rivalModel); }
 	}
 }

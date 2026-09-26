@@ -99,6 +99,26 @@
       }
     },
 
+    "lapGhosts": {
+      "$k": {
+        "$uid": {
+          ".read": "auth != null",
+          ".write": "auth != null && ((auth.uid === $uid && !root.child('banned/' + auth.uid).exists()) || auth.token.email === 'bvs-11018@bvs.invalid')",
+          ".validate": "!newData.exists() || (newData.hasChildren(['t', 's', 'n', 'h']) && newData.child('t').val() === root.child('laps/' + $k + '/' + $uid + '/t').val() && newData.child('s').isString() && newData.child('s').val().length < 150000 && newData.child('n').isString() && newData.child('n').val().length <= 24)"
+        }
+      }
+    },
+
+    "weeklyGhosts": {
+      "$k": {
+        "$uid": {
+          ".read": "auth != null",
+          ".write": "auth != null && ((auth.uid === $uid && !root.child('banned/' + auth.uid).exists()) || auth.token.email === 'bvs-11018@bvs.invalid')",
+          ".validate": "!newData.exists() || (newData.hasChildren(['t', 's', 'n', 'h']) && newData.child('t').val() === root.child('weekly/' + $k + '/' + $uid + '/t').val() && newData.child('s').isString() && newData.child('s').val().length < 150000 && newData.child('n').isString() && newData.child('n').val().length <= 24)"
+        }
+      }
+    },
+
     "banned": {
       ".read": "auth != null",
       ".write": "auth != null && auth.token.email === 'bvs-11018@bvs.invalid'"

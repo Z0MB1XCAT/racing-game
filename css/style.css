@@ -478,6 +478,14 @@ a.race-btn{ color: inherit; text-decoration: none; }
 .times dd.best{ color: var(--purple); }
 .times dd[data-delta="faster"]{ color: var(--green); }
 .times dd[data-delta="slower"]{ color: #ffcf5c; }
+.sectors{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; width: 100%; min-width: 186px; }
+.sec{ display: grid; gap: 0; padding: 3px 6px 2px; background: rgba(14,18,26,.72); border-bottom: 3px solid rgba(214,224,240,.14); text-align: left; transition: background-color .25s, border-color .25s; }
+.sec em{ font-style: normal; font-weight: 700; font-size: 10px; letter-spacing: .14em; color: var(--mute); }
+.sec b{ font-weight: 700; font-size: 15px; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.sec.live{ border-bottom-color: var(--chalk); }
+.sec.purple{ background: rgba(169,92,255,.32); border-bottom-color: var(--purple); }
+.sec.green{ background: rgba(61,220,132,.24); border-bottom-color: var(--green); }
+.sec.yellow{ background: rgba(255,207,92,.2); border-bottom-color: #ffcf5c; }
 
 #minimap{
 	position: absolute; left: max(16px, env(safe-area-inset-left)); bottom: max(16px, env(safe-area-inset-bottom));
@@ -670,7 +678,7 @@ kbd{ font-family: var(--f-display); font-weight: 700; font-size: 13px; padding: 
 	.tower{ width: 168px; }
 	.tower-row{ font-size: 13px; height: 22px; }
 	.tower-row:nth-child(n+6){ display: none; }
-	.times{ display: none; }
+	.times, .sectors{ display: none; }
 	.lap-big b{ font-size: 32px; }
 	#minimap{ width: 120px; height: 120px; }
 	.hud-speed{ width: 140px; height: 124px; }
@@ -694,3 +702,22 @@ kbd{ font-family: var(--f-display); font-weight: 700; font-size: 13px; padding: 
 .link-btn:hover{ color: var(--chalk); }
 .verify-box{ display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-left: 4px solid #ffcf5c; background: rgba(255,207,92,.08); }
 .verify-box .go-btn{ width: auto; font-size: 17px; padding: 10px 14px; }
+
+/* Racing other people's ghosts */
+.ghost-cell{ text-align: right; white-space: nowrap; }
+.ghost-btn{
+	font-family: var(--f-display); font-weight: 700; font-size: 13px; letter-spacing: .08em; text-transform: uppercase;
+	padding: 4px 10px; color: var(--chalk); background: rgba(169,92,255,.18); border: 1px solid rgba(169,92,255,.55); border-radius: 3px; cursor: pointer;
+	transition: transform .2s var(--spring), background-color .2s;
+}
+.ghost-btn:hover{ background: rgba(169,92,255,.34); transform: translateY(-1px); }
+.ghost-btn:active{ transform: translateY(1px) scale(.97); }
+.ghost-btn:focus-visible{ outline: 2px solid var(--purple); outline-offset: 2px; }
+.label.ghost-label{ opacity: .85; }
+.label.ghost-label b{ color: var(--purple); }
+.sr-only{ position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.menu-toast{
+	position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 60;
+	padding: 10px 18px; max-width: min(560px, calc(100vw - 32px)); background: rgba(14,18,26,.94); border-left: 4px solid var(--purple);
+	font-weight: 600; font-size: 15px; box-shadow: var(--elev-3); animation: pop .35s var(--spring) both;
+}

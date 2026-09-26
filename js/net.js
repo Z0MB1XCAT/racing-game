@@ -3,6 +3,7 @@
 // BroadcastChannel (open the game with ?localnet in two tabs to test without Firebase).
 import { FIREBASE_CONFIG, firebaseReady, MAX_CARS, ACCOUNTS, P2P, SEND_RATE } from "./config.js";
 import { champStandings } from "./champ.js";
+import { packGhost, unpackGhost } from "./ghosts.js";
 
 const CODE_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const STALE_ROOM = 6 * 60 * 60 * 1000;
@@ -233,14 +234,15 @@ class FirebaseStore {
 	async saveGhost(slot, ghost, extra){
 		const u = this.auth.currentUser;
 		if(!u || u.isAnonymous) return;
-		await this.set(`ghosts/${u.uid}/${slot}`, Object.assign({ ms: Math.round(ghost.ms), s: JSON.stringify(ghost.s) }, extra || {}));
+		await this.set(`ghosts/${u.uid}/${slot}`, Object.assign({ ms: Math.round(ghost.ms), s: packGhost(ghost.s) }, extra || {}));
 	}
 	async loadGhost(slot){
 		const u = this.auth.currentUser;
 		if(!u || u.isAnonymous) return null;
 		const g = await this.get(`ghosts/${u.uid}/${slot}`);
 		if(!g || typeof g.s !== "string") return null;
-		try { return Object.assign({}, g, { s: JSON.parse(g.s) }); } catch { return null; }
+		const samples = unpackGhost(g.s);
+		return samples ? Object.assign({}, g, { s: samples }) : null;
 	}
 	now(){ return Date.now() + this.offset; }
 	set(p, v){ return this.db.ref(p).set(v); }
@@ -380,13 +382,14 @@ class LocalStore {
 	async signOut(){ this.uid = "local-" + Math.random().toString(36).slice(2, 9); this.acct = { kind: "guest" }; this.saveId(); }
 	async saveGhost(slot, ghost, extra){
 		if(this.acct.kind === "guest") return;
-		await this.set(`ghosts/${this.uid}/${slot}`, Object.assign({ ms: Math.round(ghost.ms), s: JSON.stringify(ghost.s) }, extra || {}));
+		await this.set(`ghosts/${this.uid}/${slot}`, Object.assign({ ms: Math.round(ghost.ms), s: packGhost(ghost.s) }, extra || {}));
 	}
 	async loadGhost(slot){
 		if(this.acct.kind === "guest") return null;
 		const g = this.read(`ghosts/${this.uid}/${slot}`);
 		if(!g || typeof g.s !== "string") return null;
-		try { return Object.assign({}, g, { s: JSON.parse(g.s) }); } catch { return null; }
+		const samples = unpackGhost(g.s);
+		return samples ? Object.assign({}, g, { s: samples }) : null;
 	}
 
 	read(p){
@@ -481,6 +484,16 @@ export async function connect(){
 			.catch(e => { connecting = null; throw e; });
 	}
 	return connecting;
+}
+
+// car: { name, hue, body, look } of whoever drove the lap.
+function packPublic(ghost, car){
+	return { t: Math.round(ghost.ms), s: packGhost(ghost.s), n: String(car.name).slice(0, 20), h: car.hue, b: car.body || "classic", l: car.look || null };
+}
+function unpackPublic(g){
+	if(!g || typeof g.s !== "string") return null;
+	const s = unpackGhost(g.s);
+	return s ? { ms: g.t, s, name: g.n, hue: g.h, body: g.b, look: g.l || null } : null;
 }
 
 export class Net {
@@ -674,6 +687,14 @@ export class Net {
 		return true;
 	}
 	topLaps(key, n = 10){ return this.store.top(`laps/${key}`, "t", n); }
+	myLap(key){ return this.store.get(`laps/${key}/${this.uid}`); }
+
+	// Public ghosts, so anyone can race the lap behind a leaderboard time. The database only
+	// accepts one whose time matches the record it belongs to.
+	uploadLapGhost(key, ghost, car){ return this.store.set(`lapGhosts/${key}/${this.uid}`, packPublic(ghost, car)); }
+	async lapGhost(key, uid){ return unpackPublic(await this.store.get(`lapGhosts/${key}/${uid}`)); }
+	uploadWeeklyGhost(week, ghost, car){ return this.store.set(`weeklyGhosts/${week}/${this.uid}`, packPublic(ghost, car)); }
+	async weeklyGhost(week, uid){ return unpackPublic(await this.store.get(`weeklyGhosts/${week}/${uid}`)); }
 
 	// Weekly challenge board (resets itself: each week has its own board).
 	async submitWeekly(week, ms, profile, trackKey){
@@ -711,8 +732,8 @@ export class Net {
 	resetStats(uid){ return this.store.remove("stats/" + uid); }
 	setBanned(uid, on){ return on ? this.store.set("banned/" + uid, { at: this.now() }) : this.store.remove("banned/" + uid); }
 	bannedList(){ return this.store.get("banned").then(v => v || {}); }
-	removeLap(trackKey, uid){ return this.store.remove(`laps/${trackKey}/${uid}`); }
-	removeWeekly(week, uid){ return this.store.remove(`weekly/${week}/${uid}`); }
+	async removeLap(trackKey, uid){ await this.store.remove(`lapGhosts/${trackKey}/${uid}`).catch(() => {}); return this.store.remove(`laps/${trackKey}/${uid}`); }
+	async removeWeekly(week, uid){ await this.store.remove(`weeklyGhosts/${week}/${uid}`).catch(() => {}); return this.store.remove(`weekly/${week}/${uid}`); }
 	publishMinLaps(map){ return this.store.set("config/minLap", map); }
 	liveRooms(){ return this.store.get("rooms").then(v => v || {}); }
 	closeRoom(code){ return this.store.remove("rooms/" + code); }

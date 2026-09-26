@@ -153,6 +153,20 @@ export class Hud {
 		}
 	}
 
+	// Sector boxes under the lap times: purple = best anyone has done, green = your best,
+	// yellow = slower. The sector you're in shows its running time.
+	// v: { cells: [{ ms, color } | null] x3, cur: index or -1, running: ms or null }, or null to clear.
+	setSectors(v){
+		const boxes = this.el.secBoxes || (this.el.secBoxes = [...document.querySelectorAll("#sectors .sec")].map(el => ({ el, b: el.querySelector("b") })));
+		boxes.forEach((box, i) => {
+			const cell = v && v.cells[i];
+			const live = v && !cell && v.cur === i && v.running != null;
+			setText(box.b, cell ? fmtTime(cell.ms, false) : live ? fmtTime(v.running, false) : "--.---");
+			const cls = "sec" + (cell ? " " + cell.color : live ? " live" : "");
+			if(box.el._c !== cls){ box.el._c = cls; box.el.className = cls; }
+		});
+	}
+
 	// Live delta to the ghost (time trial and the weekly challenge).
 	// d: { ms (negative = ahead) or null, has: is there a ghost, label } or null to hide.
 	setDelta(d){

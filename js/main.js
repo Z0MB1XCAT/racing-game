@@ -3,6 +3,7 @@ import { TRACKS, trackById } from "./tracks.js";
 import { buildTrack } from "./trackgen.js";
 import { makeTracker } from "./progress.js";
 import { buildWorld } from "./world.js";
+import { ghostSectors } from "./ghosts.js";
 import { makeCar, disposeCar, animateCar, BODIES } from "./cars.js";
 import { Race, COUNTDOWN, QUALI_LAPS } from "./race.js";
 import { Hud, fmtTime } from "./hud.js";
@@ -309,6 +310,7 @@ seg($("setupMode"), "race", v => {
 seg($("setupDraft"), "1", v => { S.setup.draft = v === "1"; });
 seg($("setupContact"), "soft", v => { S.setup.contact = v; });
 seg($("setupQuali"), "0", v => { S.setup.quali = v === "1"; });
+seg($("setupChase"), "mine", v => { S.setup.chase = v; });
 seg($("setupLevel"), "medium", v => { S.setup.level = v; });
 const lapStep = stepper("laps", () => S.setup.laps, v => { S.setup.laps = v; }, () => 1, () => 20);
 const botStep = stepper("bots", () => S.setup.bots, v => { S.setup.bots = v; }, () => S.setup.gameMode === "elim" ? 1 : 0, () => MAX_CARS - 1);
@@ -416,7 +418,16 @@ function startSolo(){
 		startChampRound();
 		return;
 	}
-	const mode = st.mode === "trial" ? "trial" : st.gameMode;
+	if(st.mode === "trial"){
+		if(st.chase === "record" && onlineAvailable()){
+			const key = trackKey(def, st.reverse);
+			connect().then(net => net.topLaps(key, 1).then(top => top[0] && top[0].id !== net.uid ? net.lapGhost(key, top[0].id) : null))
+				.then(g => { if(!g) toastOnScreen("You hold this record, or there's no ghost for it yet: racing your own ghost."); startTrial(def, st.reverse, { rival: g }); })
+				.catch(() => startTrial(def, st.reverse));
+		}else startTrial(def, st.reverse);
+		return;
+	}
+	const mode = st.gameMode;
 	const race = grid => beginRace({
 		source: "solo", def, reverse: st.reverse, mode, laps: mode === "elim" ? 99 : st.laps,
 		entrants: grid ? grid.map(id => entrants.find(e => e.id === id)).filter(Boolean) : entrants, myId: "me", draft: mode !== "trial" && st.draft, contact: st.contact,
@@ -449,16 +460,58 @@ function startChampRound(qualiGrid){
 }
 
 // Weekly challenge: a time trial on this week's track.
-function startChallenge(){
+function startChallenge(rival){
 	const wk = weeklyChallenge();
+	startTrial(wk.def, wk.reverse, { weekly: wk.id, rival });
+}
+// Time trial, optionally the weekly challenge (opts.weekly) and optionally chasing someone
+// else's ghost (opts.rival: { name, hue, body, look, ms, s }).
+function startTrial(def, reverse, opts = {}){
 	S.setup.mode = "trial";
 	beginRace({
-		source: "solo", def: wk.def, reverse: wk.reverse, mode: "trial", laps: 1,
+		source: "solo", def, reverse, mode: "trial", laps: 1,
 		entrants: [{ id: "me", name: driverName(), hue: S.profile.hue, body: S.profile.body, look: S.profile.look, local: true }], myId: "me", draft: false,
-		startAt: soloNow() + 700 + COUNTDOWN, authority: true, restart: startChallenge, weekly: wk.id
+		startAt: soloNow() + 700 + COUNTDOWN, authority: true, weekly: opts.weekly, rival: opts.rival || null,
+		restart: () => startTrial(def, reverse, opts)
 	});
 }
+// Download someone's ghost and race it. kind: "lap" (key) or "weekly".
+async function raceGhostOf(kind, uid, def, reverse){
+	if(!onlineAvailable()) return;
+	audio.unlock(); requestTilt();
+	hud.toast("Loading ghost…", 1500);
+	try {
+		const net = await connect();
+		const wk = weeklyChallenge();
+		const g = await (kind === "weekly" ? net.weeklyGhost(wk.id, uid) : net.lapGhost(trackKey(def, reverse), uid));
+		if(!g){ toastOnScreen("That lap doesn't have a ghost yet. It appears once they set a new best."); return; }
+		if(kind === "weekly") startChallenge(g);
+		else startTrial(def, reverse, { rival: g });
+	} catch(e){ toastOnScreen("Couldn't load that ghost. Check your connection."); }
+}
+function toastOnScreen(text){
+	if(S.race) hud.toast(text, 2600);
+	else { const el = $("menuToast"); el.textContent = text; el.hidden = false; clearTimeout(el._t); el._t = setTimeout(() => { el.hidden = true; }, 3200); }
+}
 function soloNow(){ return performance.now() - S.pausedTotal; }
+
+// Sector colours in time trial: green against your best sectors ever, purple against the
+// best anyone has done that we know of (your ghost, the ghost you're racing, the record holder).
+function setupSectorRef(race, key, path){
+	const pb = (store.getSectors(key) || [null, null, null]).map(v => v ?? Infinity);
+	const own = ghostSectors(race.ghostData, path);
+	if(own) own.forEach((v, i) => { pb[i] = Math.min(pb[i], v); });
+	const purple = pb.slice();
+	const riv = race.rival && ghostSectors(race.rival, path);
+	if(riv) riv.forEach((v, i) => { purple[i] = Math.min(purple[i], v); });
+	race.sectorRef = { pb, purple };
+	if(!onlineAvailable() || key.startsWith("custom")) return;
+	connect().then(net => net.topLaps(key, 1).then(top => top[0] && top[0].id !== net.uid ? net.lapGhost(key, top[0].id) : null))
+		.then(g => {
+			const rs = g && ghostSectors(g, path);
+			if(rs && S.race === race) rs.forEach((v, i) => { race.sectorRef.purple[i] = Math.min(race.sectorRef.purple[i], v); });
+		}).catch(() => {});
+}
 
 // Ghost laps follow an account between computers. On starting a time trial, use the
 // account's ghost if it's faster than this computer's, and upload this one if it's faster.
@@ -476,6 +529,8 @@ function syncGhostFromAccount(race, key, week){
 		if(g && (!local || g.ms < local.ms)){
 			if(S.race !== race) return;
 			race.ghostData = { ms: g.ms, s: g.s };
+			const gs = S.tracker && ghostSectors(race.ghostData, S.tracker.path);
+			if(gs && race.sectorRef) gs.forEach((v, i) => { race.sectorRef.pb[i] = Math.min(race.sectorRef.pb[i], v); race.sectorRef.purple[i] = Math.min(race.sectorRef.purple[i], v); });
 			if(week){
 				store.setWeeklyGhost(week, g);
 				const wb = store.getBest("weekly:" + week);
@@ -508,11 +563,15 @@ function beginRace(opts){
 		scene, track: entry.track, tracker: entry.tracker, laps: opts.laps, mode: opts.mode,
 		entrants: opts.entrants, myId: opts.myId, startAt: opts.startAt, authority: opts.authority,
 		now: opts.source === "online" ? () => S.net.now() : soloNow,
-		net: opts.source === "online" ? S.net : null, ghost, draft: opts.draft !== false, contact: opts.contact,
+		net: opts.source === "online" ? S.net : null, ghost, rival: opts.rival || null, draft: opts.draft !== false, contact: opts.contact,
 		onEvent: (t, d) => onRaceEvent(t, d)
 	});
 	S.race.key = key;
-	if(opts.mode === "trial") syncGhostFromAccount(S.race, key, opts.weekly);
+	if(opts.mode === "trial"){
+		syncGhostFromAccount(S.race, key, opts.weekly);
+		setupSectorRef(S.race, key, entry.tracker.path);
+		shareOldGhost(key, opts.weekly);
+	}
 	S.showcase.visible = false;
 	fx.clear();
 	for(const c of S.race.cars){
@@ -525,6 +584,15 @@ function beginRace(opts){
 		if(garage && garage.crown && c.id === garage.crown) el.lastElementChild.insertAdjacentHTML("afterbegin", CROWN_SVG);
 		$("labels").appendChild(el);
 		c.label = el;
+	}
+	if(S.race.rivalModel){
+		const el = document.createElement("div");
+		el.className = "label ghost-label";
+		el.style.setProperty("--c", `hsl(${S.race.rival.hue ?? 0},100%,55%)`);
+		el.innerHTML = `<b>Ghost</b><span></span>`;
+		el.lastElementChild.textContent = cleanName(S.race.rival.name || "Rival");
+		$("labels").appendChild(el);
+		S.race.rivalLabel = el;
 	}
 	document.querySelectorAll("[data-screen]").forEach(s => { s.hidden = true; });
 	S.screen = "race";
@@ -543,6 +611,7 @@ function beginRace(opts){
 function endRace(keepTrack){
 	clearInterval(S.qualiTimer);
 	hud.setDelta(null);
+	hud.setSectors(null);
 	stopTv();
 	S.replay = null;
 	if(S.race){ S.race.dispose(); S.race = null; }
@@ -606,16 +675,24 @@ function onRaceEvent(type, d){
 				isRecord = prevBest == null || d.ms < prevBest;
 				if(isRecord){
 					store.setBest(key, d.ms);
-					if(r.lastLap){ store.setGhost(key, r.lastLap); saveGhostToAccount("best-" + key, r.lastLap); }
-					submitRecord(key, d.ms);
+					submitRecord(key, d.ms, r.lastLap);
+				}
+				// The ghost is kept apart from the best time. Older versions could save a best time
+				// with no ghost behind it, so save one whenever this lap beats the ghost we have.
+				const had = store.getGhost(key);
+				if(r.lastLap && (!had || d.ms < had.ms)){
+					if(!store.setGhost(key, r.lastLap)) hud.toast("This browser won't let the game save your ghost", 2600);
+					saveGhostToAccount("best-" + key, r.lastLap);
 				}
 				if(isRecord && TRACKS.every(t => store.getBest(trackKey(t, false)) != null)) garageNote(garage.afterSolo(["allTracks"]), true);
 				const wk = weeklyChallenge();
 				if(S.ctx.def.id === wk.def.id && !!S.ctx.reverse === wk.reverse){
 					const wkKey = "weekly:" + wk.id, prev = store.getBest(wkKey);
-					if(prev == null || d.ms < prev){
-						store.setBest(wkKey, d.ms); submitWeekly(wk.id, d.ms, key); if(!isRecord) weeklyBest = true;
-						if(r.lastLap){ store.setWeeklyGhost(wk.id, r.lastLap); saveGhostToAccount("weekly", r.lastLap, { week: wk.id }); }
+					if(prev == null || d.ms < prev){ store.setBest(wkKey, d.ms); submitWeekly(wk.id, d.ms, key, r.lastLap); if(!isRecord) weeklyBest = true; }
+					const wg = store.getWeeklyGhost(wk.id);
+					if(r.lastLap && (!wg || d.ms < wg.ms)){
+						store.setWeeklyGhost(wk.id, r.lastLap);
+						saveGhostToAccount("weekly", r.lastLap, { week: wk.id });
 					}
 				}
 			}
@@ -635,6 +712,12 @@ function onRaceEvent(type, d){
 				const pos = r.standings().findIndex(s => s.car === d.car) + 1;
 				hud.banner(d.ms != null ? "Qualified P" + pos : "No time set", d.ms != null ? fmtTime(d.ms) : "", "finish", 3000);
 				audio.sfx.finish(d.ms != null && pos === 1 ? 2 : 0);
+			}
+			break;
+		case "sector":
+			if(r.mode === "trial" && d.car.me){
+				const pb = store.getSectors(r.key) || [null, null, null];
+				if(pb[d.idx] == null || d.ms < pb[d.idx]){ pb[d.idx] = Math.round(d.ms); store.setSectors(r.key, pb); }
 			}
 			break;
 		case "finalLap":
@@ -682,16 +765,37 @@ function lapFloor(key){
 	const entry = trackCache.get(key);
 	return entry ? minLapMs(entry) : 0;
 }
-async function submitWeekly(week, ms, key){
+// The car a public ghost is shown as.
+function myGhostCar(){ return { name: driverName(), hue: S.profile.hue, body: S.profile.body, look: S.profile.look }; }
+async function submitWeekly(week, ms, key, ghost){
 	if(!onlineAvailable() || ms < lapFloor(key)) return;
-	try { await (await connect()).submitWeekly(week, ms, { name: driverName(), hue: S.profile.hue }, key); } catch {}
+	try {
+		const net = await connect();
+		const ok = await net.submitWeekly(week, ms, { name: driverName(), hue: S.profile.hue }, key);
+		if(ok && ghost && Math.round(ghost.ms) === Math.round(ms)) await net.uploadWeeklyGhost(week, ghost, myGhostCar());
+	} catch(e){ console.warn("Weekly lap not sent", e); }
 }
 
-async function submitRecord(key, ms){
+async function submitRecord(key, ms, ghost){
 	if(!onlineAvailable() || key.startsWith("custom") || ms < lapFloor(key)) return;
 	try {
 		const net = await connect();
-		await net.submitLap(key, ms, { name: driverName(), hue: S.profile.hue });
+		const ok = await net.submitLap(key, ms, { name: driverName(), hue: S.profile.hue });
+		if(ok && ghost && Math.round(ghost.ms) === Math.round(ms)) await net.uploadLapGhost(key, ghost, myGhostCar());
+	} catch(e){ console.warn("Lap record not sent", e); }
+}
+// Records set before public ghosts existed: upload the ghost if it's the lap on the board.
+async function shareOldGhost(key, week){
+	if(!onlineAvailable() || key.startsWith("custom")) return;
+	try {
+		const net = await connect();
+		const local = week ? store.getWeeklyGhost(week) : store.getGhost(key);
+		if(!local) return;
+		const rec = await (week ? net.store.get(`weekly/${week}/${net.uid}`) : net.myLap(key));
+		if(!rec || rec.t !== Math.round(local.ms)) return;
+		const pub = await (week ? net.weeklyGhost(week, net.uid) : net.lapGhost(key, net.uid));
+		if(pub && pub.ms === rec.t) return;
+		await (week ? net.uploadWeeklyGhost(week, local, myGhostCar()) : net.uploadLapGhost(key, local, myGhostCar()));
 	} catch {}
 }
 
@@ -1155,6 +1259,16 @@ function updateLabels(standings, focus){
 		const p = place.has(c) ? "P" + place.get(c) : "";
 		if(el._p !== p){ el._p = p; el.firstElementChild.textContent = p; }
 	}
+	const rm = r.rivalModel, rl = r.rivalLabel;
+	if(rm && rl){
+		proj.set(rm.position.x, 2.1, rm.position.z);
+		const dist = proj.distanceTo(camera.position);
+		proj.project(camera);
+		if(!rm.visible || proj.z > 1 || dist > 140 || Math.abs(proj.x) > 1.1 || Math.abs(proj.y) > 1.1){ rl.style.display = "none"; return; }
+		rl.style.display = "";
+		const x = (proj.x + 1) / 2 * innerWidth, y = (1 - proj.y) / 2 * innerHeight;
+		rl.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) translate(-50%, -100%) scale(${Math.max(0.55, Math.min(1.1, 22 / dist)).toFixed(2)})`;
+	}
 }
 
 // ---------- Main loop ----------
@@ -1251,7 +1365,8 @@ function frame(now){
 				pos: standings.findIndex(s => s.car === focus) + 1, of: standings.filter(s => !s.car.gone).length
 			});
 			hud.setTower(standings, focus.id);
-			hud.setDelta(r.mode === "trial" && focus.me ? { ms: r.liveDelta(), has: !!r.ghostData, label: S.ctx && S.ctx.weekly ? "vs your week best" : "vs your best" } : null);
+			hud.setDelta(r.mode === "trial" && focus.me ? { ms: r.liveDelta(), has: !!(r.rival || r.ghostData), label: r.rival ? "vs " + cleanName(r.rival.name || "rival") : S.ctx && S.ctx.weekly ? "vs your week best" : "vs your best" } : null);
+			hud.setSectors(r.sectorView(focus));
 		}
 		hud.drawMinimap(r.cars, focus);
 		updateLabels(standings, focus);
@@ -1608,6 +1723,21 @@ function whenAgo(ts){
 	if(d < 14) return Math.floor(d) + " days ago";
 	return new Date(ts).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
+// A "Race ghost" button on other people's leaderboard laps.
+const ghostCell = r => `<td class="ghost-cell">${r.id && !r.me ? `<button class="ghost-btn" data-uid="${escapeHtml(r.id)}" aria-label="Race ${escapeHtml(cleanName(r.n, r.id))}'s ghost">Race ghost</button>` : ""}</td>`;
+$("lapBody").addEventListener("click", e => {
+	const b = e.target.closest(".ghost-btn");
+	if(!b) return;
+	audio.sfx.click();
+	const def = trackById(boards.trackId) || TRACKS[1];
+	raceGhostOf("lap", b.dataset.uid, def, !!boards.reverse && !def.code);
+});
+$("wkBody").addEventListener("click", e => {
+	const b = e.target.closest(".ghost-btn");
+	if(!b) return;
+	audio.sfx.click();
+	raceGhostOf("weekly", b.dataset.uid);
+});
 const emptyRow = (cols, text) => `<tr class="empty"><td colspan="${cols}">${text}</td></tr>`;
 const driverCell = (n, h, me, id) => `<td class="name"><i style="background:hsl(${h},100%,55%)"></i>${garage && id && garage.crown === id ? CROWN_SVG : ""}${escapeHtml(cleanName(n, id))}${me ? " (you)" : ""}</td>`;
 
@@ -1657,11 +1787,11 @@ async function loadLaps(){
 	const body = $("lapBody");
 	const mine = store.getBest(key);
 	let rows = [];
-	body.innerHTML = emptyRow(5, "Loading lap records…");
+	body.innerHTML = emptyRow(6, "Loading lap records…");
 	if(onlineAvailable()){
 		try {
 			const net = await connect();
-			rows = (await net.topLaps(key, 20)).map(r => ({ n: r.n, h: r.h, t: r.t, at: r.at, me: r.id === net.uid }));
+			rows = (await net.topLaps(key, 20)).map(r => ({ id: r.id, n: r.n, h: r.h, t: r.t, at: r.at, me: r.id === net.uid }));
 		} catch {}
 	}
 	if(token !== boards.token) return;
@@ -1671,8 +1801,8 @@ async function loadLaps(){
 		<td class="pos">${i + 1}</td>${driverCell(r.n, r.h, r.me, r.id)}
 		<td class="num ${i ? "" : "hl"}">${fmtTime(r.t)}</td>
 		<td class="dim">${i ? "+" + ((r.t - first) / 1000).toFixed(3) : ""}</td>
-		<td class="dim">${whenAgo(r.at)}</td></tr>`).join("")
-		: emptyRow(5, "No laps set here yet. Be the first.");
+		<td class="dim">${whenAgo(r.at)}</td>${ghostCell(r)}</tr>`).join("")
+		: emptyRow(6, "No laps set here yet. Be the first.");
 }
 
 // ---------- Weekly challenge ----------
@@ -1695,6 +1825,17 @@ async function loadWeeklyCard(){
 	} catch {}
 }
 $("weeklyGo").addEventListener("click", () => { audio.unlock(); requestTilt(); startChallenge(); });
+$("weeklyRival").addEventListener("click", async () => {
+	audio.sfx.click();
+	if(!onlineAvailable()) return;
+	try {
+		const net = await connect();
+		const top = await net.topWeekly(weeklyChallenge().id, 1);
+		if(!top[0]) return toastOnScreen("Nobody has set a time this week yet. Be the first.");
+		if(top[0].id === net.uid) return toastOnScreen("You're leading this week! Racing your own ghost.") || startChallenge();
+		raceGhostOf("weekly", top[0].id);
+	} catch { toastOnScreen("Couldn't load the leader's ghost. Check your connection."); }
+});
 $("wkGo").addEventListener("click", () => { audio.unlock(); requestTilt(); startChallenge(); });
 
 async function loadWeeklyBoard(){
@@ -1708,11 +1849,11 @@ async function loadWeeklyBoard(){
 	const body = $("wkBody");
 	const mine = store.getBest("weekly:" + wk.id);
 	if(!onlineAvailable()){
-		body.innerHTML = mine ? `<tr class="me first"><td class="pos">1</td>${driverCell(driverName(), S.profile.hue, true)}<td class="num hl">${fmtTime(mine)}</td><td></td><td></td></tr>` : emptyRow(5, "No laps yet this week.");
+		body.innerHTML = mine ? `<tr class="me first"><td class="pos">1</td>${driverCell(driverName(), S.profile.hue, true)}<td class="num hl">${fmtTime(mine)}</td><td></td><td></td><td></td></tr>` : emptyRow(6, "No laps yet this week.");
 		$("wkLastBoard").innerHTML = "";
 		return;
 	}
-	body.innerHTML = emptyRow(5, "Loading…");
+	body.innerHTML = emptyRow(6, "Loading…");
 	try {
 		const net = await connect();
 		const [rows, last] = await Promise.all([net.topWeekly(wk.id, 20), net.topWeekly(prev.id, 3)]);
@@ -1721,10 +1862,10 @@ async function loadWeeklyBoard(){
 		body.innerHTML = rows.length ? rows.map((r, i) => `<tr class="${r.id === net.uid ? "me" : ""} ${i ? "" : "first"}">
 			<td class="pos">${i + 1}</td>${driverCell(r.n, r.h, r.id === net.uid, r.id)}
 			<td class="num ${i ? "" : "hl"}">${fmtTime(r.t)}</td><td class="dim">${i ? "+" + ((r.t - first) / 1000).toFixed(3) : ""}</td>
-			<td class="dim">${whenAgo(r.at)}</td></tr>`).join("") : emptyRow(5, "No laps yet this week. Be the first.");
+			<td class="dim">${whenAgo(r.at)}</td>${ghostCell({ id: r.id, n: r.n, me: r.id === net.uid })}</tr>`).join("") : emptyRow(6, "No laps yet this week. Be the first.");
 		$("wkLastBoard").innerHTML = last.length ? boardRows(last, net.uid) : `<li class="empty">Nobody raced it.</li>`;
 	} catch {
-		if(token === boards.token) body.innerHTML = emptyRow(5, "Couldn't load the board. Check your connection.");
+		if(token === boards.token) body.innerHTML = emptyRow(6, "Couldn't load the board. Check your connection.");
 	}
 }
 
