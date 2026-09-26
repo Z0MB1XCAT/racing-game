@@ -645,6 +645,10 @@ kbd{ font-family: var(--f-display); font-weight: 700; font-size: 13px; padding: 
 }
 
 /* Hwb account extras */
+.acct-card.linked { align-items: flex-start; }
+.acct-card.linked div { display: grid; gap: 2px; min-width: 0; }
+.acct-card.linked b { overflow-wrap: anywhere; }
+.acct-card.linked small { color: var(--mute); font-family: var(--f-body, inherit); font-size: 13px; line-height: 1.5; }
 .link-btn{ align-self: flex-start; background: none; border: 0; padding: 0; color: var(--mute); font-size: 13px; text-decoration: underline; cursor: pointer; }
 .link-btn:hover{ color: var(--chalk); }
 .verify-box{ display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-left: 4px solid #ffcf5c; background: rgba(255,207,92,.08); }

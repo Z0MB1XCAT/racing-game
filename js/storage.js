@@ -22,12 +22,18 @@ export function save(key, value){
 
 export const defaults = {
 	profile: { name: "", hue: Math.floor(Math.random() * 360), body: "classic" },
-	settings: { quality: "auto", camera: "classic", volume: 0.7, engine: true, shake: true, fps: false, touch: "tilt" }
+	settings: { quality: "auto", camera: "classic", volume: 0.7, music: 0.5, sfx: 0.8, engineVol: 0.8, raceMusic: true, shake: true, fps: false, touch: "tilt" }
 };
 
 export function getProfile(){ return Object.assign({}, defaults.profile, load("profile", {})); }
 export function setProfile(p){ save("profile", p); }
-export function getSettings(){ return Object.assign({}, defaults.settings, load("settings", {})); }
+export function getSettings(){
+	const saved = load("settings", {});
+	// Older saves had an on/off engine switch.
+	if(saved.engine === false && saved.engineVol == null) saved.engineVol = 0;
+	delete saved.engine;
+	return Object.assign({}, defaults.settings, saved);
+}
 export function setSettings(s){ save("settings", s); }
 
 // Personal bests and ghost laps, per track key (track id + "-rev" when reversed).

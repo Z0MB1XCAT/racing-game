@@ -25,6 +25,7 @@ export class Race {
 			net: opts.net || null, onEvent: opts.onEvent || (() => {})
 		});
 		this.draft = opts.draft !== false && opts.mode !== "quali";
+		this.contact = opts.contact === "classic" ? "classic" : "soft";
 		this.qualiLimit = opts.qualiLimit || null;
 		this.tracker = opts.tracker || makeTracker(this.track);
 		this.lapLen = this.tracker.path ? this.tracker.path.len : 500;
@@ -106,7 +107,7 @@ export class Race {
 		if(this.draft) applySlipstream(active, warp);
 		const hit = (type, car, strength, other) => this.onHit(type, car, strength, other);
 		if(this.mode === "quali") for(const c of active) phys.stepCars([c], this.track.walls, this.track.lines, this.track.oob, warp, hit);
-		else phys.stepCars(active, this.track.walls, this.track.lines, this.track.oob, warp, hit);
+		else phys.stepCars(active, this.track.walls, this.track.lines, this.track.oob, warp, hit, this.contact);
 
 		active.forEach((c, k) => {
 			this.tracker.update(c);

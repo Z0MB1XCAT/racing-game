@@ -373,6 +373,65 @@ if(flow === "account"){
 	await shot(a, "title-weekly");
 }
 
+// BVS number and Hwb email on the same account, linked from either side.
+if(flow === "link"){
+	const a = await open(base + "?localnet");
+	await wait(800);
+	const fill = (sel, v) => a.evaluate((s, x) => { document.querySelector(s).value = x; }, sel, v);
+	const msg = () => a.$eval("#acctErr", e => e.textContent);
+	const who = () => a.$eval("#acctText", e => e.textContent);
+	const relog = async (sel) => { await Promise.all([a.waitForNavigation({ waitUntil: "networkidle0" }).catch(() => {}), click(a, sel)]); await wait(900); };
+	const signOut = async () => { await click(a, "#acctBtn"); await wait(300); await relog("#acctSignOut"); await click(a, "#acctBtn"); await wait(300); };
+
+	// 1) BVS account adds an Hwb email.
+	await click(a, "#acctBtn"); await wait(300);
+	await fill("#bvsId", "bvs-22222"); await fill("#bvsPw", "racecar1");
+	await click(a, "#bvsCreate"); await wait(900);
+	console.log("link box shown for BVS:", await a.$eval("#linkBox", e => !e.hidden), "|", await a.$eval("#linkTitle", e => e.textContent));
+	await shot(a, "link-form");
+	await fill("#linkId", "kid@hwbcymru.net"); await fill("#linkPw", "wrongpw");
+	await click(a, "#linkGo"); await wait(1200);
+	console.log("wrong password:", await msg());
+	await fill("#linkPw", "racecar1");
+	await click(a, "#linkGo"); await wait(2500);
+	console.log("linked:", await msg(), "|", await a.$eval("#linkedLabel", e => e.textContent));
+	await shot(a, "link-done");
+	await signOut();
+	await fill("#bvsId", "bvs-22222"); await fill("#bvsPw", "nope123");
+	await click(a, "#bvsLogin"); await wait(1500);
+	console.log("BVS wrong pw:", await msg());
+	await fill("#bvsPw", "racecar1");
+	await relog("#bvsLogin");
+	console.log("BVS login after link:", await who());
+	await signOut();
+	await fill("#hwbEmail", "kid@hwbcymru.net"); await fill("#hwbPw", "racecar1");
+	await relog("#hwbLogin");
+	console.log("Hwb login after link:", await who());
+	await signOut();
+
+	// 2) Hwb account adds a BVS number (and can't take one that's in use).
+	await fill("#hwbEmail", "other@hwbmail.net"); await fill("#hwbPw", "pitstop9");
+	await click(a, "#hwbCreate"); await wait(900);
+	console.log("link box shown for Hwb:", await a.$eval("#linkTitle", e => e.textContent));
+	await fill("#linkId", "bvs-22222"); await fill("#linkPw", "pitstop9");
+	await click(a, "#linkGo"); await wait(1500);
+	console.log("taken number:", await msg());
+	await fill("#linkId", "BVS-33333");
+	await click(a, "#linkGo"); await wait(1500);
+	console.log("linked:", await msg());
+	await signOut();
+	await fill("#bvsId", "bvs-33333"); await fill("#bvsPw", "pitstop9");
+	await relog("#bvsLogin");
+	console.log("BVS login to Hwb account:", await who());
+	await click(a, "#acctBtn"); await wait(800);
+	await shot(a, "link-card");
+	// 3) A new BVS account can't take a linked number.
+	await signOut();
+	await fill("#bvsId", "bvs-33333"); await fill("#bvsPw", "whatever1");
+	await click(a, "#bvsCreate"); await wait(800);
+	console.log("create on linked number:", await msg());
+}
+
 if(flow === "editor"){
 	const page = await open(base + "editor/", 1440, 860);
 	const { CLASSIC_CODE } = await import("../js/tracks.js");
@@ -429,7 +488,7 @@ if(flow === "online"){
 		return r ? { cars: r.cars.map(c => [c.name, c.local, +c.data.x.toFixed(1), +c.data.y.toFixed(1)]), phase: r.phase } : null;
 	})));
 	console.log(JSON.stringify(info));
-	for(let i = 0; i < 90; i++){
+	for(let i = 0; i < 150; i++){
 		const s = await host.evaluate(() => window.__game.screen);
 		if(s === "results") break;
 		await wait(1000);

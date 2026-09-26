@@ -12,6 +12,9 @@
 //
 // tools/physics-equivalence.mjs runs this against the original code and checks
 // the results match exactly.
+//
+// One optional addition: `contact = "soft"` swaps the car-to-car collision for a
+// gentler one (see softContact). Left out, everything is the original.
 
 const THREE = globalThis.THREE;
 
@@ -120,7 +123,8 @@ export function clampSteer(steer){
 // One physics tick for every car. `cars` are {data, pos}; `walls` and `lines`
 // come from the track; `oob` is the out-of-bounds radius.
 // `hit(type, car, strength, other)` is called on collisions, only for sound and effects.
-export function stepCars(cars, walls, lines, oob, warp, hit){
+export function stepCars(cars, walls, lines, oob, warp, hit, contact){
+	const soft = contact === "soft";
 	for(let n = 0; n < cars.length; n++){
 		const play = cars[n];
 		const d = play.data;
@@ -215,6 +219,10 @@ export function stepCars(cars, walls, lines, oob, warp, hit){
 
 		for(let m = 0; m < cars.length; m++){
 			const ply = cars[m];
+			if(soft && play != ply && play.pos.distanceTo(ply.pos) < 2){
+				softContact(play, ply, hit);
+				continue;
+			}
 			if(play != ply && play.pos.distanceTo(ply.pos) < 2){
 				const e = ply.data;
 				const temp = new THREE.Vector2(d.xv, d.yv);
@@ -251,5 +259,34 @@ export function stepCars(cars, walls, lines, oob, warp, hit){
 			d.x = 0;
 			d.y = 0;
 		}
+	}
+}
+
+// The original collision adds 1.1x the whole difference in speed to both cars,
+// sideways part included, so a light rub flings them apart. This one only pushes
+// along the line between the cars, only when they're closing, and loses most of
+// that energy: rubbing is a nudge, a hard hit still knocks you off line.
+export const SOFT_RESTITUTION = 0.3;
+export const SOFT_FRICTION = 0.08;
+function softContact(play, ply, hit){
+	const d = play.data, e = ply.data;
+	let nx = d.x - e.x, nz = d.y - e.y;
+	let len = Math.hypot(nx, nz);
+	if(len < 1e-6){ nx = Math.cos(d.dir); nz = -Math.sin(d.dir); len = 1; }
+	nx /= len; nz /= len;
+	const rx = d.xv - e.xv, rz = d.yv - e.yv;
+	const closing = rx * nx + rz * nz;
+	if(closing < 0){
+		const j = -(1 + SOFT_RESTITUTION) * closing / 2;
+		const tx = (rx - closing * nx) * SOFT_FRICTION / 2, tz = (rz - closing * nz) * SOFT_FRICTION / 2;
+		d.xv += j * nx - tx; d.yv += j * nz - tz;
+		e.xv -= j * nx - tx; e.yv -= j * nz - tz;
+		if(hit && closing < -0.004) hit("car", play, -closing * 1.6, ply);
+	}
+	// Share the overlap between both cars instead of skipping one along its velocity.
+	if(len < 2){
+		const push = (2 - len) / 2;
+		d.x += nx * push; d.y += nz * push;
+		e.x -= nx * push; e.y -= nz * push;
 	}
 }

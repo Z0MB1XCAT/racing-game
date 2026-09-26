@@ -172,6 +172,13 @@
 							<button data-v="0" aria-checked="false">Off</button>
 						</div>
 					</div>
+					<div class="opt-row" data-for="bots">
+						<span class="opt-label">Car contact</span>
+						<div class="seg" id="setupContact" role="radiogroup" aria-label="Car contact" title="How hard cars bounce off each other">
+							<button data-v="soft" aria-checked="true">Soft</button>
+							<button data-v="classic" aria-checked="false">Original</button>
+						</div>
+					</div>
 					<div class="opt-row">
 						<span class="opt-label">Direction</span>
 						<div class="seg" id="setupDir" role="radiogroup" aria-label="Direction">
@@ -268,6 +275,13 @@
 						<div class="seg" id="lobbyDraft" role="radiogroup" aria-label="Slipstream">
 							<button data-v="1" aria-checked="true">On</button>
 							<button data-v="0" aria-checked="false">Off</button>
+						</div>
+					</div>
+					<div class="opt-row">
+						<span class="opt-label">Car contact</span>
+						<div class="seg" id="lobbyContact" role="radiogroup" aria-label="Car contact" title="How hard cars bounce off each other">
+							<button data-v="soft" aria-checked="true">Soft</button>
+							<button data-v="classic" aria-checked="false">Original</button>
 						</div>
 					</div>
 					<div class="opt-row">
@@ -548,8 +562,11 @@
 			<div class="opt-row"><span class="opt-label">Camera</span>
 				<div class="seg" id="setCamera" role="radiogroup" aria-label="Camera"><button data-v="classic">Classic</button><button data-v="far">Far</button><button data-v="hood">Bonnet</button></div></div>
 			<div class="opt-row"><label for="setVolume">Volume</label><input class="range" id="setVolume" type="range" min="0" max="1" step="0.05"></div>
-			<div class="opt-row"><span class="opt-label">Engine sound</span>
-				<div class="seg" id="setEngine" role="radiogroup" aria-label="Engine sound"><button data-v="1">On</button><button data-v="0">Off</button></div></div>
+			<div class="opt-row"><label for="setEngineVol">Engines</label><input class="range" id="setEngineVol" type="range" min="0" max="1" step="0.05"></div>
+			<div class="opt-row"><label for="setSfx">Effects</label><input class="range" id="setSfx" type="range" min="0" max="1" step="0.05"></div>
+			<div class="opt-row"><label for="setMusic">Music</label><input class="range" id="setMusic" type="range" min="0" max="1" step="0.05"></div>
+			<div class="opt-row"><span class="opt-label">Music in races</span>
+				<div class="seg" id="setRaceMusic" role="radiogroup" aria-label="Music in races"><button data-v="1">On</button><button data-v="0">Off</button></div></div>
 			<div class="opt-row"><span class="opt-label">Camera shake</span>
 				<div class="seg" id="setShake" role="radiogroup" aria-label="Camera shake"><button data-v="1">On</button><button data-v="0">Off</button></div></div>
 			<div class="opt-row"><span class="opt-label">Phone steering</span>
@@ -573,6 +590,23 @@
 						<button class="go-btn ghost" id="verifyResend"><span>Send it again</span></button>
 					</div>
 				</div>
+				<div class="acct-card linked" id="linkedCard" hidden>
+					<span class="tag">Linked</span>
+					<div><b id="linkedLabel"></b><small id="linkedNote"></small></div>
+				</div>
+				<section class="acct-option" id="linkBox" hidden>
+					<h3 id="linkTitle">Add your Hwb email</h3>
+					<p class="opt-help" id="linkHelp"></p>
+					<div class="field">
+						<label class="eyebrow" for="linkId" id="linkIdLabel">Hwb email</label>
+						<input id="linkId" class="text-input" spellcheck="false" autocapitalize="off" autocomplete="off">
+					</div>
+					<div class="field">
+						<label class="eyebrow" for="linkPw">Your password for this game</label>
+						<input id="linkPw" class="text-input" type="password" autocomplete="current-password" placeholder="The one you log in with now">
+					</div>
+					<button class="go-btn" id="linkGo"><span>Link accounts</span></button>
+				</section>
 				<button class="go-btn ghost" id="acctSignOut"><span>Sign out</span></button>
 			</div>
 			<div id="acctForms" class="stack">
@@ -590,7 +624,7 @@
 						<button class="go-btn" id="bvsCreate"><span>Create account</span></button>
 						<button class="go-btn ghost" id="bvsLogin"><span>Log in</span></button>
 					</div>
-					<p class="opt-help">Your BVS number is only used to log in; other players see your driver name. There's no password reset, so pick one you'll remember.</p>
+					<p class="opt-help">Your BVS number is only used to log in; other players see your driver name. Once you're in, you can link your Hwb email so a forgotten password can be reset.</p>
 				</section>
 				<section class="acct-option" id="hwbOption">
 					<h3>Hwb account</h3>

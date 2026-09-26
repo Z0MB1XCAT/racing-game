@@ -52,6 +52,21 @@
       }
     },
 
+    "bvsLinks": {
+      "$bvs": {
+        ".read": "auth != null",
+        ".write": "auth != null && (data.exists() ? data.child('uid').val() === auth.uid : (auth.token.email === $bvs + '@bvs.invalid' || (auth.token.email_verified === true && !auth.token.email.endsWith('@bvs.invalid'))))",
+        ".validate": "$bvs.matches(/^bvs-[0-9]{3,8}$/) && newData.hasChildren(['uid', 'iv', 'ct']) && newData.child('uid').val() === auth.uid && newData.child('iv').isString() && newData.child('ct').isString() && newData.child('ct').val().length < 400"
+      }
+    },
+
+    "private": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
     "weekly": {
       "$week": {
         ".read": "auth != null",

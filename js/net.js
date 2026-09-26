@@ -22,6 +22,31 @@ export function normaliseHwb(email){
 // Links in verification and reset emails bring people back to the game.
 const backToGame = () => ({ url: location.origin + location.pathname });
 
+// Linked BVS + Hwb: the account's real login is the Hwb email. bvsLinks/{bvs-number}
+// points at it, with the email locked by the account's password (PBKDF2 + AES-GCM),
+// so a BVS number can be used to log in without anyone being able to look up
+// which Hwb email belongs to which number.
+const te = new TextEncoder();
+const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function linkKey(id, pw){
+	const base = await crypto.subtle.importKey("raw", te.encode(pw), "PBKDF2", false, ["deriveKey"]);
+	return crypto.subtle.deriveKey({ name: "PBKDF2", salt: te.encode("orl-link:" + id), iterations: 150000, hash: "SHA-256" },
+		base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+async function sealEmail(id, email, pw){
+	const iv = crypto.getRandomValues(new Uint8Array(12));
+	const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await linkKey(id, pw), te.encode(email));
+	return { iv: b64(iv), ct: b64(ct) };
+}
+// The Hwb email, or null if the password doesn't open it.
+async function openEmail(id, link, pw){
+	try { return new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(link.iv) }, await linkKey(id, pw), unb64(link.ct))); }
+	catch { return null; }
+}
+const staleLinkMsg = id => `That password doesn't match ${id}. If you changed your password, log in once with your Hwb email (that updates your BVS login too).`;
+const BAD_LOGIN = ["auth/user-not-found", "auth/wrong-password", "auth/invalid-credential", "auth/invalid-login-credentials"];
+
 // `what` says which sign-in method was being used, so "switched off" errors can name the right toggle.
 function friendlyAuthError(e, what){
 	const code = (e && e.code) || "";
@@ -51,6 +76,7 @@ function friendlyAuthError(e, what){
 		"auth/unauthorized-continue-uri": "Add this site's address under Authentication → Settings → Authorized domains in Firebase.",
 		"auth/invalid-continue-uri": "Add this site's address under Authentication → Settings → Authorized domains in Firebase.",
 		"auth/credential-already-in-use": "That account is already in use.",
+		"auth/requires-recent-login": "Log out and back in, then try again.",
 		"auth/user-not-found": "That BVS number or password isn't right. If you haven't made an account yet, use Create account.",
 		"auth/wrong-password": "That password isn't right.",
 		"auth/invalid-credential": "That BVS number or password isn't right. If you haven't made an account yet, use Create account.",
@@ -95,6 +121,7 @@ class FirebaseStore {
 	}
 	async createBvs(id, pw){
 		const u = this.auth.currentUser;
+		if(await this.get("bvsLinks/" + id).catch(() => null)) throw new Error("That BVS number is linked to an Hwb account already. Use Log in.");
 		const cred = window.firebase.auth.EmailAuthProvider.credential(bvsEmail(id), pw);
 		try {
 			// A guest keeps their stats: the guest account becomes the BVS account.
@@ -104,9 +131,71 @@ class FirebaseStore {
 		return this.auth.currentUser.uid;
 	}
 	async loginBvs(id, pw){
-		try { await this.auth.signInWithEmailAndPassword(bvsEmail(id), pw); }
-		catch(e){ throw friendlyAuthError(e, "bvs"); }
-		return this.auth.currentUser.uid;
+		try { await this.auth.signInWithEmailAndPassword(bvsEmail(id), pw); return this.auth.currentUser.uid; }
+		catch(e){
+			if(!BAD_LOGIN.includes(e && e.code)) throw friendlyAuthError(e, "bvs");
+			// Not a plain BVS account: it may be linked to an Hwb account.
+			if(!this.auth.currentUser) await this.auth.signInAnonymously().catch(() => {});
+			const link = await this.get("bvsLinks/" + id).catch(() => null);
+			if(!link) throw friendlyAuthError(e, "bvs");
+			const email = await openEmail(id, link, pw);
+			if(!email) throw new Error(staleLinkMsg(id));
+			try { await this.auth.signInWithEmailAndPassword(email, pw); }
+			catch(e2){ throw BAD_LOGIN.includes(e2 && e2.code) ? new Error(staleLinkMsg(id)) : friendlyAuthError(e2, "bvs"); }
+			return this.auth.currentUser.uid;
+		}
+	}
+	// { bvs, hwb, waiting } for the signed-in account, or null if it isn't linked.
+	// waiting: the Hwb email hasn't been confirmed yet (a BVS account mid-link).
+	async linkInfo(){
+		const u = this.auth.currentUser;
+		if(!u || u.isAnonymous) return null;
+		const p = await this.get("private/" + u.uid).catch(() => null);
+		if(!p || !p.bvs) return null;
+		return { bvs: p.bvs, hwb: p.hwb, waiting: this.account().kind === "bvs" };
+	}
+	async reauth(pw){
+		const u = this.auth.currentUser;
+		try { await u.reauthenticateWithCredential(window.firebase.auth.EmailAuthProvider.credential(u.email, pw)); }
+		catch(e){ throw BAD_LOGIN.includes(e && e.code) ? new Error("That password isn't right.") : friendlyAuthError(e, "account"); }
+	}
+	// Signed in with BVS: add an Hwb email. The account moves to the Hwb email once
+	// they click the link in it; the BVS number keeps working through bvsLinks.
+	async linkHwb(email, pw){
+		const u = this.auth.currentUser, id = this.account().label;
+		await this.reauth(pw);
+		await this.set("bvsLinks/" + id, Object.assign({ uid: u.uid }, await sealEmail(id, email, pw)));
+		await this.set("private/" + u.uid, { bvs: id, hwb: email });
+		try { await u.verifyBeforeUpdateEmail(email, backToGame()); }
+		catch(e){
+			await this.remove("bvsLinks/" + id).catch(() => {});
+			await this.remove("private/" + u.uid).catch(() => {});
+			throw friendlyAuthError(e, "hwb");
+		}
+	}
+	// Signed in with a confirmed Hwb email: add a BVS number that isn't taken.
+	async linkBvs(id, pw){
+		const u = this.auth.currentUser;
+		await this.reauth(pw);
+		const methods = await this.auth.fetchSignInMethodsForEmail(bvsEmail(id)).catch(() => []);
+		if(methods && methods.length) throw new Error(`${id} already has its own account. Log in with it and add your Hwb email from there.`);
+		const taken = await this.get("bvsLinks/" + id).catch(() => null);
+		if(taken && taken.uid !== u.uid) throw new Error(`${id} is already linked to another account.`);
+		await this.set("bvsLinks/" + id, Object.assign({ uid: u.uid }, await sealEmail(id, u.email, pw)));
+		await this.set("private/" + u.uid, { bvs: id, hwb: u.email });
+	}
+	// After an Hwb login: if the password was reset, re-lock the BVS link with the new one.
+	async refreshLink(pw){
+		try {
+			const u = this.auth.currentUser;
+			const p = await this.get("private/" + u.uid);
+			if(!p || !p.bvs) return;
+			const link = await this.get("bvsLinks/" + p.bvs);
+			if(!link || link.uid !== u.uid) return;
+			if(await openEmail(p.bvs, link, pw) === u.email) return;
+			await this.set("bvsLinks/" + p.bvs, Object.assign({ uid: u.uid }, await sealEmail(p.bvs, u.email, pw)));
+			if(p.hwb !== u.email) await this.update("private/" + u.uid, { hwb: u.email });
+		} catch(e){ console.warn("Couldn't update the BVS link", e); }
 	}
 	// Hwb: real school email + password. A verification link goes to their inbox.
 	async createHwb(email, pw){
@@ -122,6 +211,7 @@ class FirebaseStore {
 	async loginHwb(email, pw){
 		try { await this.auth.signInWithEmailAndPassword(email, pw); }
 		catch(e){ throw friendlyAuthError(e, "hwb"); }
+		await this.refreshLink(pw);
 		return this.auth.currentUser.uid;
 	}
 	async resendVerification(){
@@ -208,6 +298,7 @@ class LocalStore {
 	account(){ return this.acct; }
 	async createBvs(id, pw){
 		if(pw.length < 6) throw new Error("Passwords need at least 6 characters.");
+		if(this.read("bvsLinks/" + id)) throw new Error("That BVS number is linked to an Hwb account already. Use Log in.");
 		if(this.read("_accounts/" + id)) throw new Error("That BVS number already has an account. Log in instead.");
 		await this.set("_accounts/" + id, { pw, uid: this.uid });
 		this.acct = { kind: "bvs", label: id }; this.saveId();
@@ -215,7 +306,13 @@ class LocalStore {
 	}
 	async loginBvs(id, pw){
 		const a = this.read("_accounts/" + id);
-		if(!a) throw new Error("There's no account for that BVS number yet. Create one first.");
+		if(!a){
+			const link = this.read("bvsLinks/" + id);
+			if(!link) throw new Error("There's no account for that BVS number yet. Create one first.");
+			const email = await openEmail(id, link, pw);
+			if(!email) throw new Error(staleLinkMsg(id));
+			return this.loginHwb(email, pw);
+		}
 		if(a.pw !== pw) throw new Error("That password isn't right.");
 		this.uid = a.uid; this.acct = { kind: "bvs", label: id }; this.saveId();
 		return this.uid;
@@ -234,6 +331,34 @@ class LocalStore {
 		if(!a || a.pw !== pw) throw new Error("That Hwb email or password isn't right. New here? Use Create account. Forgotten it? Use Forgot password.");
 		this.uid = a.uid; this.acct = { kind: "hwb", label: email, verified: true }; this.saveId();
 		return this.uid;
+	}
+	async linkInfo(){
+		const p = this.acct.kind !== "guest" && this.read("private/" + this.uid);
+		return p && p.bvs ? { bvs: p.bvs, hwb: p.hwb, waiting: this.acct.kind === "bvs" } : null;
+	}
+	checkPw(pw){
+		const a = this.read("_accounts/" + (this.acct.kind === "bvs" ? this.acct.label : this.acct.label.replace(/[.@]/g, "_")));
+		if(!a || a.pw !== pw) throw new Error("That password isn't right.");
+		return a;
+	}
+	// No inbox here, so the email switch happens straight away.
+	async linkHwb(email, pw){
+		const a = this.checkPw(pw), id = this.acct.label;
+		const key = "_accounts/" + email.replace(/[.@]/g, "_");
+		if(this.read(key)) throw new Error("That Hwb email already has an account. Log in instead, or use Forgot password.");
+		await this.set("bvsLinks/" + id, Object.assign({ uid: this.uid }, await sealEmail(id, email, pw)));
+		await this.set("private/" + this.uid, { bvs: id, hwb: email });
+		await this.set(key, a);
+		await this.remove("_accounts/" + id);
+		this.acct = { kind: "hwb", label: email, verified: true }; this.saveId();
+	}
+	async linkBvs(id, pw){
+		this.checkPw(pw);
+		if(this.read("_accounts/" + id)) throw new Error(`${id} already has its own account. Log in with it and add your Hwb email from there.`);
+		const taken = this.read("bvsLinks/" + id);
+		if(taken && taken.uid !== this.uid) throw new Error(`${id} is already linked to another account.`);
+		await this.set("bvsLinks/" + id, Object.assign({ uid: this.uid }, await sealEmail(id, this.acct.label, pw)));
+		await this.set("private/" + this.uid, { bvs: id, hwb: this.acct.label });
 	}
 	async resendVerification(){}
 	async checkVerified(){ return true; }
@@ -573,6 +698,9 @@ export class Net {
 	account(){ return this.store.account(); }
 	async createBvs(id, pw){ this.store.uid = await this.store.createBvs(id, pw); }
 	async loginBvs(id, pw){ this.store.uid = await this.store.loginBvs(id, pw); }
+	linkInfo(){ return this.store.linkInfo(); }
+	linkHwb(email, pw){ return this.store.linkHwb(email, pw); }
+	linkBvs(id, pw){ return this.store.linkBvs(id, pw); }
 	async createHwb(email, pw){ this.store.uid = await this.store.createHwb(email, pw); }
 	async loginHwb(email, pw){ this.store.uid = await this.store.loginHwb(email, pw); }
 	resendVerification(){ return this.store.resendVerification(); }

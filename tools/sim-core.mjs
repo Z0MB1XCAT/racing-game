@@ -31,7 +31,7 @@ export function race(track, tracker, skills, laps, opts = {}){
 		}
 		const before = cars.map(c => c.data.lap);
 		if(opts.draft) applySlipstream(cars, warp);
-		phys.stepCars(cars, track.walls, track.lines, track.oob, warp, (type, car, s) => { if(type === "wall" && s > 0.05){ car.hits++; if(car === cars[0]) hitsAt.push([car.data.x, car.data.y]); } });
+		phys.stepCars(cars, track.walls, track.lines, track.oob, warp, (type, car, s) => { if(type === "car") car.contacts = (car.contacts || 0) + 1; if(type === "wall" && s > 0.05){ car.hits++; if(car === cars[0]) hitsAt.push([car.data.x, car.data.y]); } }, opts.contact);
 		t += dt * warp;
 		if(Math.round(t * 60) % 6 === 0) trail.push([cars[0].data.x, cars[0].data.y]);
 		if(cars.length > 1 && t > 3){ const L = cars.reduce((a, b) => raceProgress(b) > raceProgress(a) ? b : a); if(L !== leader){ if(leader) leadChanges++; leader = L; } }

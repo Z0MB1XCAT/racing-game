@@ -42,7 +42,7 @@ const S = {
 	race: null, ctx: null, frozen: false,
 	paused: false, pauseStart: 0, pausedTotal: 0,
 	net: null, room: null, raceId: null, resultsShown: null,
-	setup: { mode: "bots", trackId: "monza", reverse: false, laps: 3, bots: 5, level: "medium", gameMode: "race", draft: true, rounds: [], quali: false },
+	setup: { mode: "bots", trackId: "monza", reverse: false, laps: 3, bots: 5, level: "medium", gameMode: "race", draft: true, contact: "soft", rounds: [], quali: false },
 	champ: null, champEntrants: null, lastHost: null,
 	lobbyLevel: "medium",
 	lastDelta: null,
@@ -129,6 +129,7 @@ function carNumber(){ const n = S.profile.look && S.profile.look.number; return 
 // ---------- Screens ----------
 function showScreen(name){
 	S.screen = name;
+	audio.playMusic("menu");
 	document.querySelectorAll("[data-screen]").forEach(s => { s.hidden = s.dataset.screen !== name; });
 }
 function openModal(id){ $(id).hidden = false; const f = $(id).querySelector("button, input"); if(f) f.focus(); }
@@ -220,13 +221,21 @@ updateShowcaseTag();
 function saveSettings(){ store.setSettings(S.settings); }
 seg($("setQuality"), S.settings.quality, v => { S.settings.quality = v; saveSettings(); applyQuality(); });
 seg($("setCamera"), S.settings.camera, v => { S.settings.camera = v; saveSettings(); });
-const setEngineSeg = seg($("setEngine"), S.settings.engine ? "1" : "0", v => { S.settings.engine = v === "1"; saveSettings(); audio.setEngineEnabled(S.settings.engine); if(S.settings.engine && S.race && !S.frozen) audio.startEngine(); });
+seg($("setRaceMusic"), S.settings.raceMusic ? "1" : "0", v => { S.settings.raceMusic = v === "1"; saveSettings(); if(S.screen === "race" && S.race && S.race.phase !== "countdown") audio.playMusic(S.settings.raceMusic ? "race" : null); });
 seg($("setShake"), S.settings.shake ? "1" : "0", v => { S.settings.shake = v === "1"; saveSettings(); });
 seg($("setTouch"), S.settings.touch, v => { S.settings.touch = v; saveSettings(); updateTouchZones(); });
 $("setVolume").value = S.settings.volume;
 $("setVolume").addEventListener("input", e => { S.settings.volume = +e.target.value; saveSettings(); audio.setVolume(S.settings.volume); });
 audio.setVolume(S.settings.volume);
-audio.setEngineEnabled(S.settings.engine);
+for(const [id, key, kind] of [["setMusic", "music", "music"], ["setSfx", "sfx", "sfx"], ["setEngineVol", "engineVol", "engine"]]){
+	$(id).value = S.settings[key];
+	$(id).addEventListener("input", e => {
+		S.settings[key] = +e.target.value; saveSettings(); audio.setLevel(kind, S.settings[key]);
+		if(kind === "engine" && S.settings[key] > 0 && S.race && !S.frozen && !S.paused) audio.startEngine();
+	});
+	$(id).addEventListener("change", () => { if(kind === "sfx") audio.sfx.lap(); });
+	audio.setLevel(kind, S.settings[key]);
+}
 function applyQuality(){
 	applyPixelRatio();
 	fx.dispose();
@@ -297,6 +306,7 @@ seg($("setupMode"), "race", v => {
 	refreshSetup();
 });
 seg($("setupDraft"), "1", v => { S.setup.draft = v === "1"; });
+seg($("setupContact"), "soft", v => { S.setup.contact = v; });
 seg($("setupQuali"), "0", v => { S.setup.quali = v === "1"; });
 seg($("setupLevel"), "medium", v => { S.setup.level = v; });
 const lapStep = stepper("laps", () => S.setup.laps, v => { S.setup.laps = v; }, () => 1, () => 20);
@@ -408,7 +418,7 @@ function startSolo(){
 	const mode = st.mode === "trial" ? "trial" : st.gameMode;
 	const race = grid => beginRace({
 		source: "solo", def, reverse: st.reverse, mode, laps: mode === "elim" ? 99 : st.laps,
-		entrants: grid ? grid.map(id => entrants.find(e => e.id === id)).filter(Boolean) : entrants, myId: "me", draft: mode !== "trial" && st.draft,
+		entrants: grid ? grid.map(id => entrants.find(e => e.id === id)).filter(Boolean) : entrants, myId: "me", draft: mode !== "trial" && st.draft, contact: st.contact,
 		startAt: soloNow() + 700 + COUNTDOWN, authority: true, restart: startSolo
 	});
 	if(st.quali && st.mode === "bots") startQuali(def, st.reverse, entrants, race);
@@ -432,7 +442,7 @@ function startChampRound(qualiGrid){
 	const order = qualiGrid || (c.idx === 0 ? ids : champGrid(c, ids));
 	beginRace({
 		source: "solo", def, reverse: c.reverse && !def.code, mode: "race", laps: c.laps,
-		entrants: order.map(id => S.champEntrants.find(e => e.id === id)), myId: "me", draft: S.setup.draft,
+		entrants: order.map(id => S.champEntrants.find(e => e.id === id)), myId: "me", draft: S.setup.draft, contact: S.setup.contact,
 		startAt: soloNow() + 700 + COUNTDOWN, authority: true, champ: true, restart: () => startChampRound(qualiGrid)
 	});
 }
@@ -467,7 +477,7 @@ function beginRace(opts){
 		scene, track: entry.track, tracker: entry.tracker, laps: opts.laps, mode: opts.mode,
 		entrants: opts.entrants, myId: opts.myId, startAt: opts.startAt, authority: opts.authority,
 		now: opts.source === "online" ? () => S.net.now() : soloNow,
-		net: opts.source === "online" ? S.net : null, ghost, draft: opts.draft !== false,
+		net: opts.source === "online" ? S.net : null, ghost, draft: opts.draft !== false, contact: opts.contact,
 		onEvent: (t, d) => onRaceEvent(t, d)
 	});
 	S.race.key = key;
@@ -494,6 +504,7 @@ function beginRace(opts){
 	snapCamera();
 	lightsShown = 0;
 	audio.unlock();
+	audio.playMusic(null);
 	audio.startEngine();
 }
 
@@ -535,6 +546,7 @@ function onRaceEvent(type, d){
 	const focus = focusCar();
 	switch(type){
 		case "go":
+			if(S.settings.raceMusic && r.mode !== "trial") audio.playMusic("race");
 			if(r.mode === "quali"){ hud.banner("Qualifying", "Best lap sets the grid", "go", 1800); audio.sfx.go(); break; }
 			hud.banner("Go", "", "go", 900);
 			audio.sfx.go();
@@ -544,9 +556,9 @@ function onRaceEvent(type, d){
 			const dist = focus ? Math.hypot(c.pos.x - focus.pos.x, c.pos.z - focus.pos.z) : 0;
 			const near = Math.max(0, 1 - dist / 60);
 			if(c === focus || d.other === focus){
-				audio.thud(d.strength, 1);
+				audio.thud(d.strength, 1, d.type);
 				if(S.settings.shake) S.shake = Math.min(0.5, S.shake + d.strength * 1.2);
-			}else if(near > 0) audio.thud(d.strength, near * 0.6);
+			}else if(near > 0) audio.thud(d.strength, near * 0.6, d.type);
 			if(near > 0 && d.strength > 0.08) fx.burst(c.pos.x, c.pos.z, d.strength, c.data.xv, c.data.yv);
 			break;
 		}
@@ -585,18 +597,19 @@ function onRaceEvent(type, d){
 			if(d.car.me){
 				const pos = r.standings().findIndex(s => s.car === d.car) + 1;
 				hud.banner(d.ms != null ? "Qualified P" + pos : "No time set", d.ms != null ? fmtTime(d.ms) : "", "finish", 3000);
-				audio.sfx.finish();
+				audio.sfx.finish(d.ms != null && pos === 1 ? 2 : 0);
 			}
 			break;
 		case "finalLap":
 			hud.banner("Final lap", "", "final", 1600);
 			audio.sfx.finalLap();
+			audio.musicIntensity(1);
 			break;
 		case "finish":
 			if(d.car.me){
 				const pos = d.position || (r.standings().findIndex(s => s.car === d.car) + 1);
 				hud.banner(pos === 1 ? "Winner" : "Finished P" + pos, fmtTime(d.ms), "finish", 4000);
-				audio.sfx.finish();
+				audio.sfx.finish(r.mode === "trial" ? 0 : pos);
 			}else hud.toast(`${d.car.name} finished`);
 			break;
 		case "eliminated":
@@ -765,10 +778,12 @@ function pause(){
 	$("restartBtn").hidden = online;
 	$("quitBtn").firstElementChild.textContent = online ? "Leave room" : "Quit to menu";
 	if(!online){ S.paused = true; S.pauseStart = performance.now(); audio.stopEngine(); }
+	audio.duckMusic(true);
 	openModal("pause");
 }
 function resume(){
 	closeModal("pause");
+	audio.duckMusic(false);
 	if(S.paused){ S.pausedTotal += performance.now() - S.pauseStart; S.paused = false; audio.startEngine(); }
 }
 $("pauseBtn").addEventListener("click", pause);
@@ -1036,6 +1051,36 @@ function updateLabels(standings, focus){
 
 // ---------- Main loop ----------
 let last = performance.now(), hudTimer = 0, lightsShown = 0;
+// Who you can hear: the car you're watching, plus the nearest others, panned
+// left/right from the camera, quieter with distance and with a touch of doppler.
+const earRight = new THREE.Vector3(), earPrev = new Map();
+S.engineCars = [];
+function engineMix(r, focus, dt){
+	const list = [];
+	earRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
+	const onboard = !tv.live;
+	const grid = r.phase !== "racing";
+	for(const c of r.cars){
+		if(c.gone || c.elim !== null) continue;
+		const dx = c.pos.x - camera.position.x, dz = c.pos.z - camera.position.z;
+		const dist = Math.hypot(dx, dz);
+		if(dist > 90 && c !== focus) continue;
+		const main = onboard && c === focus;
+		const rate = earPrev.has(c.id) && dt > 0 ? (dist - earPrev.get(c.id)) / dt : 0;
+		earPrev.set(c.id, dist);
+		const fall = main ? 1 : Math.max(0, 1 - dist / 90) ** 2 * (onboard ? 0.55 : 0.9);
+		// Revving on the grid: each car blips its throttle a little differently.
+		const rev = grid ? 0.12 + 0.3 * Math.max(0, Math.sin(performance.now() / (170 + (c.hue % 7) * 23) + c.hue)) ** 3 : null;
+		list.push({
+			id: c.id, body: c.body, speed: grid ? 0 : Math.hypot(c.data.xv, c.data.yv), rev,
+			gain: fall, pan: main ? 0 : (dx * earRight.x + dz * earRight.z) / Math.max(8, dist),
+			pitch: main ? 1 : Math.max(0.85, Math.min(1.15, 1 - rate * 0.004)), d: main ? -1 : dist
+		});
+	}
+	list.sort((a, b) => a.d - b.d);
+	S.engineCars = list;
+}
+
 function frame(now){
 	requestAnimationFrame(frame);
 	const dt = Math.min(0.1, (now - last) / 1000);
@@ -1078,7 +1123,8 @@ function frame(now){
 			const d = focus.data;
 			const speed = Math.hypot(d.xv, d.yv);
 			const slip = speed > 0.05 ? Math.abs(Math.sin(Math.atan2(d.xv, d.yv) - d.dir)) : 0;
-			audio.updateEngine(r.phase === "racing" ? speed : 0.02, slip, r.draft ? focus.draft || 0 : 0);
+			engineMix(r, focus, dt);
+			audio.updateEngines(S.engineCars, { speed: r.phase === "racing" ? speed : 0, slip, draft: r.draft ? focus.draft || 0 : 0 }, dt);
 			hud.setDraft(r.draft && r.phase === "racing" ? focus.draft || 0 : 0);
 		}
 		hudTimer -= dt;
@@ -1124,7 +1170,7 @@ $("codeInput").addEventListener("input", e => { e.target.value = e.target.value.
 $("codeInput").addEventListener("keydown", e => { if(e.key === "Enter") $("joinBtn").click(); });
 
 function lobbyDefaults(){
-	return { track: S.setup.trackId === "classic" ? "classic" : S.setup.trackId, reverse: false, laps: (defFor(S.setup.trackId).laps || 3), mode: "race", custom: null, draft: true };
+	return { track: S.setup.trackId === "classic" ? "classic" : S.setup.trackId, reverse: false, laps: (defFor(S.setup.trackId).laps || 3), mode: "race", custom: null, draft: true, contact: "soft" };
 }
 async function withBusy(btn, fn){
 	btn.disabled = true;
@@ -1235,6 +1281,7 @@ function onRoom(room){
 
 const lobbySettingsControls = {
 	draft: seg($("lobbyDraft"), "1", v => S.net.updateSettings({ draft: v === "1" })),
+	contact: seg($("lobbyContact"), "soft", v => S.net.updateSettings({ contact: v })),
 	quali: seg($("lobbyQuali"), "0", v => S.net.updateSettings({ quali: v === "1" })),
 	mode: seg($("lobbyMode"), "race", v => S.net.updateSettings({ mode: v })),
 	dir: seg($("lobbyDir"), "0", v => S.net.updateSettings({ reverse: v === "1" })),
@@ -1306,6 +1353,9 @@ function renderLobby(room){
 	lobbySettingsControls.mode(st.mode);
 	lobbySettingsControls.dir(st.reverse ? "1" : "0");
 	lobbySettingsControls.draft(st.draft === false ? "0" : "1");
+	lobbySettingsControls.contact(st.contact === "classic" ? "classic" : "soft");
+	$("lobbyContact").dataset.locked = host ? "" : "1";
+	$("lobbyContact").querySelectorAll("button").forEach(b => { b.disabled = !host; });
 	lobbySettingsControls.quali(st.quali ? "1" : "0");
 	$("lobbyQuali").dataset.locked = host ? "" : "1";
 	$("lobbyQuali").querySelectorAll("button").forEach(b => { b.disabled = !host; });
@@ -1359,7 +1409,7 @@ function hostStart(){
 		startChampRoundOnline(newChamp(rounds.map(id => ({ track: id })), st.reverse, st.laps || 3));
 		return;
 	}
-	const next = { track: st.track, reverse: !!st.reverse, laps: st.laps || 3, mode: st.mode || "race", custom: st.custom || null, draft: st.draft !== false };
+	const next = { track: st.track, reverse: !!st.reverse, laps: st.laps || 3, mode: st.mode || "race", custom: st.custom || null, draft: st.draft !== false, contact: st.contact === "classic" ? "classic" : "soft" };
 	net.startRace(Object.assign({}, next, {
 		id: ((room.race && room.race.id) || S.raceId || 0) + 1,
 		startAt: net.now() + 1800 + COUNTDOWN, grid
@@ -1370,7 +1420,7 @@ function startChampRoundOnline(champ, qualiGrid){
 	const room = S.room, net = S.net, st = room.settings || lobbyDefaults();
 	const ids = Object.entries(room.players || {}).sort((a, b) => (a[1].joined || 0) - (b[1].joined || 0)).map(([id]) => id).slice(0, MAX_CARS);
 	const r = champ.rounds[champ.idx];
-	const next = { track: r.track, reverse: !!champ.reverse && !trackById(r.track).code, laps: champ.laps, mode: "race", custom: null, draft: st.draft !== false, champ: true };
+	const next = { track: r.track, reverse: !!champ.reverse && !trackById(r.track).code, laps: champ.laps, mode: "race", custom: null, draft: st.draft !== false, contact: st.contact === "classic" ? "classic" : "soft", champ: true };
 	const base = { id: ((room.race && room.race.id) || S.raceId || 0) + 1, startAt: net.now() + 1800 + COUNTDOWN, grid: champ.idx === 0 ? ids : champGrid(champ, ids) };
 	if(st.quali) net.startRace(Object.assign({}, next, base, { mode: "quali", laps: QUALI_LAPS, draft: false, champ: false, next }), champ);
 	else net.startRace(Object.assign({}, next, base), champ);
@@ -1403,7 +1453,7 @@ function beginOnlineRace(room){
 	const def = defFor(r.track, r.custom);
 	beginRace({
 		source: "online", def, reverse: r.reverse, mode: r.mode, laps: r.mode === "elim" ? 99 : r.laps,
-		entrants, myId: net.uid, startAt: r.startAt, authority: room.host === net.uid, draft: r.draft !== false, champ: !!r.champ
+		entrants, myId: net.uid, startAt: r.startAt, authority: room.host === net.uid, draft: r.draft !== false, contact: r.contact, champ: !!r.champ
 	});
 	S.ctx.laps = r.laps;
 }
@@ -1573,7 +1623,7 @@ function renderAccount(){
 	const a = acct.info;
 	$("acctText").innerHTML = a.kind === "guest" ? "Playing as a guest"
 		: a.kind === "hwb" && !a.verified ? `<b>Hwb</b> · check your inbox for the link`
-		: `<b>${a.kind === "bvs" ? escapeHtml(a.label.toUpperCase()) : "Hwb"}</b> · stats saved to your account`;
+		: `<b>${a.kind === "bvs" ? escapeHtml(a.label.toUpperCase()) : acct.link ? escapeHtml(acct.link.bvs.toUpperCase()) + " + Hwb" : "Hwb"}</b> · stats saved to your account`;
 	$("acctBtn").textContent = a.kind === "guest" ? "Sign in" : "Account";
 }
 function profileForSync(){ return Object.assign({}, S.profile, { solo: garage ? garage.soloFlags() : {} }); }
@@ -1583,6 +1633,7 @@ async function refreshAccount(){
 		const net = await connect();
 		acct.info = net.account();
 		$("btnAdmin").hidden = !net.isAdmin();
+		acct.link = await net.linkInfo().catch(() => null);
 		const lock = await net.nameLock().catch(() => null);
 		if(lock) applyNameLock(lock);
 	} catch {}
@@ -1607,7 +1658,62 @@ function openAccount(){
 	$("verifyBox").hidden = !(a.kind === "hwb" && !a.verified);
 	acctMsg("");
 	openModal("account");
+	renderLink();
 }
+// Linking a BVS number and an Hwb email to the same account, so either logs in.
+async function renderLink(){
+	const box = $("linkBox"), card = $("linkedCard"), a = acct.info;
+	box.hidden = card.hidden = true;
+	if(!onlineAvailable() || a.kind === "guest") return;
+	const info = acct.link = await (await connect()).linkInfo().catch(() => null);
+	renderAccount();
+	if(info){
+		card.hidden = false;
+		$("linkedLabel").textContent = `${info.bvs.toUpperCase()} + ${info.hwb}`;
+		$("linkedNote").textContent = info.waiting
+			? `Nearly there: click the link we sent to ${info.hwb} (look in Junk too). Until then, keep logging in with your BVS number.`
+			: "Log in with either one, using the same password. Forgotten it? Use Forgot password with your Hwb email.";
+	}
+	// The admin account stays a plain BVS login: the database rules recognise it by that address.
+	const mode = a.kind === "bvs" ? (ACCOUNTS.hwb && a.label !== ACCOUNTS.admin ? "hwb" : null)
+		: (ACCOUNTS.bvs && a.verified && !info ? "bvs" : null);
+	if(!mode || (info && !info.waiting)) return;
+	box.hidden = false;
+	box.dataset.mode = mode;
+	const hwb = mode === "hwb";
+	$("linkTitle").textContent = info ? "Send the Hwb link again" : hwb ? "Add your Hwb email" : "Add your BVS number";
+	$("linkHelp").textContent = hwb
+		? "Then you can log in with your BVS number or your Hwb email, and reset a forgotten password through Hwb. We'll email a link to check it's yours."
+		: "Then you can log in with your BVS number too, using the same password.";
+	$("linkIdLabel").textContent = hwb ? "Hwb email" : "BVS number";
+	$("linkId").type = hwb ? "email" : "text";
+	$("linkId").placeholder = hwb ? "you@hwbcymru.net" : "bvs-00000";
+	if(info && hwb) $("linkId").value = info.hwb;
+}
+$("linkGo").addEventListener("click", e => acctAction(e.currentTarget, async () => {
+	const hwb = $("linkBox").dataset.mode === "hwb", pw = $("linkPw").value;
+	const net = await connect();
+	if(hwb){
+		const email = normaliseHwb($("linkId").value);
+		if(!email) throw new Error(`Use your Hwb email (ending ${ACCOUNTS.hwbDomains.map(d => "@" + d).join(" or ")}).`);
+		if(pw.length < 6) throw new Error("Type the password you use for this game.");
+		const id = acct.info.label;
+		await net.linkHwb(email, pw);
+		acct.info = net.account();
+		$("linkPw").value = "";
+		openAccount();
+		acctMsg(acct.info.kind === "hwb" ? `Linked. Log in with ${id.toUpperCase()} or ${email}.` : `We've sent a link to ${email}. Click it to finish linking (check Junk).`, true);
+	}else{
+		const id = normaliseBvs($("linkId").value);
+		if(!id) throw new Error("BVS numbers look like bvs-12345.");
+		if(pw.length < 6) throw new Error("Type the password you use for this game.");
+		await net.linkBvs(id, pw);
+		$("linkPw").value = "";
+		openAccount();
+		acctMsg(`Linked. You can log in with ${id.toUpperCase()} too, using the same password.`, true);
+	}
+}));
+$("linkPw").addEventListener("keydown", e => { if(e.key === "Enter") $("linkGo").click(); });
 $("acctBtn").addEventListener("click", () => { audio.sfx.click(); openAccount(); });
 
 // Signing in to an existing account switches player, so reload with that account's profile.
@@ -1631,7 +1737,7 @@ async function afterSignIn(net, uidBefore){
 	acctMsg("Account ready. Your stats now follow you to any computer.", true);
 }
 async function acctAction(btn, fn){
-	const buttons = document.querySelectorAll("#acctForms button, #acctSignOut, #verifyBox button");
+	const buttons = document.querySelectorAll("#acctForms button, #acctSignOut, #verifyBox button, #linkBox button");
 	buttons.forEach(b => { b.disabled = true; });
 	acctMsg("");
 	try { await fn(); } catch(e){ acctMsg(e.message || String(e)); }
@@ -1736,6 +1842,7 @@ function garageNote(res, toast){
 	const bits = [];
 	if(res.xp > 0) bits.push(`+${res.xp} XP.`);
 	if(res.levelUp) bits.push(`Level ${res.levelUp}!`);
+	if(res.levelUp || (res.unlocked && res.unlocked.length)) setTimeout(() => audio.sfx.unlock(), 900);
 	if(res.unlocked && res.unlocked.length) bits.push("New in your garage: " + res.unlocked.join(", ") + ".");
 	if(!bits.length) return;
 	if(toast && S.race && !S.frozen) hud.toast(bits.join(" "), 3500);

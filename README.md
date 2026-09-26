@@ -3,8 +3,9 @@
 A fork of [jchabin/cars](https://github.com/jchabin/cars) (the "Online Racing Game") with
 new tracks, a racing-game UI, bots, time trials, online rooms and leaderboards. **The car handling is
 the original code, unchanged.** `tools/physics-equivalence.mjs` runs both versions side by side
-and checks they give exactly the same results. The one addition is **slipstream**, which sits on
-top of the original handling and can be switched off per race.
+and checks they give exactly the same results. There are two additions, and each can be switched off
+per race: **slipstream**, and **soft car contact** (cars don't fling each other apart the way the
+original did).
 
 ## What's in it
 
@@ -19,7 +20,8 @@ top of the original handling and can be switched off per race.
   screen. You never need to update anything.
 - **Accounts (optional)**: sign in with a BVS number and password, or with your Hwb email and a
   password (a verification link goes to your Hwb inbox), and your stats, lap records, name and car follow you to any computer.
-  A guest's stats move onto the new account when they create one.
+  A guest's stats move onto the new account when they create one. A BVS number and an Hwb email
+  can be **linked** to one account, so either logs in and a forgotten password can be reset through Hwb.
 - **Direct connections (P2P)**: during races, players send car positions straight to each other
   over WebRTC. Firebase only introduces players, then carries no positions at all while everyone
   is connected directly. Anyone whose network blocks direct links automatically falls back to
@@ -57,6 +59,11 @@ top of the original handling and can be switched off per race.
   a full tow, so you gain roughly a car length a second. A car pushing right behind the leader
   helps them a little too. Nothing changes when you're alone. It's on by default, and the host
   can turn it off in the lobby (or you can in solo setup) for the pure original feel.
+- **Car contact**: in the original, touching another car added the whole difference in speed to
+  both cars, sideways included, so a light rub threw you across the track. **Soft** (the default)
+  only pushes cars apart along the line between them and soaks up most of the hit, so rubbing is a
+  nudge and a real hit still knocks you off line. Walls are unchanged. **Original** brings back the
+  old bounce exactly. It's in solo setup and the lobby (host's choice).
 - **Leaderboards**: driver standings (wins, podiums, races, win rate) from online races with
   at least two real drivers, plus a lap-record board for every track in both directions. Lap
   records come from Time trial only.
@@ -68,7 +75,19 @@ top of the original handling and can be switched off per race.
 - **Lap records** saved on your device, and shared with everyone on your site once Firebase is set up.
 - **Track editor** (hidden for now, see below) that reads and writes the original game's
   track codes, with a *Save & race* button.
-- Sound, skid marks, sparks, tyre smoke, three cameras and four car bodies (looks only).
+- **Sound**: every car body has its own engine, synthesised live with a gearbox, so you hear the
+  revs climb and the gear changes:
+  - **Formula:** high V6 turbo wail with a turbo whistle and eight quick gears.
+  - **GT:** V8 burble with crackles on the upshift.
+  - **Stock car:** deep, rough V8 with four long gears.
+  - **Classic:** buzzy four-cylinder, close to the old sound.
+
+  You hear the cars around you too, panned left and right, with a doppler sweep as they pass.
+  There's tyre squeal, wind in the slipstream, metal-on-metal and barrier-scrape crashes, start-light
+  beeps, a white-flag bell, a finish fanfare and crowd, and music for menus and races, all made in
+  the browser (no audio files). **Settings** has separate Engines, Effects and Music volumes, and
+  can turn music off during races.
+- Skid marks, sparks, tyre smoke, three cameras and four car bodies (looks only).
 - **R** puts your car back on the track if you get stuck. If a crash knocks you outside
   the walls, it happens automatically.
 
@@ -161,9 +180,9 @@ Turn on whichever sign-in options you want, then publish the latest `database.ru
    toggle only (not "Email link") → **Save**.
 
 Nothing is emailed. A BVS number is stored as `bvs-12345@bvs.invalid` behind the scenes, and other
-players only ever see driver names. There's no "forgot password". If someone forgets theirs, delete
-their user under **Authentication → Users** and they can make the account again. Their stats stay
-with the old account ID, so they will lose them. The BVS format is set by `ACCOUNTS.bvsPattern` in
+players only ever see driver names. A plain BVS account has no "forgot password" (link an Hwb email
+to get one, see below). If someone forgets theirs, delete their user under **Authentication → Users**
+and they can make the account again. Their stats stay with the old account ID, so they will lose them. The BVS format is set by `ACCOUNTS.bvsPattern` in
 `js/config.js`: "bvs-" plus 3 to 8 digits.
 
 **Hwb accounts** (Hwb email + a password made up for the game)
@@ -184,7 +203,24 @@ prove the address is theirs. They also get a working **Forgot password?** link.
 Pupils' Hwb addresses are stored in Firebase Authentication only. Other players never see them,
 but you can, as the owner of the Firebase project.
 
-### 7. Admin and lap limits
+**Linking a BVS number and an Hwb email** (Account → the box under your name)
+- **Signed in with BVS:** type your Hwb email and your password. A link goes to your Hwb inbox.
+  Once it's clicked, the account's login becomes the Hwb email, and your BVS number still works.
+  Same account, same stats. Until then, keep logging in with the BVS number.
+- **Signed in with Hwb** (after confirming the email): type your BVS number and password. It works
+  straight away, as long as that number doesn't already have its own account.
+- Either way there's **one password** for both. A forgotten one is reset with **Forgot password?**
+  on the Hwb side. After a reset, log in once with the Hwb email; that updates the BVS login too.
+- **How it's stored:** `bvsLinks/bvs-12345` in the database says which account a number belongs
+  to. The Hwb email in it is locked with the account's password, so nobody can look up whose email
+  a BVS number belongs to. Only the owner of a BVS account can create a link for it.
+- The admin account (**bvs-11018**) can't be linked: the database rules recognise the admin by
+  that exact BVS login.
+- **This needs the latest `database.rules.json` published** (step 2).
+- Firebase sends the "verify your new email" message using **Authentication → Templates → Email
+  address change**. You can give it the same friendly sender name.
+
+### 6. Admin and lap limits
 
 1. Make sure the latest `database.rules.json` is published (step 2). It contains the admin, ban and
    lap-limit rules.
@@ -246,7 +282,7 @@ Once it's on, open **Track editor** from the menu.
 
 | File | What it does |
 | --- | --- |
-| `js/physics.js` | The original handling, copied over unchanged |
+| `js/physics.js` | The original handling, copied over unchanged, plus the optional soft car contact |
 | `js/slipstream.js` | Slipstream, applied on top of the physics each frame |
 | `js/tracks.js` | Track list: circuit shapes and the Classic track code |
 | `js/trackgen.js` | Turns a circuit into walls, kerbs, checkpoints and a racing line |
@@ -259,6 +295,7 @@ Once it's on, open **Track editor** from the menu.
 | `js/cosmetics.js`, `js/garage.js` | Unlockable looks, levels and the garage screen |
 | `js/filter.js`, `js/admin.js`, `js/limits.js` | Name filter, admin page, lap-time limits |
 | `js/champ.js`, `js/weekly.js` | Championship points and the automatic weekly challenge |
+| `js/audio.js`, `js/music.js` | Engines for each car body, sound effects and the music sequencer |
 | `js/main.js`, `js/hud.js` | Menus, HUD, camera and input |
 | `editor/` | Track editor |
 
@@ -269,7 +306,8 @@ The last two also need puppeteer installed.
 - `node tools/physics-equivalence.mjs` checks that the physics matches the original.
 - `node tools/track-sim.mjs` drives bots round every track and reports lap times, stuck cars and escapes.
 - `node tools/draft-test.mjs daytona` compares slipstream on and off (lap times, gaps, lead changes).
-- `node tools/e2e.mjs solo|online|p2p|champ|quali|tv|midjoin|admin|migrate|account|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
+- `node tools/contact-test.mjs monaco` compares original and soft car contact (side hit, rear tap, a bot race).
+- `node tools/e2e.mjs solo|online|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
 
 ## Credits and licence
 
