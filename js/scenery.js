@@ -203,27 +203,26 @@ function adsTexture(){
 		});
 	});
 }
-// Repeating 8 x 8 block of windows. Night: some windows lit (in the emissive map).
+// Repeating 8 x 8 block of windows. The emissive map lights some of them up after dark.
 function windowTextures(night, glass){
 	const cells = 8, px = 32;
 	const lit = [];
 	const map = canvasTexture(cells * px, cells * px, g => {
 		for(let i = 0; i < cells; i++) for(let j = 0; j < cells; j++){
 			g.fillStyle = "#ffffff"; g.fillRect(i * px, j * px, px, px);
-			const on = night && Math.random() < 0.45;
+			const on = Math.random() < 0.45;
 			lit.push(on);
 			g.fillStyle = night ? (on ? "#ffe2a0" : "#1c2230") : glass;
 			g.fillRect(i * px + 7, j * px + 6, px - 14, px - 11);
 			if(!night){ g.fillStyle = "rgba(255,255,255,0.35)"; g.fillRect(i * px + 7, j * px + 6, 4, px - 11); }
 		}
 	});
-	let emissive = null;
-	if(night) emissive = canvasTexture(cells * px, cells * px, g => {
+	const emissive = canvasTexture(cells * px, cells * px, g => {
 		g.fillStyle = "#000"; g.fillRect(0, 0, cells * px, cells * px);
 		let k = 0;
 		for(let i = 0; i < cells; i++) for(let j = 0; j < cells; j++) if(lit[k++]){ g.fillStyle = "#ffcf7a"; g.fillRect(i * px + 7, j * px + 6, px - 14, px - 11); }
 	});
-	for(const t of [map, emissive]) if(t){ t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1 / cells, 1 / cells); }
+	for(const t of [map, emissive]){ t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1 / cells, 1 / cells); }
 	return { map, emissive };
 }
 
@@ -489,14 +488,20 @@ export function buildScenery(track, theme, ctx){
 	if(!B.empty){
 		const glass = bdef && bdef.night ? "#1c2230" : "#6f8aa6";
 		const win = windowTextures(bdef && bdef.night, glass);
+		const nightTheme = !!(bdef && bdef.night);
 		keep(win.map); if(win.emissive) keep(win.emissive);
 		const ads = keep(adsTexture());
 		ads.anisotropy = 4;
 		const mats = [
-			keep(new THREE.MeshLambertMaterial({ vertexColors: true, map: win.map, emissive: win.emissive ? 0xffffff : 0x000000, emissiveMap: win.emissive || null })),
+			keep(new THREE.MeshLambertMaterial({ vertexColors: true, map: win.map, emissive: nightTheme ? 0xffffff : 0x000000, emissiveMap: win.emissive })),
 			keep(new THREE.MeshLambertMaterial({ vertexColors: true })),
-			keep(new THREE.MeshLambertMaterial({ map: ads, emissive: theme.night ? 0x555555 : 0x000000, emissiveMap: theme.night ? ads : null, side: THREE.DoubleSide }))
+			keep(new THREE.MeshLambertMaterial({ map: ads, emissive: theme.night ? 0x555555 : 0x000000, emissiveMap: ads, side: THREE.DoubleSide }))
 		];
+		// After dark: lit windows and billboards (0..1).
+		api.setNight = n => {
+			mats[0].emissive.setScalar(nightTheme ? Math.max(0.35, n) : Math.max(0, (n - 0.2) / 0.8));
+			mats[2].emissive.setScalar(0.35 * n);
+		};
 		const mesh = new THREE.Mesh(keep(B.build()), mats);
 		mesh.castShadow = mesh.receiveShadow = shadows;
 		group.add(mesh);

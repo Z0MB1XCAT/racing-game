@@ -16,6 +16,19 @@ original did).
   points, the leader starts at the back of the next round's grid) and Time trial against a ghost
   of your fastest lap ever. A slower lap never replaces the ghost. A **delta bar** at the top shows
   live how far ahead (green) or behind (red) of the ghost you are.
+- **Race other people's ghosts**: every lap record and weekly best uploads its ghost. Press
+  **Race ghost** next to anyone on the lap-record or weekly board, pick **Ghost: Track record** in
+  time trial setup, or **Race the leader's ghost** on the weekly card. Their car shows as a named
+  ghost and the delta bar measures you against them.
+- **Sectors**: each lap is split into three, shown under the lap times. Purple is the best anyone
+  has done (in a race, the fastest in the session; in time trial, the best you know of, including
+  the record holder's), green is your own best, yellow is slower.
+- **Time of day and weather** (solo setup, or the host in a room): Default, Day, Sunset, Night
+  or Dynamic, and Clear, Cloudy, Rain or Dynamic. Dynamic time moves about an hour every 30
+  seconds, so a race can run from afternoon into night; dynamic weather changes every minute or so,
+  fading in over about 15 seconds. At night the floodlights, headlights and windows come on;
+  in the rain the track gets wet, cars throw up spray, and heavy rain brings lightning and thunder.
+  Every screen in a room sees the same sky at the same time. It's looks only: the handling is the same.
 - **Weekly challenge**: every Monday at 00:00 UTC a new track and direction are picked
   automatically from the date, with a fresh leaderboard. Last week's winner shows on the title
   screen. You never need to update anything. The challenge has its own ghost and delta bar: your
@@ -311,10 +324,11 @@ The last two also need puppeteer installed.
 - `node tools/physics-equivalence.mjs` checks that the physics matches the original.
 - `node tools/track-sim.mjs` drives bots round every track and reports lap times, stuck cars and escapes.
 - `node tools/draft-test.mjs daytona` compares slipstream on and off (lap times, gaps, lead changes).
+- `node tools/sky-shots.mjs [trackId] [tod-weather ...]` screenshots a track at different times and weather (e.g. `monza night-rain`).
 - `node tools/scenery-shots.mjs [trackId ...]` takes screenshots of each track (overview, racing with the mirror, looking back, highlights).
 - `node tools/engine-demo.mjs` renders a clip of each engine to WAV (with spectrograms) for tuning the sound. Engine settings are `ENGINES` in `js/audio.js`.
 - `node tools/contact-test.mjs monaco` compares original and soft car contact (side hit, rear tap, a bot race).
-- `node tools/e2e.mjs solo|online|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
+- `node tools/e2e.mjs solo|online|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
 
 ## Credits and licence
 

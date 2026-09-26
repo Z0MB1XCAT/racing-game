@@ -3,6 +3,7 @@
 import { GRID } from "./physics.js";
 import { START_Z, seededRandom } from "./trackgen.js";
 import { buildScenery, canvasTexture } from "./scenery.js";
+import { naturalHour } from "./atmosphere.js";
 
 const THREE = globalThis.THREE;
 
@@ -23,7 +24,7 @@ export const THEMES = {
 	daytona: { sky: [0x4aa6ff, 0xdcf0ff], ground: 0x68a94c, stripes: true, wall: 0xf1f3f6, road: 0x3a3d44, trees: "palm", treeDensity: 0.15,
 		lake: true, grandstand: 4, standColor: 0x2f63c9, mountains: "none", fog: [0xdcf0ff, 500, 1700] },
 	dusk: { sky: [0x241a45, 0xff8a4c], ground: 0x86684a, wall: "tyres", road: 0x4e4540, trees: "none", mountains: "hills", mountainColor: 0x5a3f4a,
-		fog: [0xd98160, 220, 900], sun: 0.85, sunColor: 0xffb27a, amb: 0.45, grandstand: 2, standColor: 0xf48342, lights: true },
+		fog: [0xd98160, 220, 900], sun: 0.85, sunColor: 0xffb27a, amb: 0.45, grandstand: 2, standColor: 0xf48342, lights: true, tod: "sunset" },
 	snow: { sky: [0x93acc6, 0xe7eff7], ground: 0xe9eff5, wall: 0x2f6fbd, road: 0x5a5f68, trees: "snowpine", treeDensity: 1.1,
 		mountains: "peaks", mountainColor: 0x6d7c8e, fog: [0xdfe8f0, 240, 1100], snowfall: true, sun: 0.6, amb: 0.65, grandstand: 1, standColor: 0x2f6fbd }
 };
@@ -105,15 +106,49 @@ function ribbon(center, from, to, y, keepFn, colorFn){
 
 function sky(top, bottom, radius){
 	const g = new THREE.SphereBufferGeometry(radius, 24, 12);
-	const col = [], p = g.attributes.position;
-	const a = new THREE.Color(top), b = new THREE.Color(bottom), c = new THREE.Color();
+	g.setAttribute("color", new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 3), 3));
+	const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false }));
+	paintSky(mesh, new THREE.Color(top), new THREE.Color(bottom), radius);
+	return mesh;
+}
+function paintSky(mesh, a, b, radius){
+	const p = mesh.geometry.attributes.position, col = mesh.geometry.attributes.color, c = new THREE.Color();
 	for(let i = 0; i < p.count; i++){
 		const t = Math.max(0, Math.min(1, p.getY(i) / radius * 1.6 + 0.05));
 		c.copy(b).lerp(a, Math.pow(t, 0.8));
-		col.push(c.r, c.g, c.b);
+		col.setXYZ(i, c.r, c.g, c.b);
 	}
-	g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
-	return new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false }));
+	col.needsUpdate = true;
+}
+
+// ---------- Time of day ----------
+// A palette per time of day; the one matching the track's own look is the track's colours.
+const pal = (top, bottom, fog, sun, sunColor, hemiSky, hemiGround, hemi, amb, night) => ({ top, bottom, fog, sun, sunColor, hemiSky, hemiGround, hemi, amb, night });
+const GENERIC = {
+	night: pal(0x040611, 0x1a2144, 0x121634, 0.16, 0x9fb4ff, 0x5d6aa8, 0x14161f, 0.42, 0.1, 1),
+	dawn: pal(0x3b4a7a, 0xf2a48a, 0xd9a58f, 0.5, 0xffc9a0, 0xd8c8ff, 0x6b6a55, 0.45, 0.14, 0.35),
+	day: pal(0x4a9eff, 0xd2eaff, 0xd2eaff, 0.7, 0xffffff, 0xffffff, 0x6b7a55, 0.55, 0.18, 0),
+	sunset: pal(0x241a45, 0xff8a4c, 0xd98160, 0.85, 0xffb27a, 0xffd2b0, 0x6b5a55, 0.45, 0.15, 0.2),
+	dusk: pal(0x0d1030, 0x5a3a6a, 0x3a2c4c, 0.3, 0xff9a70, 0x8a7ab8, 0x2a2430, 0.38, 0.12, 0.7)
+};
+const KEYS = [[0, "night"], [4.8, "night"], [6, "dawn"], [8, "day"], [17, "day"], [18.9, "sunset"], [20.3, "dusk"], [21.5, "night"], [24, "night"]];
+function palettesFor(theme, skyTop, skyBottom){
+	const own = pal(skyTop, skyBottom, theme.fog ? theme.fog[0] : skyBottom, theme.sun ?? 0.7, theme.sunColor ?? (theme.night ? 0x9fb4ff : 0xffffff),
+		theme.night ? 0x5d6aa8 : 0xffffff, theme.night ? 0x14161f : 0x6b7a55, theme.amb ?? 0.55, theme.night ? 0.12 : 0.18, theme.night ? 1 : theme.tod === "sunset" ? 0.2 : 0);
+	const p = Object.assign({}, GENERIC);
+	p[theme.night ? "night" : theme.tod === "sunset" ? "sunset" : "day"] = own;
+	return p;
+}
+const ca = new THREE.Color(), cb = new THREE.Color();
+function mixHex(a, b, f){ return ca.set(a).lerp(cb.set(b), f).getHex(); }
+function paletteAt(p, hour){
+	let i = 0;
+	while(i < KEYS.length - 2 && KEYS[i + 1][0] <= hour) i++;
+	const [h0, k0] = KEYS[i], [h1, k1] = KEYS[i + 1];
+	const f = h1 > h0 ? Math.max(0, Math.min(1, (hour - h0) / (h1 - h0))) : 0;
+	const a = p[k0], b = p[k1], out = {};
+	for(const k in a) out[k] = typeof a[k] === "number" && k !== "sun" && k !== "hemi" && k !== "amb" && k !== "night" ? mixHex(a[k], b[k], f) : a[k] + (b[k] - a[k]) * f;
+	return out;
 }
 
 export function buildWorld(track, opts = {}){
@@ -141,10 +176,13 @@ export function buildWorld(track, opts = {}){
 		keep(skyMesh.geometry); keep(skyMesh.material);
 		group.add(skyMesh);
 	}
-	const fog = theme.fog ? new THREE.Fog(theme.fog[0], theme.fog[1], theme.fog[2]) : null;
+	// Fog is always there so rain can close in; tracks without fog start with it out of sight.
+	const fogBase = theme.fog ? [theme.fog[1], theme.fog[2]] : [farPlane * 2, farPlane * 3];
+	const fog = new THREE.Fog(theme.fog ? theme.fog[0] : skyBottom, fogBase[0], fogBase[1]);
 	const hemi = new THREE.HemisphereLight(theme.night ? 0x5d6aa8 : 0xffffff, theme.night ? 0x14161f : 0x6b7a55, theme.amb ?? 0.55);
 	group.add(hemi);
-	if(!theme.hemiOnly) group.add(new THREE.AmbientLight(0xffffff, theme.night ? 0.12 : 0.18));
+	const ambient = new THREE.AmbientLight(0xffffff, theme.night ? 0.12 : 0.18);
+	group.add(ambient);
 	const sun = new THREE.DirectionalLight(theme.sunColor ?? (theme.night ? 0x9fb4ff : 0xffffff), theme.sun ?? 0.7);
 	sun.position.set(300, 400, -200);
 	sun.target.position.set(0, 0, 0);
@@ -176,10 +214,11 @@ export function buildWorld(track, opts = {}){
 	ground.receiveShadow = shadows;
 	group.add(ground);
 
+	let roadMat = null;
 	// Road, edge lines, kerbs, start line, grid boxes (circuits only; the Classic look has none).
 	if(track.center && theme.road !== undefined){
 		const c = track.center, hw = c.hw;
-		const roadMat = keep(new THREE.MeshLambertMaterial({ color: theme.road, emissive: theme.night ? 0x14161c : 0x000000, side: THREE.DoubleSide }));
+		roadMat = keep(new THREE.MeshPhongMaterial({ color: theme.road, emissive: theme.night ? 0x14161c : 0x000000, specular: 0x000000, shininess: 40, side: THREE.DoubleSide }));
 		const road = new THREE.Mesh(keep(ribbon(c, hw + 0.8, -hw - 0.8, 0.02)), roadMat);
 		road.receiveShadow = shadows;
 		group.add(road);
@@ -305,8 +344,9 @@ export function buildWorld(track, opts = {}){
 		group.add(lake);
 	}
 
-	// Floodlights along the track at night (and for the dusk speedway).
-	if(theme.lights && track.center){
+	// Floodlights along every circuit. They light up at night (and at dusk on the speedway).
+	let headMat = null, poolMat = null;
+	if(track.center){
 		const c = track.center, hw = c.hw, poles = [], heads = [], pools = [];
 		for(let i = 0; i < c.n; i += 42){
 			const side = (i / 42) % 2 ? 1 : -1;
@@ -320,13 +360,14 @@ export function buildWorld(track, opts = {}){
 		}
 		const unit = keep(new THREE.BoxBufferGeometry(1, 1, 1));
 		group.add(instanced(unit, keep(new THREE.MeshLambertMaterial({ color: 0x3a3f4a })), poles));
-		group.add(instanced(unit, keep(new THREE.MeshBasicMaterial({ color: 0xfff1c9 })), heads));
+		headMat = keep(new THREE.MeshBasicMaterial({ color: 0xfff1c9 }));
+		group.add(instanced(unit, headMat, heads));
 		const glow = keep(canvasTexture(64, 64, (g) => {
 			const r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
 			r.addColorStop(0, "rgba(255,236,190,0.9)"); r.addColorStop(1, "rgba(255,236,190,0)");
 			g.fillStyle = r; g.fillRect(0, 0, 64, 64);
 		}));
-		const poolMat = keep(new THREE.MeshBasicMaterial({ map: glow, transparent: true, opacity: theme.night ? 0.28 : 0.12, blending: THREE.AdditiveBlending, depthWrite: false }));
+		poolMat = keep(new THREE.MeshBasicMaterial({ map: glow, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
 		group.add(instanced(keep(new THREE.PlaneBufferGeometry(1, 1)), poolMat, pools));
 	}
 
@@ -394,14 +435,153 @@ export function buildWorld(track, opts = {}){
 		group.add(snow);
 	}
 
+	// Rain: streaks that follow the camera. (Glacier Pass gets heavier snow instead.)
+	let rainLines = null;
+	if(!theme.snowfall){
+		const N = quality === "low" ? 700 : 1800, pos = new Float32Array(N * 6);
+		for(let i = 0; i < N; i++){
+			const x = (rand() - 0.5) * 70, y = rand() * 28, z = (rand() - 0.5) * 70;
+			pos.set([x, y, z, x + 0.12, y + 0.9, z], i * 6);
+		}
+		const g = new THREE.BufferGeometry();
+		g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+		rainLines = new THREE.LineSegments(keep(g), keep(new THREE.LineBasicMaterial({ color: 0xb8c4d2, transparent: true, opacity: 0, depthWrite: false })));
+		rainLines.frustumCulled = false;
+		rainLines.visible = false;
+		group.add(rainLines);
+	}
+	// Cloud cover: a soft layer high overhead.
+	const cloudTex = keep(canvasTexture(256, 256, (g, w, h) => {
+		g.fillStyle = "rgba(0,0,0,0)"; g.fillRect(0, 0, w, h);
+		for(let i = 0; i < 90; i++){
+			const x = rand() * w, y = rand() * h, r = 18 + rand() * 46;
+			for(const [dx, dy] of [[0, 0], [w, 0], [-w, 0], [0, h], [0, -h]]){
+				const gr = g.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r);
+				gr.addColorStop(0, "rgba(255,255,255,0.55)"); gr.addColorStop(1, "rgba(255,255,255,0)");
+				g.fillStyle = gr; g.fillRect(x + dx - r, y + dy - r, r * 2, r * 2);
+			}
+		}
+	}));
+	cloudTex.wrapS = cloudTex.wrapT = THREE.RepeatWrapping;
+	cloudTex.repeat.set(6, 6);
+	const cloudMat = keep(new THREE.MeshBasicMaterial({ map: cloudTex, transparent: true, opacity: 0, depthWrite: false, fog: false, side: THREE.DoubleSide }));
+	const clouds = new THREE.Mesh(keep(new THREE.PlaneBufferGeometry(farPlane * 2.4, farPlane * 2.4)), cloudMat);
+	clouds.rotation.x = Math.PI / 2;
+	clouds.position.y = 190;
+	clouds.visible = false;
+	group.add(clouds);
+	// Stars on clear nights.
+	const starPos = new Float32Array(600 * 3);
+	for(let i = 0; i < 600; i++){
+		const a = rand() * Math.PI * 2, e = 0.12 + rand() * 1.3, r = farPlane * 0.7;
+		starPos.set([Math.cos(a) * Math.cos(e) * r, Math.sin(e) * r, Math.sin(a) * Math.cos(e) * r], i * 3);
+	}
+	const starGeo = keep(new THREE.BufferGeometry());
+	starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
+	const starMat = keep(new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, transparent: true, opacity: 0, fog: false, depthWrite: false }));
+	const stars = new THREE.Points(starGeo, starMat);
+	stars.frustumCulled = false;
+	stars.visible = false;
+	group.add(stars);
+
+	// ----- Atmosphere: time of day and weather -----
+	const palettes = palettesFor(theme, skyTop, skyBottom);
+	const baseRoad = roadMat ? roadMat.color.clone() : null;
+	const skyRadius = farPlane * 0.85;
+	const GREY_TOP = new THREE.Color(0x6c7682), GREY_BOTTOM = new THREE.Color(0xa3acb5), GREY_FOG = new THREE.Color(0x9aa3ad);
+	const skyColor = new THREE.Color(skyBottom);
+	const now = { hour: naturalHour(theme), cloud: 0.08, rain: 0 };
+	const look = { night: palettes[theme.night ? "night" : "day"].night, dim: 0, rain: 0, wet: 0, lights: 0 };
+	let wet = 0, flash = 0, flashTimer = 3, applyTimer = 0, lastKey = "";
+	let onThunder = null;
+	const tA = new THREE.Color(), tB = new THREE.Color(), tF = new THREE.Color();
+	function apply(){
+		const p = paletteAt(palettes, now.hour);
+		const grey = Math.min(1, now.cloud * 0.62 + now.rain * 0.25);
+		const dark = 1 - 0.82 * p.night;
+		tA.set(p.top).lerp(tF.copy(GREY_TOP).multiplyScalar(dark), grey);
+		tB.set(p.bottom).lerp(tF.copy(GREY_BOTTOM).multiplyScalar(dark), grey);
+		const f = 1 + flash * 2.2;
+		tA.multiplyScalar(f); tB.multiplyScalar(f);
+		const key = [tA.getHex(), tB.getHex()].join();
+		if(skyMesh && key !== lastKey) paintSky(skyMesh, tA, tB, skyRadius);
+		lastKey = key;
+		skyColor.copy(tB);
+		fog.color.set(p.fog).lerp(tF.copy(GREY_FOG).multiplyScalar(dark), grey);
+		fog.near = fogBase[0] + (Math.min(fogBase[0], 40) - fogBase[0]) * now.rain * 0.9;
+		fog.far = fogBase[1] + (Math.min(fogBase[1], 520) - fogBase[1]) * now.rain;
+		if(p.night > 0.5) fog.far *= 1 - 0.15 * p.night;
+		hemi.color.set(p.hemiSky); hemi.groundColor.set(p.hemiGround);
+		hemi.intensity = p.hemi * (1 - 0.15 * now.cloud) + flash * 1.4;
+		ambient.intensity = p.amb;
+		sun.color.set(p.sunColor);
+		sun.intensity = p.sun * (1 - 0.62 * now.cloud);
+		// The sun rises in the east and sets in the west; at night it's the moon, fairly high.
+		const day = now.hour > 5.5 && now.hour < 20.5;
+		const arc = day ? (now.hour - 6) / 12 * Math.PI : 1.1;
+		const up = Math.max(0.16, Math.sin(Math.max(0.2, Math.min(Math.PI - 0.2, arc))));
+		sunOffset.set(Math.cos(arc) * 300, 70 + up * 330, -120);
+		if(!shadows){ sun.position.copy(sunOffset); sun.target.position.set(0, 0, 0); }
+		// Lights: floodlights and headlights come on as it gets dark, or in heavy weather.
+		const dim = Math.max(p.night, now.cloud * 0.35 + now.rain * 0.3);
+		look.night = p.night; look.dim = dim; look.rain = now.rain;
+		look.lights = Math.max(theme.lights ? Math.max(p.night, 0.35) : 0, Math.min(1, (dim - 0.25) / 0.5));
+		if(poolMat) poolMat.opacity = 0.3 * look.lights;
+		if(headMat) headMat.color.set(mixHex(0x8d939e, 0xfff1c9, Math.min(1, look.lights * 1.5)));
+		if(extras.setNight) extras.setNight(Math.max(p.night, dim * 0.4));
+		starMat.opacity = p.night * (1 - now.cloud) * 0.9;
+		stars.visible = starMat.opacity > 0.02;
+		cloudMat.opacity = Math.min(0.9, now.cloud * 0.95);
+		cloudMat.color.set(tB).lerp(tF.set(0xffffff), 0.2 * dark);
+		clouds.visible = cloudMat.opacity > 0.02;
+		if(rainLines){ rainLines.material.opacity = Math.min(0.55, now.rain * 0.6); rainLines.visible = now.rain > 0.02; }
+		if(snow){ snow.material.opacity = 0.85; snow.material.size = 0.25 + now.rain * 0.25; }
+	}
+	apply();
+
 	return {
 		group, theme, sun, fog, farPlane, occluders, info: extras.info,
+		look,
+		// { hour 0-24, cloud 0-1, rain 0-1 }. Cheap to call every frame.
+		setAtmosphere(a){ now.hour = a.hour; now.cloud = a.cloud; now.rain = a.rain; },
+		defaultAtmosphere(){ return { hour: naturalHour(theme), cloud: 0.08, rain: 0 }; },
+		set onThunder(fn){ onThunder = fn; },
 		// Crowd excitement 0..1 (the start, a finish).
 		cheer(v){ extras.cheer(v); },
-		skyColor: new THREE.Color(skyBottom),
+		skyColor,
 		center: { x: cx, z: cz }, radius,
 		update(dt, focus){
 			for(const u of updaters) u(dt);
+			// Wet road builds up in the rain and dries slowly afterwards.
+			wet += (now.rain - wet) * Math.min(1, dt * (now.rain > wet ? 0.12 : 0.04));
+			look.wet = wet;
+			if(roadMat){
+				roadMat.color.copy(baseRoad).multiplyScalar(1 - 0.4 * wet);
+				roadMat.specular.setScalar(0.28 * wet);
+			}
+			// Lightning in heavy rain, with thunder a moment later.
+			if(now.rain > 0.7){
+				flashTimer -= dt;
+				if(flashTimer <= 0){ flash = 1; flashTimer = 6 + Math.random() * 14; if(onThunder) onThunder(0.4 + Math.random() * 1.6); }
+			}
+			if(flash > 0) flash = Math.max(0, flash - dt * (flash > 0.5 ? 6 : 2.5));
+			applyTimer -= dt;
+			if(applyTimer <= 0 || flash > 0){ applyTimer = 0.1; apply(); }
+			if(focus){
+				clouds.position.set(focus.x, 190, focus.z);
+				stars.position.set(focus.x, 0, focus.z);
+			}
+			if(rainLines && rainLines.visible && focus){
+				const p = rainLines.geometry.attributes.position, a = p.array;
+				const fall = dt * (38 + now.rain * 14);
+				for(let i = 0; i < a.length; i += 6){
+					let y = a[i + 1] - fall;
+					if(y < 0){ y += 28; }
+					a[i + 1] = y; a[i + 4] = y + 0.9;
+				}
+				p.needsUpdate = true;
+				rainLines.position.set(focus.x, 0, focus.z);
+			}
 			if(skyMesh && focus) skyMesh.position.set(focus.x, 0, focus.z);
 			if(shadows && focus){
 				sun.target.position.set(focus.x, 0, focus.z);
@@ -410,7 +590,7 @@ export function buildWorld(track, opts = {}){
 			if(snow && focus){
 				const p = snow.geometry.attributes.position;
 				for(let i = 0; i < p.count; i++){
-					let y = p.getY(i) - dt * 6;
+					let y = p.getY(i) - dt * (6 + now.rain * 10);
 					if(y < 0) y += 30;
 					p.setY(i, y);
 					p.setX(i, p.getX(i) + Math.sin(y * 0.4 + i) * dt * 0.6);

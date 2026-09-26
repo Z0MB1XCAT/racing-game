@@ -4,6 +4,7 @@ import { buildTrack } from "./trackgen.js";
 import { makeTracker } from "./progress.js";
 import { buildWorld } from "./world.js";
 import { ghostSectors } from "./ghosts.js";
+import { makeAtmosphere } from "./atmosphere.js";
 import { makeCar, disposeCar, animateCar, BODIES } from "./cars.js";
 import { Race, COUNTDOWN, QUALI_LAPS } from "./race.js";
 import { Hud, fmtTime } from "./hud.js";
@@ -43,7 +44,7 @@ const S = {
 	race: null, ctx: null, frozen: false,
 	paused: false, pauseStart: 0, pausedTotal: 0,
 	net: null, room: null, raceId: null, resultsShown: null,
-	setup: { mode: "bots", trackId: "monza", reverse: false, laps: 3, bots: 5, level: "medium", gameMode: "race", draft: true, contact: "soft", rounds: [], quali: false },
+	setup: { mode: "bots", trackId: "monza", reverse: false, laps: 3, bots: 5, level: "medium", gameMode: "race", draft: true, contact: "soft", tod: "default", weather: "clear", rounds: [], quali: false },
 	champ: null, champEntrants: null, lastHost: null,
 	lobbyLevel: "medium",
 	lastDelta: null,
@@ -309,6 +310,8 @@ seg($("setupMode"), "race", v => {
 });
 seg($("setupDraft"), "1", v => { S.setup.draft = v === "1"; });
 seg($("setupContact"), "soft", v => { S.setup.contact = v; });
+seg($("setupTod"), "default", v => { S.setup.tod = v; });
+seg($("setupWeather"), "clear", v => { S.setup.weather = v; });
 seg($("setupQuali"), "0", v => { S.setup.quali = v === "1"; });
 seg($("setupChase"), "mine", v => { S.setup.chase = v; });
 seg($("setupLevel"), "medium", v => { S.setup.level = v; });
@@ -422,15 +425,15 @@ function startSolo(){
 		if(st.chase === "record" && onlineAvailable()){
 			const key = trackKey(def, st.reverse);
 			connect().then(net => net.topLaps(key, 1).then(top => top[0] && top[0].id !== net.uid ? net.lapGhost(key, top[0].id) : null))
-				.then(g => { if(!g) toastOnScreen("You hold this record, or there's no ghost for it yet: racing your own ghost."); startTrial(def, st.reverse, { rival: g }); })
-				.catch(() => startTrial(def, st.reverse));
-		}else startTrial(def, st.reverse);
+				.then(g => { if(!g) toastOnScreen("You hold this record, or there's no ghost for it yet: racing your own ghost."); startTrial(def, st.reverse, { rival: g, tod: st.tod, weather: st.weather }); })
+				.catch(() => startTrial(def, st.reverse, { tod: st.tod, weather: st.weather }));
+		}else startTrial(def, st.reverse, { tod: st.tod, weather: st.weather });
 		return;
 	}
 	const mode = st.gameMode;
 	const race = grid => beginRace({
 		source: "solo", def, reverse: st.reverse, mode, laps: mode === "elim" ? 99 : st.laps,
-		entrants: grid ? grid.map(id => entrants.find(e => e.id === id)).filter(Boolean) : entrants, myId: "me", draft: mode !== "trial" && st.draft, contact: st.contact,
+		entrants: grid ? grid.map(id => entrants.find(e => e.id === id)).filter(Boolean) : entrants, myId: "me", draft: mode !== "trial" && st.draft, contact: st.contact, tod: st.tod || "default", weather: st.weather || "clear",
 		startAt: soloNow() + 700 + COUNTDOWN, authority: true, restart: startSolo
 	});
 	if(st.quali && st.mode === "bots") startQuali(def, st.reverse, entrants, race);
@@ -440,7 +443,7 @@ function startSolo(){
 // Qualifying: a hotlap session (no contact, no slipstream). Best lap sets the grid.
 function startQuali(def, reverse, entrants, then){
 	beginRace({
-		source: "solo", def, reverse, mode: "quali", laps: QUALI_LAPS, entrants, myId: "me", draft: false,
+		source: "solo", def, reverse, mode: "quali", laps: QUALI_LAPS, entrants, myId: "me", draft: false, tod: S.setup.tod, weather: S.setup.weather,
 		startAt: soloNow() + 700 + COUNTDOWN, authority: true, qualiThen: then,
 		restart: () => startQuali(def, reverse, entrants, then)
 	});
@@ -454,7 +457,7 @@ function startChampRound(qualiGrid){
 	const order = qualiGrid || (c.idx === 0 ? ids : champGrid(c, ids));
 	beginRace({
 		source: "solo", def, reverse: c.reverse && !def.code, mode: "race", laps: c.laps,
-		entrants: order.map(id => S.champEntrants.find(e => e.id === id)), myId: "me", draft: S.setup.draft, contact: S.setup.contact,
+		entrants: order.map(id => S.champEntrants.find(e => e.id === id)), myId: "me", draft: S.setup.draft, contact: S.setup.contact, tod: S.setup.tod, weather: S.setup.weather,
 		startAt: soloNow() + 700 + COUNTDOWN, authority: true, champ: true, restart: () => startChampRound(qualiGrid)
 	});
 }
@@ -471,7 +474,7 @@ function startTrial(def, reverse, opts = {}){
 	beginRace({
 		source: "solo", def, reverse, mode: "trial", laps: 1,
 		entrants: [{ id: "me", name: driverName(), hue: S.profile.hue, body: S.profile.body, look: S.profile.look, local: true }], myId: "me", draft: false,
-		startAt: soloNow() + 700 + COUNTDOWN, authority: true, weekly: opts.weekly, rival: opts.rival || null,
+		startAt: soloNow() + 700 + COUNTDOWN, authority: true, weekly: opts.weekly, rival: opts.rival || null, tod: opts.tod, weather: opts.weather,
 		restart: () => startTrial(def, reverse, opts)
 	});
 }
@@ -567,6 +570,10 @@ function beginRace(opts){
 		onEvent: (t, d) => onRaceEvent(t, d)
 	});
 	S.race.key = key;
+	S.atmos = makeAtmosphere({ tod: opts.tod, weather: opts.weather }, S.world.theme, opts.startAt);
+	S.rainOn = false;
+	addHeadlights(S.race);
+	S.world.onThunder = delay => audio.thunder(delay);
 	if(opts.mode === "trial"){
 		syncGhostFromAccount(S.race, key, opts.weekly);
 		setupSectorRef(S.race, key, entry.tracker.path);
@@ -610,6 +617,9 @@ function beginRace(opts){
 
 function endRace(keepTrack){
 	clearInterval(S.qualiTimer);
+	S.atmos = null;
+	if(S.world) S.world.setAtmosphere(S.world.defaultAtmosphere());
+	audio.setRain(0);
 	hud.setDelta(null);
 	hud.setSectors(null);
 	stopTv();
@@ -625,6 +635,54 @@ function endRace(keepTrack){
 	audio.stopEngine();
 	if(S.showcase) S.showcase.visible = true;
 	fx.clear();
+}
+
+// Headlight beams on the road ahead of every car: they fade in as it gets dark or wet.
+const beamTex = (() => {
+	// A soft cone of light that fades to nothing at every edge.
+	const W = 64, H = 128, c = document.createElement("canvas"); c.width = W; c.height = H;
+	const g = c.getContext("2d"), img = g.createImageData(W, H);
+	for(let y = 0; y < H; y++) for(let x = 0; x < W; x++){
+		const along = y / H;                                   // 0 at the car, 1 far ahead
+		const half = 0.25 + along * 0.7;                        // the beam widens
+		const across = Math.abs(x - W / 2 + 0.5) / (W / 2) / half;
+		const a = Math.max(0, 1 - across * across) * Math.pow(1 - along, 1.3) * Math.min(1, along * 6);
+		const o = (y * W + x) * 4;
+		img.data[o] = 255; img.data[o + 1] = 242; img.data[o + 2] = 205; img.data[o + 3] = Math.round(a * 230);
+	}
+	g.putImageData(img, 0, 0);
+	return new THREE.CanvasTexture(c);
+})();
+const beamMat = new THREE.MeshBasicMaterial({ map: beamTex, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+const beamGeo = new THREE.PlaneBufferGeometry(4.2, 11);
+beamGeo.rotateX(-Math.PI / 2);
+beamGeo.translate(0, 0.06, 6.6);
+function addHeadlights(race){
+	for(const c of race.cars){
+		const beam = new THREE.Mesh(beamGeo, beamMat);
+		beam.visible = false;
+		c.model.add(beam);
+		c.beam = beam;
+	}
+}
+// Time of day, weather and everything that follows from them, once a frame.
+function updateSky(r, raceMs, dt){
+	if(!S.atmos || !S.world) return;
+	const a = S.atmos.at(raceMs);
+	S.world.setAtmosphere(a);
+	const look = S.world.look;
+	beamMat.opacity = Math.min(0.75, look.lights * 0.8);
+	for(const c of r.cars) if(c.beam) c.beam.visible = beamMat.opacity > 0.02 && c.model.visible;
+	audio.setRain(S.paused ? 0 : look.rain);
+	// Say when the weather turns.
+	if(S.atmos.dynamic && r.phase === "racing" && !S.replay){
+		if(!S.rainOn && a.rain > 0.3){ S.rainOn = true; hud.toast("Rain is falling", 2200); }
+		else if(S.rainOn && a.rain < 0.12){ S.rainOn = false; hud.toast("The rain has stopped", 2200); }
+	}
+	// Spray behind cars on a wet track.
+	if(look.wet > 0.2 && !S.paused && !S.replay && r.phase === "racing"){
+		for(const c of r.cars) if(!c.gone && c.elim === null) fx.spray(c, dt, look.wet);
+	}
 }
 
 // Spectating: joined mid-race, knocked out, or finished a few seconds ago.
@@ -1303,6 +1361,7 @@ function engineMix(r, focus, dt){
 	S.engineCars = list;
 }
 
+const rp_t = () => S.replay ? S.replay.t : 0;
 function frame(now){
 	requestAnimationFrame(frame);
 	const dt = Math.min(0.1, (now - last) / 1000);
@@ -1312,6 +1371,7 @@ function frame(now){
 	if(S.replay && r){
 		replayFrame(dt);
 		fx.update(dt);
+		updateSky(r, rp_t(), dt);
 		if(S.world) S.world.update(dt, camera.position);
 		renderer.render(scene, camera);
 		document.body.classList.remove("mirror-on");
@@ -1375,6 +1435,7 @@ function frame(now){
 		if(r) for(const c of r.cars) c.model && animateCar(c.model, 0, 0, dt);
 		fx.update(dt);
 	}
+	if(r) updateSky(r, r.raceTime, dt);
 	if(S.world) S.world.update(dt, focus ? focus.model.position : (S.showcase && camMode === "showcase" ? S.showcase.position : null));
 	renderer.render(scene, camera);
 	renderMirror();
@@ -1396,7 +1457,7 @@ $("codeInput").addEventListener("input", e => { e.target.value = e.target.value.
 $("codeInput").addEventListener("keydown", e => { if(e.key === "Enter") $("joinBtn").click(); });
 
 function lobbyDefaults(){
-	return { track: S.setup.trackId === "classic" ? "classic" : S.setup.trackId, reverse: false, laps: (defFor(S.setup.trackId).laps || 3), mode: "race", custom: null, draft: true, contact: "soft" };
+	return { track: S.setup.trackId === "classic" ? "classic" : S.setup.trackId, reverse: false, laps: (defFor(S.setup.trackId).laps || 3), mode: "race", custom: null, draft: true, contact: "soft", tod: "default", weather: "clear" };
 }
 async function withBusy(btn, fn){
 	btn.disabled = true;
@@ -1508,6 +1569,8 @@ function onRoom(room){
 const lobbySettingsControls = {
 	draft: seg($("lobbyDraft"), "1", v => S.net.updateSettings({ draft: v === "1" })),
 	contact: seg($("lobbyContact"), "soft", v => S.net.updateSettings({ contact: v })),
+	tod: seg($("lobbyTod"), "default", v => S.net.updateSettings({ tod: v })),
+	weather: seg($("lobbyWeather"), "clear", v => S.net.updateSettings({ weather: v })),
 	quali: seg($("lobbyQuali"), "0", v => S.net.updateSettings({ quali: v === "1" })),
 	mode: seg($("lobbyMode"), "race", v => S.net.updateSettings({ mode: v })),
 	dir: seg($("lobbyDir"), "0", v => S.net.updateSettings({ reverse: v === "1" })),
@@ -1580,6 +1643,12 @@ function renderLobby(room){
 	lobbySettingsControls.dir(st.reverse ? "1" : "0");
 	lobbySettingsControls.draft(st.draft === false ? "0" : "1");
 	lobbySettingsControls.contact(st.contact === "classic" ? "classic" : "soft");
+	lobbySettingsControls.tod(st.tod || "default");
+	lobbySettingsControls.weather(st.weather || "clear");
+	for(const id of ["lobbyTod", "lobbyWeather"]){
+		$(id).dataset.locked = host ? "" : "1";
+		$(id).querySelectorAll("button").forEach(b => { b.disabled = !host; });
+	}
 	$("lobbyContact").dataset.locked = host ? "" : "1";
 	$("lobbyContact").querySelectorAll("button").forEach(b => { b.disabled = !host; });
 	lobbySettingsControls.quali(st.quali ? "1" : "0");
@@ -1635,7 +1704,7 @@ function hostStart(){
 		startChampRoundOnline(newChamp(rounds.map(id => ({ track: id })), st.reverse, st.laps || 3));
 		return;
 	}
-	const next = { track: st.track, reverse: !!st.reverse, laps: st.laps || 3, mode: st.mode || "race", custom: st.custom || null, draft: st.draft !== false, contact: st.contact === "classic" ? "classic" : "soft" };
+	const next = { track: st.track, reverse: !!st.reverse, laps: st.laps || 3, mode: st.mode || "race", custom: st.custom || null, draft: st.draft !== false, contact: st.contact === "classic" ? "classic" : "soft", tod: st.tod || "default", weather: st.weather || "clear" };
 	net.startRace(Object.assign({}, next, {
 		id: ((room.race && room.race.id) || S.raceId || 0) + 1,
 		startAt: net.now() + 1800 + COUNTDOWN, grid
@@ -1646,7 +1715,7 @@ function startChampRoundOnline(champ, qualiGrid){
 	const room = S.room, net = S.net, st = room.settings || lobbyDefaults();
 	const ids = Object.entries(room.players || {}).sort((a, b) => (a[1].joined || 0) - (b[1].joined || 0)).map(([id]) => id).slice(0, MAX_CARS);
 	const r = champ.rounds[champ.idx];
-	const next = { track: r.track, reverse: !!champ.reverse && !trackById(r.track).code, laps: champ.laps, mode: "race", custom: null, draft: st.draft !== false, contact: st.contact === "classic" ? "classic" : "soft", champ: true };
+	const next = { track: r.track, reverse: !!champ.reverse && !trackById(r.track).code, laps: champ.laps, mode: "race", custom: null, draft: st.draft !== false, contact: st.contact === "classic" ? "classic" : "soft", tod: st.tod || "default", weather: st.weather || "clear", champ: true };
 	const base = { id: ((room.race && room.race.id) || S.raceId || 0) + 1, startAt: net.now() + 1800 + COUNTDOWN, grid: champ.idx === 0 ? ids : champGrid(champ, ids) };
 	if(st.quali) net.startRace(Object.assign({}, next, base, { mode: "quali", laps: QUALI_LAPS, draft: false, champ: false, next }), champ);
 	else net.startRace(Object.assign({}, next, base), champ);
@@ -1679,7 +1748,7 @@ function beginOnlineRace(room){
 	const def = defFor(r.track, r.custom);
 	beginRace({
 		source: "online", def, reverse: r.reverse, mode: r.mode, laps: r.mode === "elim" ? 99 : r.laps,
-		entrants, myId: net.uid, startAt: r.startAt, authority: room.host === net.uid, draft: r.draft !== false, contact: r.contact, champ: !!r.champ
+		entrants, myId: net.uid, startAt: r.startAt, authority: room.host === net.uid, draft: r.draft !== false, contact: r.contact, tod: r.tod, weather: r.weather, champ: !!r.champ
 	});
 	S.ctx.laps = r.laps;
 }

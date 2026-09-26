@@ -47,7 +47,7 @@ export class Effects {
 		g.fillStyle = r; g.fillRect(0, 0, 64, 64);
 		this.smokeTex = new THREE.CanvasTexture(c);
 		this.puffs = [];
-		const n = this.low ? 0 : 40;
+		const n = this.low ? 0 : 80;
 		for(let i = 0; i < n; i++){
 			const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.smokeTex, transparent: true, depthWrite: false, opacity: 0 }));
 			s.visible = false;
@@ -93,6 +93,21 @@ export class Effects {
 			}
 		}
 		car.lastSkid = rear;
+	}
+
+	// Spray thrown up behind a car on a wet track (wet 0..1).
+	spray(car, dt, wet){
+		if(!this.puffs.length) return;
+		const d = car.data, speed = Math.hypot(d.xv, d.yv);
+		if(speed < 0.12 || Math.random() > dt * 11 * wet * Math.min(1, speed / 0.35)) return;
+		const pf = this.puffs[this.puffHead];
+		this.puffHead = (this.puffHead + 1) % this.puffs.length;
+		pf.life = 0.8;
+		pf.s.visible = true;
+		pf.s.material.color.set("#cfd6de");
+		const sx = Math.sin(d.dir), cz = Math.cos(d.dir);
+		pf.s.position.set(d.x - sx * 1.4 + (Math.random() - 0.5) * 0.8, 0.45, d.y - cz * 1.4 + (Math.random() - 0.5) * 0.8);
+		pf.s.scale.setScalar(1.3);
 	}
 
 	burst(x, z, strength, dirX = 0, dirZ = 0){

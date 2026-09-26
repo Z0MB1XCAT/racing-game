@@ -301,6 +301,43 @@ export function updateEngines(cars, focus, dt){
 	}
 }
 
+// ---------- Rain and thunder ----------
+let rainNodes = null;
+// v: 0..1 how hard it's raining. Call as often as you like.
+export function setRain(v){
+	if(!ctx) return;
+	if(!rainNodes){
+		if(v <= 0) return;
+		const src = noiseSrc(true);
+		const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 900;
+		const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 6500;
+		const hiss = ctx.createGain(); hiss.gain.value = 0;
+		const lo = ctx.createBiquadFilter(); lo.type = "lowpass"; lo.frequency.value = 260;
+		const rumble = ctx.createGain(); rumble.gain.value = 0;
+		src.connect(hp); hp.connect(lp); lp.connect(hiss); hiss.connect(buses.sfx);
+		src.connect(lo); lo.connect(rumble); rumble.connect(buses.sfx);
+		src.start();
+		rainNodes = { src, hiss, rumble };
+	}
+	const t = ctx.currentTime;
+	rainNodes.hiss.gain.setTargetAtTime(v * 0.12, t, 0.4);
+	rainNodes.rumble.gain.setTargetAtTime(v * 0.1, t, 0.4);
+}
+// A rumble of thunder after a delay (seconds).
+export function thunder(delay = 1){
+	if(!ctx) return;
+	const t = ctx.currentTime + delay;
+	const s = noiseSrc(true);
+	const f = ctx.createBiquadFilter(); f.type = "lowpass"; f.frequency.setValueAtTime(700, t); f.frequency.exponentialRampToValueAtTime(140, t + 3);
+	const g = ctx.createGain();
+	g.gain.setValueAtTime(0.0001, t);
+	g.gain.exponentialRampToValueAtTime(0.5, t + 0.08);
+	for(let k = 0.3; k < 2.6; k += 0.25) g.gain.setTargetAtTime(0.18 + Math.random() * 0.3, t + k, 0.08);
+	g.gain.setTargetAtTime(0.0001, t + 2.7, 0.5);
+	s.connect(f); f.connect(g); g.connect(buses.sfx);
+	s.start(t); s.stop(t + 5);
+}
+
 // ---------- Effects ----------
 function out(){ return buses.sfx; }
 function tone(freq, dur, type = "sine", vol = 0.2, when = 0, slide = 0, dest){

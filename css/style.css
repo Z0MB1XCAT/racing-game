@@ -721,3 +721,8 @@ kbd{ font-family: var(--f-display); font-weight: 700; font-size: 13px; padding: 
 	padding: 10px 18px; max-width: min(560px, calc(100vw - 32px)); background: rgba(14,18,26,.94); border-left: 4px solid var(--purple);
 	font-weight: 600; font-size: 15px; box-shadow: var(--elev-3); animation: pop .35s var(--spring) both;
 }
+
+/* Options with many choices: label above, buttons sharing the full width below. */
+.opt-row.stacked{ flex-direction: column; align-items: stretch; gap: 8px; }
+.seg.seg-fill{ display: flex; width: 100%; }
+.seg.seg-fill button{ flex: 1 1 0; min-width: 0; padding-left: 4px; padding-right: 4px; }

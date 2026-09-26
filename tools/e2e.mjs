@@ -310,7 +310,7 @@ if(flow === "p2p"){
 		const a = snap[0].cars[i], b = snap[1].cars[i];
 		console.log(`  ${a[0].padEnd(7)} host sees (${a[1]}, ${a[2]})  guest sees (${b[1]}, ${b[2]})  diff ${Math.hypot(a[1] - b[1], a[2] - b[2]).toFixed(2)}`);
 	}
-	console.log("results:", await waitScreen(host, "results", 90) && await waitScreen(guest, "results", 10));
+	console.log("results:", await waitScreen(host, "results", 160) && await waitScreen(guest, "results", 40));
 }
 
 if(flow === "migrate"){
