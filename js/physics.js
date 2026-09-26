@@ -226,7 +226,8 @@ export function stepCars(cars, walls, lines, oob, warp, hit, contact){
 		for(let m = 0; m < cars.length; m++){
 			const ply = cars[m];
 			if(soft){
-				if(play != ply && (d.x - ply.data.x) ** 2 + (d.y - ply.data.y) ** 2 < 9) softContact(play, ply, hit);
+				// (Cars on different levels, like over and under a bridge, don't touch.)
+				if(play != ply && (d.x - ply.data.x) ** 2 + (d.y - ply.data.y) ** 2 < 9 && !(Math.abs((play.lvl ?? 0) - (ply.lvl ?? 0)) > 3)) softContact(play, ply, hit);
 				continue;
 			}
 			if(play != ply && play.pos.distanceTo(ply.pos) < 2){

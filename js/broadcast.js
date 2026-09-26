@@ -10,7 +10,7 @@ export const SHOT_NAMES = { auto: "Auto", track: "Trackside", chase: "Chase", he
 // Camera spots every ~55 units, a bit back from the barriers. Each one tries both sides,
 // a few distances and heights, and keeps the position that can see the most of the road
 // on either side of it without trees, buildings or grandstands in the way.
-function makeSpots(track, path, occ){
+function makeSpots(track, path, occ, ground, road){
 	if(!path) return [];
 	const hw = track.center ? track.center.hw : 5;
 	const rand = seededRandom("tv:" + track.id);
@@ -22,15 +22,16 @@ function makeSpots(track, path, occ){
 		const pref = out.length % 2 ? 1 : -1;
 		for(const side of [pref, -pref]) for(const off of [hw + 6 + rand() * 3, hw + 10, hw + 14]) for(const y of [4 + rand(), 6.5, 9.5]){
 			const x = path.x[i] + path.tz[i] * off * side, z = path.z[i] - path.tx[i] * off * side;
-			if(occ && occ.hit(x, y, z)) continue;
+			const gy = ground ? ground(x, z) : 0, cy = gy + y;
+			if(occ && occ.hit(x, cy, z)) continue;
 			if(track.center && tooCloseToRoad(track, x, z, 2.5)) continue;
 			let seen = 0;
 			for(let k = -36; k <= 24; k += 4){
 				const j = wrap(i + Math.round(k / path.step));
-				if(!occ || occ.clear(x, y, z, path.x[j], 0.9, path.z[j])) seen++;
+				if(!occ || occ.clear(x, cy, z, path.x[j], 0.9 + (road ? road(path.x[j], path.z[j], j) : 0), path.z[j])) seen++;
 			}
 			const score = seen - (y > 7 ? 0.5 : 0) - (off > hw + 12 ? 0.5 : 0) + (side === pref ? 0.25 : 0);
-			if(!best || score > best.score) best = { i, x, z, y, score, seen };
+			if(!best || score > best.score) best = { i, x, z, y: cy, score, seen };
 		}
 		if(best && best.seen >= 5) out.push(best);
 	}
@@ -49,7 +50,7 @@ export class Director {
 		this.track = track;
 		this.path = tracker.path;
 		this.occ = world && world.occluders || null;
-		this.spots = makeSpots(track, tracker.path, this.occ);
+		this.spots = makeSpots(track, tracker.path, this.occ, world && world.groundAt, track.elevated ? (x, z, i) => track.heightAt(x, z, i) : null);
 		this.blocked = 0;
 		this.losTimer = 0;
 		this.losOk = true;
@@ -70,7 +71,7 @@ export class Director {
 	// Called when the focused car changes, so the next frame cuts instead of panning.
 	newFocus(){ this.cut = true; this.spot = null; this.blocked = 0; }
 	// Can a camera at (x, y, z) see the car?
-	sees(x, y, z, f){ return !this.occ || this.occ.clear(x, y, z, f.x, 0.9, f.z); }
+	sees(x, y, z, f){ return !this.occ || this.occ.clear(x, y, z, f.x, 0.9 + (f.y || 0), f.z); }
 
 	// focus: { x, z, dir, speed }. t: seconds (only used to time shot changes).
 	update(dt, t, focus){
@@ -92,7 +93,8 @@ export class Director {
 			this.cut = true;
 		}
 		const sx = Math.sin(focus.dir), cz = Math.cos(focus.dir);
-		let fov = 60, px, py, pz, lx = focus.x, ly = 0.8, lz = focus.z, smooth = 6;
+		const fy = focus.y || 0;
+		let fov = 60, px, py, pz, lx = focus.x, ly = 0.8 + fy, lz = focus.z, smooth = 6;
 		if(this.current === "track" && this.spots.length && path){
 			// Nearest camera the car is driving towards; move on once it's well past.
 			const n = path.n, ahead = s => ((s.i - this.hint) % n + n) % n;
@@ -132,20 +134,20 @@ export class Director {
 			lx = focus.x + sx * 2; lz = focus.z + cz * 2;
 			smooth = 10;
 		}else if(this.current === "heli"){
-			px = focus.x - sx * 20; py = 17; pz = focus.z - cz * 20;
-			lx = focus.x + sx * 8; lz = focus.z + cz * 8; ly = 0;
+			px = focus.x - sx * 20; py = 17 + fy; pz = focus.z - cz * 20;
+			lx = focus.x + sx * 8; lz = focus.z + cz * 8; ly = fy;
 			fov = 55; smooth = 3;
 		}else if(this.current === "onboard"){
-			px = focus.x + sx * 0.3; py = 1.25; pz = focus.z + cz * 0.3;
-			lx = focus.x + sx * 20; ly = 1; lz = focus.z + cz * 20;
+			px = focus.x + sx * 0.3; py = 1.25 + fy; pz = focus.z + cz * 0.3;
+			lx = focus.x + sx * 20; ly = 1 + fy; lz = focus.z + cz * 20;
 			fov = 80; smooth = 1000;
 		}else{
-			px = focus.x - sx * 7; py = 2.8; pz = focus.z - cz * 7;
-			if(!this.sees(px, py, pz, focus)) py = 7.5;
+			px = focus.x - sx * 7; py = 2.8 + fy; pz = focus.z - cz * 7;
+			if(!this.sees(px, py, pz, focus)) py = 7.5 + fy;
 			fov = 70; smooth = 5;
 		}
 		const k = this.cut ? 1 : Math.min(1, dt * smooth);
-		this.pos.set(this.cut ? px : this.pos.x + (px - this.pos.x) * k, py, this.cut ? pz : this.pos.z + (pz - this.pos.z) * k);
+		this.pos.set(this.cut ? px : this.pos.x + (px - this.pos.x) * k, this.cut ? py : this.pos.y + (py - this.pos.y) * k, this.cut ? pz : this.pos.z + (pz - this.pos.z) * k);
 		if(this.current === "track" && !this.cut) this.pos.set(px, py, pz);   // trackside cameras don't move, they pan
 		this.look.set(this.cut ? lx : this.look.x + (lx - this.look.x) * Math.min(1, dt * 8), ly, this.cut ? lz : this.look.z + (lz - this.look.z) * Math.min(1, dt * 8));
 		cam.position.copy(this.pos);
@@ -274,8 +276,9 @@ export class Replay {
 			const dir = a.f[o + 2] + dr * f;
 			c.model.position.set(x, 0, z);
 			c.model.rotation.y = dir;
+			if(this.race.track.elevated) c.rh = this.race.poseModel(c.model, x, z, dir, c.rh ?? -1);
 			animateCar(c.model, a.f[o + 3], this.playing ? a.f[o + 4] * this.speed : 0, dt);
-			if(c.id === this.focusId) focus = { x, z, dir, speed: a.f[o + 4], car: c };
+			if(c.id === this.focusId) focus = { x, y: c.model.position.y, z, dir, speed: a.f[o + 4], car: c };
 		});
 		return focus;
 	}

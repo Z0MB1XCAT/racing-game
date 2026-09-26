@@ -26,6 +26,7 @@ export class Effects {
 		this.sparkPos = new Float32Array(this.maxSparks * 3);
 		this.sparkVel = new Float32Array(this.maxSparks * 3);
 		this.sparkLife = new Float32Array(this.maxSparks);
+		this.sparkFloor = new Float32Array(this.maxSparks);
 		pg.setAttribute("position", new THREE.BufferAttribute(this.sparkPos, 3));
 		// Round, glowing sparks (plain points draw as squares).
 		const dot = document.createElement("canvas"); dot.width = dot.height = 32;
@@ -66,6 +67,7 @@ export class Effects {
 		const sliding = slip > 0.32;
 		const sx = Math.sin(d.dir), cz = Math.cos(d.dir);
 		const rear = [[0.5, -0.7], [-0.5, -0.7]].map(([ox, oz]) => [d.x + ox * cz + oz * sx, d.y - ox * sx + oz * cz]);
+		const gy = car.model ? car.model.position.y : 0;
 		if(sliding && car.lastSkid){
 			for(let w = 0; w < 2; w++){
 				const [ax, az] = car.lastSkid[w], [bx, bz] = rear[w];
@@ -73,10 +75,11 @@ export class Effects {
 				if(l < 0.05 || l > 3) continue;
 				const nx = -dz / l * 0.14, nz = dx / l * 0.14;
 				const o = this.skidHead * 12, p = this.skidPos;
-				p[o] = ax + nx; p[o + 1] = 0.06; p[o + 2] = az + nz;
-				p[o + 3] = ax - nx; p[o + 4] = 0.06; p[o + 5] = az - nz;
-				p[o + 6] = bx + nx; p[o + 7] = 0.06; p[o + 8] = bz + nz;
-				p[o + 9] = bx - nx; p[o + 10] = 0.06; p[o + 11] = bz - nz;
+				const ya = (car.lastSkidY ?? gy) + 0.06, yb = gy + 0.06;
+				p[o] = ax + nx; p[o + 1] = ya; p[o + 2] = az + nz;
+				p[o + 3] = ax - nx; p[o + 4] = ya; p[o + 5] = az - nz;
+				p[o + 6] = bx + nx; p[o + 7] = yb; p[o + 8] = bz + nz;
+				p[o + 9] = bx - nx; p[o + 10] = yb; p[o + 11] = bz - nz;
 				this.skidHead = (this.skidHead + 1) % this.maxSkids;
 				this.skidMesh.geometry.attributes.position.needsUpdate = true;
 			}
@@ -88,11 +91,12 @@ export class Effects {
 				const sc = car.model && car.model.userData.smoke;
 				if(sc === "rainbow") pf.s.material.color.setHSL(Math.random(), 1, 0.65);
 				else pf.s.material.color.set(sc || "#ebebf0");
-				pf.s.position.set(rear[0][0] * 0.5 + rear[1][0] * 0.5, 0.5, rear[0][1] * 0.5 + rear[1][1] * 0.5);
+				pf.s.position.set(rear[0][0] * 0.5 + rear[1][0] * 0.5, 0.5 + gy, rear[0][1] * 0.5 + rear[1][1] * 0.5);
 				pf.s.scale.setScalar(1.2);
 			}
 		}
 		car.lastSkid = rear;
+		car.lastSkidY = gy;
 	}
 
 	// Spray thrown up behind a car on a wet track (wet 0..1).
@@ -106,16 +110,17 @@ export class Effects {
 		pf.s.visible = true;
 		pf.s.material.color.set("#cfd6de");
 		const sx = Math.sin(d.dir), cz = Math.cos(d.dir);
-		pf.s.position.set(d.x - sx * 1.4 + (Math.random() - 0.5) * 0.8, 0.45, d.y - cz * 1.4 + (Math.random() - 0.5) * 0.8);
+		pf.s.position.set(d.x - sx * 1.4 + (Math.random() - 0.5) * 0.8, 0.45 + (car.model ? car.model.position.y : 0), d.y - cz * 1.4 + (Math.random() - 0.5) * 0.8);
 		pf.s.scale.setScalar(1.3);
 	}
 
-	burst(x, z, strength, dirX = 0, dirZ = 0){
+	burst(x, z, strength, dirX = 0, dirZ = 0, y = 0){
 		const n = Math.min(24, Math.round(6 + strength * 40));
 		for(let i = 0; i < n; i++){
 			const k = this.sparkHead;
 			this.sparkHead = (this.sparkHead + 1) % this.maxSparks;
-			this.sparkPos[k * 3] = x; this.sparkPos[k * 3 + 1] = 0.5 + Math.random() * 0.4; this.sparkPos[k * 3 + 2] = z;
+			this.sparkPos[k * 3] = x; this.sparkPos[k * 3 + 1] = y + 0.5 + Math.random() * 0.4; this.sparkPos[k * 3 + 2] = z;
+			this.sparkFloor[k] = y + 0.05;
 			const a = Math.random() * Math.PI * 2, s = 3 + Math.random() * 7 * (0.5 + strength * 2);
 			this.sparkVel[k * 3] = Math.cos(a) * s + dirX * 20;
 			this.sparkVel[k * 3 + 1] = 2 + Math.random() * 5;
@@ -131,7 +136,7 @@ export class Effects {
 			this.sparkLife[k] -= dt;
 			v[k * 3 + 1] -= 22 * dt;
 			p[k * 3] += v[k * 3] * dt; p[k * 3 + 1] += v[k * 3 + 1] * dt; p[k * 3 + 2] += v[k * 3 + 2] * dt;
-			if(p[k * 3 + 1] < 0.05){ p[k * 3 + 1] = 0.05; v[k * 3 + 1] *= -0.3; }
+			if(p[k * 3 + 1] < this.sparkFloor[k]){ p[k * 3 + 1] = this.sparkFloor[k]; v[k * 3 + 1] *= -0.3; }
 		}
 		this.sparks.geometry.attributes.position.needsUpdate = true;
 		for(const pf of this.puffs){

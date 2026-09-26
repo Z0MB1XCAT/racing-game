@@ -4,6 +4,7 @@ import { GRID } from "./physics.js";
 import { START_Z, seededRandom } from "./trackgen.js";
 import { buildScenery, canvasTexture } from "./scenery.js";
 import { naturalHour } from "./atmosphere.js";
+import { buildTerrain, buildTunnel, buildBridge } from "./terrain.js";
 
 const THREE = globalThis.THREE;
 
@@ -11,7 +12,7 @@ export const THEMES = {
 	classic: { sky: 0x7fb0ff, ground: 0x57c115, stripes: true, wall: 0xf48342, wallH: 1.5, trees: "classic", mountains: "cubes", mountainColor: 0x888888, sun: 0.7, amb: 0.5 },
 	monaco: { sky: [0x4f9dea, 0xd6ebff], ground: 0xcdc3ae, wall: "redwhite", road: 0x45484f, trees: "palm", treeDensity: 0.25,
 		buildings: { density: 0.9, palette: [0xf2d7b6, 0xf0c9a8, 0xe8e0cf, 0xf5e6c8, 0xd9b99b, 0xf4efe6, 0xe9c9c0] },
-		sea: { dir: [0.25, -1], color: 0x1f6fb0 }, mountains: "hills", mountainColor: 0x7f956a, fog: [0xd6ebff, 500, 1600], grandstand: 2, standColor: 0xd8342f, fans: false },
+		sea: { dir: [0.9, -0.45], color: 0x1f6fb0 }, mountains: "hills", mountainColor: 0x7f956a, fog: [0xd6ebff, 500, 1600], grandstand: 2, standColor: 0xd8342f, fans: false },
 	spa: { sky: [0x7f90a6, 0xcbd4dd], ground: 0x3f7b34, stripes: true, wall: 0xa9b1ba, road: 0x3c4047, trees: "pine", treeDensity: 1.3,
 		mountains: "hills", mountainColor: 0x3d663a, fog: [0xbcc6d0, 320, 1300], grandstand: 2, standColor: 0xf4c542, sun: 0.55, amb: 0.6 },
 	monza: { sky: [0x4a9eff, 0xd2eaff], ground: 0x5ea94a, stripes: true, wall: 0xb9c1c9, road: 0x41444b, trees: "round", treeDensity: 1.0,
@@ -20,7 +21,7 @@ export const THEMES = {
 		mountains: "hills", mountainColor: 0x5b8757, fog: [0xe4f2ff, 450, 1600], grandstand: 2, standColor: 0x2f63c9, ferris: true },
 	jeddah: { night: true, sky: [0x03040c, 0x1c2250], ground: 0x1f2129, wall: "concrete", road: 0x2d3038, trees: "palm", treeDensity: 0.25,
 		buildings: { density: 0.7, night: true, palette: [0x2a2f3d, 0x343a4a, 0x22262f, 0x3a3346] },
-		sea: { dir: [0.47, -0.88], color: 0x0a1830 }, lights: true, mountains: "none", fog: [0x121634, 280, 1300], sun: 0.18, amb: 0.4, grandstand: 2, standColor: 0x0e7c86, fans: false },
+		sea: { dir: [-1, 0.08], color: 0x0a1830 }, lights: true, mountains: "none", fog: [0x121634, 280, 1300], sun: 0.18, amb: 0.4, grandstand: 2, standColor: 0x0e7c86, fans: false },
 	daytona: { sky: [0x4aa6ff, 0xdcf0ff], ground: 0x68a94c, stripes: true, wall: 0xf1f3f6, road: 0x3a3d44, trees: "palm", treeDensity: 0.15,
 		lake: true, grandstand: 4, standColor: 0x2f63c9, mountains: "none", fog: [0xdcf0ff, 500, 1700] },
 	dusk: { sky: [0x241a45, 0xff8a4c], ground: 0x86684a, wall: "tyres", road: 0x4e4540, trees: "none", mountains: "hills", mountainColor: 0x5a3f4a,
@@ -61,6 +62,40 @@ function mergedBoxes(items){
 	return g;
 }
 
+// Walls that follow the road's height: each wall piece becomes a short slab whose ends sit at
+// the road height there (so the barrier climbs and dips with the road). items: as mergedBoxes.
+function wallStrips(track, items, h, heightAt){
+	const pos = [], col = [], idx = [], c = new THREE.Color();
+	const quad = (a, b, cc, d, color) => {
+		const base = pos.length / 3;
+		for(const p of [a, b, cc, d]) pos.push(...p);
+		c.set(color);
+		for(let i = 0; i < 4; i++) col.push(c.r, c.g, c.b);
+		idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+	};
+	for(const it of items){
+		const cs = Math.cos(it.ry || 0), sn = Math.sin(it.ry || 0);
+		const hx = it.w / 2 * cs, hz = -it.w / 2 * sn;            // along the piece
+		const tx = it.d / 2 * sn, tz = it.d / 2 * cs;             // across it
+		const ax = it.x - hx, az = it.z - hz, bx = it.x + hx, bz = it.z + hz;
+		const ya = heightAt(ax, az), yb = heightAt(bx, bz);
+		const y0a = ya + it.y - h / 2, y0b = yb + it.y - h / 2, y1a = y0a + h, y1b = y0b + h;
+		const P = (x, y, z) => [x, y, z];
+		// Both faces, the top, and the two ends.
+		quad(P(ax + tx, y0a, az + tz), P(bx + tx, y0b, bz + tz), P(bx + tx, y1b, bz + tz), P(ax + tx, y1a, az + tz), it.color);
+		quad(P(bx - tx, y0b, bz - tz), P(ax - tx, y0a, az - tz), P(ax - tx, y1a, az - tz), P(bx - tx, y1b, bz - tz), it.color);
+		quad(P(ax + tx, y1a, az + tz), P(bx + tx, y1b, bz + tz), P(bx - tx, y1b, bz - tz), P(ax - tx, y1a, az - tz), it.color);
+		quad(P(ax - tx, y0a, az - tz), P(ax + tx, y0a, az + tz), P(ax + tx, y1a, az + tz), P(ax - tx, y1a, az - tz), it.color);
+		quad(P(bx + tx, y0b, bz + tz), P(bx - tx, y0b, bz - tz), P(bx - tx, y1b, bz - tz), P(bx + tx, y1b, bz + tz), it.color);
+	}
+	const g = new THREE.BufferGeometry();
+	g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+	g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+	g.setIndex(idx);
+	g.computeVertexNormals();
+	return g;
+}
+
 function instanced(geometry, material, list, shadow){
 	const mesh = new THREE.InstancedMesh(geometry, material, Math.max(1, list.length));
 	const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), e = new THREE.Euler();
@@ -88,7 +123,8 @@ function ribbon(center, from, to, y, keepFn, colorFn){
 	for(let i = 0; i <= n; i++){
 		const k = i % n;
 		const nx = center.tz[k], nz = -center.tx[k];
-		pos.push(center.x[k] + nx * from, y, center.z[k] + nz * from, center.x[k] + nx * to, y, center.z[k] + nz * to);
+		const ya = y + (center.h ? center.h[k] + from * center.bank[k] : 0), yb = y + (center.h ? center.h[k] + to * center.bank[k] : 0);
+		pos.push(center.x[k] + nx * from, ya, center.z[k] + nz * from, center.x[k] + nx * to, yb, center.z[k] + nz * to);
 		c.set(colorFn ? colorFn(k) : 0xffffff);
 		col.push(c.r, c.g, c.b, c.r, c.g, c.b);
 		if(i < n && (!keepFn || keepFn(k))){
@@ -208,9 +244,41 @@ export function buildWorld(track, opts = {}){
 	}else{
 		groundMat = keep(new THREE.MeshLambertMaterial({ color: theme.ground }));
 	}
+	// Which side is sea (Monaco, Jeddah), in real compass terms.
+	let seaEdge = null;
+	if(theme.sea && track.toMap){
+		const [dx, dy] = theme.sea.dir, l = Math.hypot(dx, dy);
+		const ux = dx / l, uy = dy / l;
+		let edge = -Infinity;
+		for(const [x1, z1, x2, z2] of track.wallSegs) for(const [x, z] of [[x1, z1], [x2, z2]]){
+			const [mx, my] = track.toMap(x, z);
+			edge = Math.max(edge, mx * ux + my * uy);
+		}
+		seaEdge = { ux, uy, edge: edge + 25 };
+	}
+	const isSea = seaEdge ? (x, z) => { const [mx, my] = track.toMap(x, z); return mx * seaEdge.ux + my * seaEdge.uy > seaEdge.edge; } : null;
+
+	// Elevated circuits get rolling ground built from the road's own heights.
+	let terrain = null;
+	if(track.elevated){
+		terrain = buildTerrain(track, { isSea, uvOrigin: { x: cx - groundSize / 2, z: cz + groundSize / 2 } });
+		keep(terrain.geometry);
+		let tmat = groundMat;
+		if(theme.stripes && groundMat.emissiveMap){
+			const t = keep(groundMat.emissiveMap.clone());
+			t.repeat.set(1, 1); t.needsUpdate = true;
+			tmat = keep(new THREE.MeshLambertMaterial({ color: theme.ground, emissive: 0x0f0f0f, emissiveMap: t }));
+		}
+		const tm = new THREE.Mesh(terrain.geometry, tmat);
+		tm.receiveShadow = shadows;
+		tm.frustumCulled = false;
+		group.add(tm);
+	}
+	const groundAt = terrain ? terrain.groundAt : () => 0;
+	const heightAt = track.heightAt || (() => 0);
 	const ground = new THREE.Mesh(keep(new THREE.PlaneBufferGeometry(groundSize, groundSize)), groundMat);
 	ground.rotation.x = -Math.PI / 2;
-	ground.position.set(cx, 0, cz);
+	ground.position.set(cx, terrain ? terrain.base - 0.05 : 0, cz);
 	ground.receiveShadow = shadows;
 	group.add(ground);
 
@@ -242,7 +310,8 @@ export function buildWorld(track, opts = {}){
 		chk.magFilter = THREE.NearestFilter;
 		const startLine = new THREE.Mesh(keep(new THREE.PlaneBufferGeometry(hw * 2, 1.6)), keep(new THREE.MeshLambertMaterial({ map: chk })));
 		startLine.rotation.x = -Math.PI / 2;
-		startLine.position.set(0, 0.05, START_Z);
+		const h0 = heightAt(0, START_Z);
+		startLine.position.set(0, 0.05 + h0, START_Z);
 		group.add(startLine);
 		// Gantry over the line.
 		const gantry = mergedBoxes([
@@ -250,12 +319,14 @@ export function buildWorld(track, opts = {}){
 			{ x: -hw - 1.6, y: 3.5, z: START_Z, w: 0.5, h: 7, d: 0.5, color: 0x2a2e38 },
 			{ x: 0, y: 7.2, z: START_Z, w: hw * 2 + 3.7, h: 1.2, d: 0.6, color: 0x1a1d25 }
 		]);
-		group.add(new THREE.Mesh(keep(gantry), keep(new THREE.MeshLambertMaterial({ vertexColors: true }))));
+		const gm = new THREE.Mesh(keep(gantry), keep(new THREE.MeshLambertMaterial({ vertexColors: true })));
+		gm.position.y = h0;
+		group.add(gm);
 		const banner = new THREE.Mesh(keep(new THREE.PlaneBufferGeometry(hw * 2 + 3, 1)), keep(new THREE.MeshBasicMaterial({ map: chk, side: THREE.DoubleSide })));
-		banner.position.set(0, 7.2, START_Z - 0.32);
+		banner.position.set(0, 7.2 + h0, START_Z - 0.32);
 		group.add(banner);
 		// Grid slots.
-		const slots = GRID.slice(0, 10).map(g => ({ x: g.x, y: 0.05, z: g.y + 1.25, sx: 1.4, sy: 1, sz: 0.14 }));
+		const slots = GRID.slice(0, 10).map(g => ({ x: g.x, y: 0.05 + heightAt(g.x, g.y + 1.25), z: g.y + 1.25, sx: 1.4, sy: 1, sz: 0.14 }));
 		group.add(instanced(keep(new THREE.BoxBufferGeometry(1, 0.02, 1)), lineMat, slots));
 	}else if(!track.center){
 		// Original-style start line and checkpoint.
@@ -275,7 +346,14 @@ export function buildWorld(track, opts = {}){
 	for(const [x1, z1, x2, z2] of track.wallSegs){
 		const len = Math.hypot(x2 - x1, z2 - z1);
 		const ry = Math.atan2(z1 - z2, x2 - x1);
-		if(typeof style === "number"){
+		if(typeof style === "number" && track.elevated){
+			// On hills a long straight piece would float or sink in the middle: use short ones.
+			const pieces = Math.max(1, Math.round(len / 3));
+			for(let p = 0; p < pieces; p++){
+				const t = (p + 0.5) / pieces;
+				wallItems.push({ x: x1 + (x2 - x1) * t, y: wallH / 2, z: z1 + (z2 - z1) * t, w: len / pieces + 0.04, h: wallH, d: 0.3, ry, color: style });
+			}
+		}else if(typeof style === "number"){
 			wallItems.push({ x: (x1 + x2) / 2, y: wallH / 2, z: (z1 + z2) / 2, w: len + 0.3, h: wallH, d: 0.3, ry, color: style });
 		}else{
 			const [ca, cb] = pairs[style] || pairs.redwhite;
@@ -286,18 +364,18 @@ export function buildWorld(track, opts = {}){
 			}
 		}
 	}
-	const wallMesh = new THREE.Mesh(keep(mergedBoxes(wallItems)), keep(new THREE.MeshLambertMaterial({ vertexColors: true })));
+	const wallMesh = new THREE.Mesh(keep(track.elevated ? wallStrips(track, wallItems, wallH, heightAt) : mergedBoxes(wallItems)), keep(new THREE.MeshLambertMaterial({ vertexColors: true })));
 	wallMesh.castShadow = wallMesh.receiveShadow = shadows;
 	group.add(wallMesh);
 	if(style === "concrete"){
 		// Jeddah: a strip of light along the top of every wall.
 		const strip = wallItems.map(w => Object.assign({}, w, { y: wallH + 0.05, h: 0.1, d: 0.32, color: 0x7ad7ff }));
-		group.add(new THREE.Mesh(keep(mergedBoxes(strip)), keep(new THREE.MeshBasicMaterial({ vertexColors: true }))));
+		group.add(new THREE.Mesh(keep(track.elevated ? wallStrips(track, strip, 0.1, heightAt) : mergedBoxes(strip)), keep(new THREE.MeshBasicMaterial({ vertexColors: true }))));
 	}
 
 	// Trees, grandstands, pits, billboards, buildings (see scenery.js).
 	const scenery = track.scenery || [];
-	const extras = buildScenery(track, theme, { group, keep, shadows, quality, rand });
+	const extras = buildScenery(track, theme, { group, keep, shadows, quality, rand, groundAt });
 	const occluders = extras.occluders;
 	updaters.push(...extras.updaters);
 	if(theme.trees === "classic"){
@@ -310,26 +388,32 @@ export function buildWorld(track, opts = {}){
 		group.add(instanced(sign, smat, (track.signs || []).map(s => ({ x: s.x, y: s.y, z: s.z, rx: Math.PI / 2, ry: s.rot })), shadows));
 	}
 	const roomFor = (x, z, m) => !extras.clearOfRoad || extras.clearOfRoad(x, z, m);
+	if(track.features && track.features.tunnel){
+		const t = buildTunnel(track, track.features.tunnel, keep);
+		for(const m of t.meshes){ m.receiveShadow = shadows; group.add(m); }
+		for(const o of t.occluders) occluders.add(o);
+	}
+	if(track.features && track.features.bridge && terrain){
+		const br = buildBridge(track, track.features.bridge, groundAt, keep);
+		if(br.items.length){
+			const m = new THREE.Mesh(keep(mergedBoxes(br.items)), keep(new THREE.MeshLambertMaterial({ vertexColors: true })));
+			m.castShadow = m.receiveShadow = shadows;
+			group.add(m);
+		}
+		for(const o of br.occluders) occluders.add(o);
+	}
 
 	// Sea beyond one side of the circuit, in real compass terms.
-	if(theme.sea && track.toMap){
-		const [dx, dy] = theme.sea.dir, l = Math.hypot(dx, dy);
-		const ux = dx / l, uy = dy / l, px = -uy, py = ux;
-		let edge = -Infinity;
-		for(const [x1, z1, x2, z2] of track.wallSegs){
-			for(const [x, z] of [[x1, z1], [x2, z2]]){
-				const [mx, my] = track.toMap(x, z);
-				edge = Math.max(edge, mx * ux + my * uy);
-			}
-		}
-		edge += 25;
+	if(seaEdge){
+		const { ux, uy, edge } = seaEdge, px = -uy, py = ux;
 		const [mcx, mcy] = track.toMap(cx, cz);
 		const along = mcx * px + mcy * py;
 		const big = groundSize;
 		const corners = [[edge, along - big], [edge, along + big], [edge + big, along + big], [edge + big, along - big]]
 			.map(([a, s]) => track.fromMap(ux * a + px * s, uy * a + py * s));
 		const g = new THREE.BufferGeometry();
-		g.setAttribute("position", new THREE.Float32BufferAttribute([].concat(...corners.map(([x, z]) => [x, 0.06, z])), 3));
+		const seaY = terrain ? terrain.base + 0.02 : 0.06;     // just above the far ground plane; the terrain dips under it on the sea side
+		g.setAttribute("position", new THREE.Float32BufferAttribute([].concat(...corners.map(([x, z]) => [x, seaY, z])), 3));
 		g.setIndex([0, 1, 2, 0, 2, 3]);
 		g.computeVertexNormals();
 		const sea = new THREE.Mesh(keep(g), keep(new THREE.MeshLambertMaterial({ color: theme.sea.color, emissive: theme.night ? 0x050b18 : 0x0a2a4a, side: THREE.DoubleSide })));
@@ -354,9 +438,10 @@ export function buildWorld(track, opts = {}){
 			const off = hw + 3;
 			const x = c.x[i] + nx * off, z = c.z[i] + nz * off;
 			if(!track.keep[side > 0 ? 0 : 1][i] || !roomFor(x, z, 0.8)) continue;
-			poles.push({ x, y: 5, z, sx: 0.3, sy: 10, sz: 0.3 });
-			heads.push({ x: x - nx * 1.2, y: 10, z: z - nz * 1.2, sx: 1.4, sy: 0.4, sz: 1.4 });
-			pools.push({ x: x - nx * (hw * 0.7 + 3), y: 0.07, z: z - nz * (hw * 0.7 + 3), rx: -Math.PI / 2, s: hw * 1.6 });
+			const gy = Math.max(groundAt(x, z), c.h ? c.h[i] - 1 : 0), py = c.h ? c.h[i] : 0;
+			poles.push({ x, y: gy + 5 + (py - gy) / 2, z, sx: 0.3, sy: 10 + (py - gy), sz: 0.3 });
+			heads.push({ x: x - nx * 1.2, y: py + 10, z: z - nz * 1.2, sx: 1.4, sy: 0.4, sz: 1.4 });
+			pools.push({ x: x - nx * (hw * 0.7 + 3), y: py + 0.07, z: z - nz * (hw * 0.7 + 3), rx: -Math.PI / 2, s: hw * 1.6 });
 		}
 		const unit = keep(new THREE.BoxBufferGeometry(1, 1, 1));
 		group.add(instanced(unit, keep(new THREE.MeshLambertMaterial({ color: 0x3a3f4a })), poles));
@@ -389,7 +474,7 @@ export function buildWorld(track, opts = {}){
 			wheel.add(cab);
 		}
 		const holder = new THREE.Group();
-		holder.position.set(spot.x, 21, spot.z);
+		holder.position.set(spot.x, 21 + groundAt(spot.x, spot.z), spot.z);
 		holder.rotation.y = spot.face;
 		holder.add(wheel);
 		const legs = mergedBoxes([
@@ -541,6 +626,8 @@ export function buildWorld(track, opts = {}){
 
 	return {
 		group, theme, sun, fog, farPlane, occluders, info: extras.info,
+		// Height of the ground (terrain) and of the road surface at (x, z).
+		groundAt, heightAt,
 		look,
 		// { hour 0-24, cloud 0-1, rain 0-1 }. Cheap to call every frame.
 		setAtmosphere(a){ now.hour = a.hour; now.cloud = a.cloud; now.rain = a.rain; },
@@ -568,7 +655,7 @@ export function buildWorld(track, opts = {}){
 			applyTimer -= dt;
 			if(applyTimer <= 0 || flash > 0){ applyTimer = 0.1; apply(); }
 			if(focus){
-				clouds.position.set(focus.x, 190, focus.z);
+				clouds.position.set(focus.x, 190 + (focus.y || 0), focus.z);
 				stars.position.set(focus.x, 0, focus.z);
 			}
 			if(rainLines && rainLines.visible && focus){
@@ -580,12 +667,12 @@ export function buildWorld(track, opts = {}){
 					a[i + 1] = y; a[i + 4] = y + 0.9;
 				}
 				p.needsUpdate = true;
-				rainLines.position.set(focus.x, 0, focus.z);
+				rainLines.position.set(focus.x, (focus.y || 0) - 2, focus.z);
 			}
 			if(skyMesh && focus) skyMesh.position.set(focus.x, 0, focus.z);
 			if(shadows && focus){
-				sun.target.position.set(focus.x, 0, focus.z);
-				sun.position.set(focus.x + sunOffset.x, sunOffset.y, focus.z + sunOffset.z);
+				sun.target.position.set(focus.x, focus.y || 0, focus.z);
+				sun.position.set(focus.x + sunOffset.x, sunOffset.y + (focus.y || 0), focus.z + sunOffset.z);
 			}
 			if(snow && focus){
 				const p = snow.geometry.attributes.position;
@@ -596,7 +683,7 @@ export function buildWorld(track, opts = {}){
 					p.setX(i, p.getX(i) + Math.sin(y * 0.4 + i) * dt * 0.6);
 				}
 				p.needsUpdate = true;
-				snow.position.set(focus.x, 0, focus.z);
+				snow.position.set(focus.x, (focus.y || 0) - 2, focus.z);
 			}
 		},
 		dispose(){

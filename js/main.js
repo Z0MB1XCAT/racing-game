@@ -91,7 +91,8 @@ function defFor(id, custom){
 	return allDefs().find(d => d.id === id) || trackById("classic");
 }
 function hash(s){ let h = 0; for(let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
-function trackKey(def, reverse){ return def.id + (reverse && !def.code ? "-rev" : ""); }
+// Records, ghosts and boards are kept per track key: remastered tracks have a new key.
+function trackKey(def, reverse){ return (def.key || def.id) + (reverse && !def.code ? "-rev" : ""); }
 function getTrack(def, reverse){
 	const key = trackKey(def, reverse);
 	if(!trackCache.has(key)){
@@ -122,7 +123,7 @@ function showTrack(def, reverse){
 function placeShowcase(){
 	if(S.showcase){ scene.remove(S.showcase); disposeCar(S.showcase); }
 	S.showcase = makeCar(S.profile.body, S.profile.hue, { look: S.profile.look });
-	S.showcase.position.set(0, 0, 0);
+	S.showcase.position.set(0, S.track && S.track.heightAt ? S.track.heightAt(0, 0) : 0, 0);
 	S.showcase.visible = !S.race;
 	scene.add(S.showcase);
 }
@@ -721,7 +722,7 @@ function onRaceEvent(type, d){
 				audio.thud(d.strength, 1, d.type);
 				if(S.settings.shake) S.shake = Math.min(0.5, S.shake + d.strength * 1.2);
 			}else if(near > 0) audio.thud(d.strength, near * 0.6, d.type);
-			if(near > 0 && d.strength > 0.08) fx.burst(c.pos.x, c.pos.z, d.strength, c.data.xv, c.data.yv);
+			if(near > 0 && d.strength > 0.08) fx.burst(c.pos.x, c.pos.z, d.strength, c.data.xv, c.data.yv, c.model.position.y);
 			break;
 		}
 		case "lap": {
@@ -745,7 +746,7 @@ function onRaceEvent(type, d){
 				}
 				if(isRecord && TRACKS.every(t => store.getBest(trackKey(t, false)) != null)) garageNote(garage.afterSolo(["allTracks"]), true);
 				const wk = weeklyChallenge();
-				if(S.ctx.def.id === wk.def.id && !!S.ctx.reverse === wk.reverse){
+				if(trackKey(S.ctx.def, S.ctx.reverse) === trackKey(wk.def, wk.reverse)){
 					const wkKey = "weekly:" + wk.id, prev = store.getBest(wkKey);
 					if(prev == null || d.ms < prev){ store.setBest(wkKey, d.ms); submitWeekly(wk.id, d.ms, key, r.lastLap); if(!isRecord) weeklyBest = true; }
 					const wg = store.getWeeklyGhost(wk.id);
@@ -1073,8 +1074,20 @@ function snapCamera(){
 	const c = focusCar();
 	if(!c) return;
 	const p = c.model.position, d = c.data.dir;
-	camera.position.set(p.x - Math.sin(d) * 5, 3, p.z - Math.cos(d) * 5);
-	camera.lookAt(p.x, 0.6, p.z);
+	S.camY = p.y;
+	camera.position.set(p.x - Math.sin(d) * 5, 3 + p.y, p.z - Math.cos(d) * 5);
+	camera.lookAt(p.x, 0.6 + p.y, p.z);
+}
+// The height the camera follows: the car's, smoothed so bumps don't jolt it. On hilly
+// circuits the camera also never drops into the ground behind a crest.
+function camHeight(p, dt){
+	S.camY = S.camY == null ? p.y : S.camY + (p.y - S.camY) * Math.min(1, dt * 10);
+	return S.camY;
+}
+function keepAboveGround(min = 1){
+	if(!S.world || !S.track || !S.track.elevated) return;
+	const g = Math.max(S.world.groundAt(camera.position.x, camera.position.z), S.world.heightAt(camera.position.x, camera.position.z));
+	if(camera.position.y < g + min) camera.position.y = g + min;
 }
 let lookingBack = false;
 function followCamera(dt){
@@ -1083,27 +1096,32 @@ function followCamera(dt){
 	const warp = dt * 1000 / 16;
 	const p = c.model.position, dir = c.model.rotation.y;
 	const mode = S.settings.camera;
+	const cy = camHeight(p, dt);
 	// Holding B: look behind, from just in front of the car.
 	if(S.input.back){
 		lookingBack = true;
 		const fx_ = Math.sin(dir), fz = Math.cos(dir);
-		camera.position.set(p.x + fx_ * 5.5, 2.6, p.z + fz * 5.5);
-		camera.lookAt(p.x - fx_ * 6, 0.8, p.z - fz * 6);
+		camera.position.set(p.x + fx_ * 5.5, 2.6 + cy, p.z + fz * 5.5);
+		camera.lookAt(p.x - fx_ * 6, 0.8 + cy, p.z - fz * 6);
+		keepAboveGround();
 		return;
 	}
 	if(lookingBack){ lookingBack = false; snapCamera(); if(mode !== "hood") return; }
 	if(mode === "hood"){
 		const fx_ = Math.sin(dir), fz = Math.cos(dir);
-		camera.position.set(p.x + fx_ * 0.3, 1.25, p.z + fz * 0.3);
-		camera.lookAt(p.x + fx_ * 20, 1.0, p.z + fz * 20);
+		// Bonnet camera: looks where the road goes, up or down the hill.
+		const ahead = S.track && S.track.elevated ? S.track.heightAt(p.x + fx_ * 20, p.z + fz * 20, c.hh ?? -1) : 0;
+		camera.position.set(p.x + fx_ * 0.3, 1.25 + p.y, p.z + fz * 0.3);
+		camera.lookAt(p.x + fx_ * 20, 1.0 + (S.track && S.track.elevated ? ahead : 0), p.z + fz * 20);
 	}else{
 		// Classic is the original camera: 5 behind, 3 up, 0.9 lag per 16 ms, looking at the car.
 		const back = mode === "far" ? 8.5 : 5, up = mode === "far" ? 4.6 : 3, lag = mode === "far" ? 0.88 : 0.9;
 		const tx = p.x + Math.sin(-dir) * back, tz = p.z - Math.cos(-dir) * back;
 		const l = Math.pow(lag, warp);
-		camera.position.set(camera.position.x * l + tx * (1 - l), up, camera.position.z * l + tz * (1 - l));
-		if(mode === "far") camera.lookAt(p.x + Math.sin(dir) * 4, 0.6, p.z + Math.cos(dir) * 4);
-		else camera.lookAt(p.x, 0.6, p.z);
+		camera.position.set(camera.position.x * l + tx * (1 - l), up + cy, camera.position.z * l + tz * (1 - l));
+		keepAboveGround(1.2);
+		if(mode === "far") camera.lookAt(p.x + Math.sin(dir) * 4, 0.6 + cy, p.z + Math.cos(dir) * 4);
+		else camera.lookAt(p.x, 0.6 + cy, p.z);
 	}
 	if(S.shake > 0.002){
 		camera.position.x += (Math.random() - 0.5) * S.shake;
@@ -1122,16 +1140,17 @@ function menuCamera(dt){
 	}else if(camMode === "winner" && S.race){
 		const w = S.race.byId.get(S.winnerId) || S.race.cars[0];
 		const p = w.model.position;
-		tmp.set(p.x + Math.sin(orbit * 2) * 7, 2.6, p.z + Math.cos(orbit * 2) * 7);
+		tmp.set(p.x + Math.sin(orbit * 2) * 7, 2.6 + p.y, p.z + Math.cos(orbit * 2) * 7);
 		camera.position.lerp(tmp, Math.min(1, dt * 2));
-		camera.lookAt(p.x, 0.8, p.z);
+		camera.lookAt(p.x, 0.8 + p.y, p.z);
 	}else{
 		// Showcase: circle the player's car on the grid.
 		const a = orbit * 2.2;
 		const wide = innerWidth > 900;
-		tmp.set(Math.sin(a) * 6.2 + (wide ? -1.6 : 0), 2.3, Math.cos(a) * 6.2);
+		const sy = S.showcase ? S.showcase.position.y : 0;
+		tmp.set(Math.sin(a) * 6.2 + (wide ? -1.6 : 0), 2.3 + sy, Math.cos(a) * 6.2);
 		camera.position.lerp(tmp, Math.min(1, dt * 2.5));
-		camera.lookAt(wide ? -1.9 : 0, 0.7, 0);
+		camera.lookAt(wide ? -1.9 : 0, 0.7 + sy, 0);
 		if(S.showcase) animateCar(S.showcase, Math.sin(orbit * 3) * 0.3, 0, dt);
 	}
 }
@@ -1172,8 +1191,9 @@ function renderMirror(){
 		mirror.cam.aspect = glass.width / glass.height;
 		mirror.cam.far = Math.min(340, camera.far);
 		mirror.cam.updateProjectionMatrix();
-		mirror.cam.position.set(p.x - fx_ * 0.4, 1.7, p.z - fz * 0.4);
-		mirror.cam.lookAt(p.x - fx_ * 30, 0.7, p.z - fz * 30);
+		const behind = S.track && S.track.elevated ? S.track.heightAt(p.x - fx_ * 30, p.z - fz * 30, car.hh ?? -1) : 0;
+		mirror.cam.position.set(p.x - fx_ * 0.4, 1.7 + p.y, p.z - fz * 0.4);
+		mirror.cam.lookAt(p.x - fx_ * 30, 0.7 + behind, p.z - fz * 30);
 		car.model.visible = false;
 		renderer.shadowMap.autoUpdate = false;
 		renderer.setRenderTarget(mirror.rt);
@@ -1250,7 +1270,7 @@ function updateSpectator(dt, r){
 	}
 	const c = r.byId.get(tv.focusId);
 	if(!c) return;
-	director().update(dt, t, { x: c.model.position.x, z: c.model.position.z, dir: c.model.rotation.y });
+	director().update(dt, t, { x: c.model.position.x, y: c.model.position.y, z: c.model.position.z, dir: c.model.rotation.y });
 	const pos = r.standings().findIndex(x => x.car === c) + 1;
 	const ev = r.events.length ? r.events[r.events.length - 1] : null;
 	tvThird(c, pos, ev && r.raceTime - ev.t < 3500 && (ev.a === c.id || ev.b === c.id) ? ev.text : "");
@@ -1314,7 +1334,7 @@ function updateLabels(standings, focus){
 		const el = c.label;
 		if(!el) continue;
 		if(c === focus || c.gone || (c.elim !== null && !S.replay) || (S.frozen && !S.replay) || !c.model.visible){ el.style.display = "none"; continue; }
-		proj.set(c.model.position.x, 2.1, c.model.position.z);
+		proj.set(c.model.position.x, 2.1 + c.model.position.y, c.model.position.z);
 		const dist = proj.distanceTo(camera.position);
 		proj.project(camera);
 		if(proj.z > 1 || dist > 140 || Math.abs(proj.x) > 1.1 || Math.abs(proj.y) > 1.1){ el.style.display = "none"; continue; }
@@ -1328,7 +1348,7 @@ function updateLabels(standings, focus){
 	}
 	const rm = r.rivalModel, rl = r.rivalLabel;
 	if(rm && rl){
-		proj.set(rm.position.x, 2.1, rm.position.z);
+		proj.set(rm.position.x, 2.1 + rm.position.y, rm.position.z);
 		const dist = proj.distanceTo(camera.position);
 		proj.project(camera);
 		if(!rm.visible || proj.z > 1 || dist > 140 || Math.abs(proj.x) > 1.1 || Math.abs(proj.y) > 1.1){ rl.style.display = "none"; return; }
@@ -1446,6 +1466,8 @@ function frame(now){
 		fx.update(dt);
 	}
 	if(r) updateSky(r, r.raceTime, dt);
+	// Debugging and screenshot tools can park the camera: __game.freeCam = { p: [x, y, z], t: [x, y, z] }.
+	if(S.freeCam){ camera.position.set(...S.freeCam.p); camera.lookAt(...S.freeCam.t); }
 	if(S.world) S.world.update(dt, focus ? focus.model.position : (S.showcase && camMode === "showcase" ? S.showcase.position : null));
 	renderer.render(scene, camera);
 	renderMirror();
@@ -2205,8 +2227,8 @@ $("btnGarage").addEventListener("click", () => { audio.sfx.click(); garage.open(
 const admin = initAdmin({
 	connect, escapeHtml, fmtTime, showScreen, audio,
 	setCam: m => { camMode = m; },
-	trackKeys: () => TRACKS.flatMap(d => d.code ? [d.id] : [d.id, d.id + "-rev"]),
-	trackName: k => { const d = trackById(k.replace(/-rev$/, "")); return d ? d.name + (k.endsWith("-rev") ? " reversed" : "") : k; },
+	trackKeys: () => TRACKS.flatMap(d => d.code ? [trackKey(d, false)] : [trackKey(d, false), trackKey(d, true)]),
+	trackName: k => { const base = k.replace(/-rev$/, ""), d = TRACKS.find(t => (t.key || t.id) === base) || trackById(base); return d ? d.name + (d.key && base !== d.key ? " (old layout)" : "") + (k.endsWith("-rev") ? " reversed" : "") : k; },
 	weeks: () => [weeklyChallenge().id, weeklyChallenge(Date.now(), 1).id],
 	minLapMap: () => Object.fromEntries(TRACKS.flatMap(d => (d.code ? [false] : [false, true]).map(rev => { const e = getTrack(d, rev); return [e.key, minLapMs(e)]; })))
 });

@@ -30,7 +30,7 @@ function smoothLoop(pts){
 	for(let i = 0; i < n; i++){
 		const p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n];
 		const t0 = 0, t1 = t0 + d(p0, p1), t2 = t1 + d(p1, p2), t3 = t2 + d(p2, p3);
-		const steps = Math.max(6, Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) * 24));
+		const steps = Math.min(48, Math.max(6, Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) * 24)));
 		for(let k = 0; k < steps; k++){
 			const t = t1 + (t2 - t1) * k / steps;
 			const lerp = (a, b, ta, tb) => [
@@ -159,7 +159,11 @@ function circDist(a, b, n){
 
 export function buildCircuit(def, reverse = false){
 	let src = def.px ? def.px.map(p => [p[0] / 100, -p[1] / 100]) : def.pts.map(p => [p[0], p[1]]);
-	if(reverse) src = [src[0], ...src.slice(1).reverse()];
+	let elevSrc = def.elev ? def.elev.slice() : null;
+	if(reverse){
+		src = [src[0], ...src.slice(1).reverse()];
+		if(elevSrc) elevSrc = [elevSrc[0], ...elevSrc.slice(1).reverse()];
+	}
 
 	// Map coords (x east, y north) -> world before alignment: X = -east so that a
 	// top-down view drawn with screen-x = -X comes out the right way round.
@@ -167,7 +171,7 @@ export function buildCircuit(def, reverse = false){
 	const scale = def.length / loopLength(dense);
 	const pre = dense.map(p => [-p[0] * scale, p[1] * scale]);
 	const hw = def.width / 2;
-	const { pts } = resample(openTightCorners(resample(pre, STEP).pts, hw + 5), STEP);
+	const { pts } = resample(openTightCorners(resample(pre, STEP).pts, hw + (def.cornerRoom ?? 5)), STEP);
 	const n = pts.length;
 
 	// Rotate so the start points +z, then move the start line to (0, START_Z).
@@ -210,6 +214,40 @@ export function buildCircuit(def, reverse = false){
 
 	const hash = makeHash(xs, zs, 8);
 
+	// Elevation and camber (looks only: the handling is flat, as always).
+	// h[i]: road height at sample i. bank[i]: how much the road rises per unit to the left.
+	let h = null, bank = null, features = null;
+	if(elevSrc){
+		// Heights are given per source point; spread them round the lap by distance.
+		const cum = [0];
+		for(let i = 1; i <= src.length; i++){ const a = src[i - 1], b = src[i % src.length]; cum.push(cum[i - 1] + Math.hypot(b[0] - a[0], b[1] - a[1])); }
+		const total = cum[src.length];
+		const raw = new Float64Array(n);
+		for(let i = 0, j = 0; i < n; i++){
+			const d = i / n * total;
+			while(j < src.length - 1 && cum[j + 1] <= d) j++;
+			const f = (d - cum[j]) / Math.max(1e-9, cum[j + 1] - cum[j]);
+			raw[i] = (elevSrc[j] + (elevSrc[(j + 1) % src.length] - elevSrc[j]) * f) * scale;
+		}
+		h = new Float32Array(n);
+		for(let i = 0; i < n; i++){
+			let sum = 0, w = 0;
+			for(let o = -10; o <= 10; o++){ const ww = 11 - Math.abs(o); sum += raw[(i + o + n) % n] * ww; w += ww; }
+			h[i] = sum / w;
+		}
+		// Banking: corners lean in a little, more the tighter they are (up to about 6 degrees).
+		bank = new Float32Array(n);
+		for(let i = 0; i < n; i++){
+			let c = 0;
+			for(let o = -6; o <= 6; o++) c += curv[(i + o + n) % n];
+			bank[i] = -Math.max(-0.1, Math.min(0.1, c / 13 * 5));
+		}
+		const frac = f => { const v = reverse ? (1 - f) % 1 : f; return Math.round(v * n) % n; };
+		features = {};
+		if(def.tunnel){ const [a, b] = def.tunnel.map(frac); features.tunnel = reverse ? [b, a] : [a, b]; }
+		if(def.bridge) features.bridge = def.bridge.map(frac);    // [lower road, upper road]
+	}
+
 	// Distance from (x, z) to the nearest bit of road that isn't near sample `self`.
 	function clearOfOtherRoad(x, z, self, window, limit){
 		let ok = true;
@@ -250,7 +288,7 @@ export function buildCircuit(def, reverse = false){
 		}
 		for(const run of runs){
 			if(run.length < 3) continue;
-			const simp = simplify(run, WALL_TOL_REF());
+			const simp = simplify(run, def.wallTol ?? WALL_TOL_REF());
 			for(let k = 0; k < simp.length - 1; k++){
 				const [x1, z1] = simp[k], [x2, z2] = simp[k + 1];
 				if(Math.hypot(x2 - x1, z2 - z1) < 0.05) continue;
@@ -303,18 +341,36 @@ export function buildCircuit(def, reverse = false){
 
 	const track = {
 		pinches,
-		id: def.id + (reverse ? "-rev" : ""), def, reverse, kind: "circuit",
+		id: (def.key || def.id) + (reverse ? "-rev" : ""), def, reverse, kind: "circuit",
 		walls, lines, lineIdx, wallSegs,
-		center: { x: xs, z: zs, tx, tz, curv, n, len: n * STEP, step: STEP, hw, hash },
+		center: { x: xs, z: zs, tx, tz, curv, n, len: n * STEP, step: STEP, hw, hash, h, bank },
+		elevated: !!h, features,
 		hash, kerbs, sides, keep, toMap, fromMap,
 		bounds: { minX, maxX, minZ, maxZ },
 		oob: far + 40,
 		mountainDist: far + 120,
 		laps: def.laps
 	};
+	track.heightAt = h ? (x, z, hint = -1) => roadHeight(track.center, x, z, hint) : () => 0;
+	track.lastSample = () => roadHeight.last;
 	track.scenery = makeScenery(track);
 	return track;
 }
+
+// Height of the road surface at (x, z): the centreline height plus the camber across it.
+// Also gives the nearest sample, which callers can pass back as the next hint.
+function roadHeight(c, x, z, hint){
+	const i = nearestOnPath(c, x, z, hint);
+	const j = (i + 1) % c.n;
+	const along = (x - c.x[i]) * c.tx[i] + (z - c.z[i]) * c.tz[i];
+	const f = Math.max(0, Math.min(1, along / c.step));
+	const base = c.h[i] + (c.h[j] - c.h[i]) * f;
+	const lat = (x - c.x[i]) * c.tz[i] - (z - c.z[i]) * c.tx[i];
+	const clamped = Math.max(-c.hw - 1, Math.min(c.hw + 1, lat));
+	roadHeight.last = i;
+	return base + clamped * c.bank[i];
+}
+export function lastRoadSample(){ return roadHeight.last; }
 
 // Random spots off the track for trees, buildings and so on. Deterministic per track.
 function makeScenery(track){

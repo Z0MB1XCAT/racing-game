@@ -80,6 +80,7 @@ export class Race {
 				vis: { x: 0, z: 0, r: 0 }, bestProg: 0, bestProgT: 0
 			};
 			[car.hw, car.hl] = phys.CAR_SIZE[car.body] || phys.CAR_SIZE.classic;   // outline for soft contact
+			car.model.rotation.order = "YXZ";                                          // heading, then pitch and roll on hills
 			car.model.position.set(data.x, 0, data.y);
 			this.scene.add(car.model);
 			this.cars.push(car);
@@ -101,11 +102,13 @@ export class Race {
 		this.ghostModel = null;
 		if(this.mode === "trial" && this.me){
 			this.ghostModel = makeCar(this.me.body, this.me.hue, { ghost: true });
+			this.ghostModel.rotation.order = "YXZ";
 			this.ghostModel.visible = false;
 			this.scene.add(this.ghostModel);
 			this.recording = [];
 			if(this.rival){
 				this.rivalModel = makeCar(this.rival.body || "classic", this.rival.hue ?? 0, { ghost: true, look: this.rival.look || undefined });
+				this.rivalModel.rotation.order = "YXZ";
 				this.rivalModel.visible = false;
 				this.scene.add(this.rivalModel);
 			}
@@ -145,6 +148,7 @@ export class Race {
 
 		active.forEach((c, k) => {
 			this.tracker.update(c);
+			if(this.track.elevated) c.lvl = this.track.heightAt(c.data.x, c.data.y, c.ci ?? -1);
 			if(c.local){
 				this.rescueRules(c, t);
 				if(c.data.lap > lapsBefore[k]) this.onLap(c, t);
@@ -269,6 +273,9 @@ export class Race {
 		const lt = c.lapStart === null ? null : t - c.lapStart;
 		playGhost(this.ghostModel, this.ghostData, lt);
 		if(this.rivalModel) playGhost(this.rivalModel, this.rival, lt);
+		if(this.track.elevated) for(const [m, g] of [[this.ghostModel, this.ghostData], [this.rivalModel, this.rival]]){
+			if(m && m.visible && g) g.hh = this.poseModel(m, m.position.x, m.position.z, m.rotation.y, g.hh ?? -1);
+		}
 	}
 
 	// Sector times for every car (your own, and others' for purple in a race).
@@ -562,11 +569,26 @@ export class Race {
 		if(c.label) c.label.remove();
 	}
 
+	// Sit a car model on the road: its height, and pitch and roll to match the slope and
+	// camber under it. Returns the nearest road sample, to pass back next time as a hint.
+	poseModel(model, x, z, dir, hint = -1){
+		const hAt = this.track.heightAt;
+		const y = hAt(x, z, hint), i = this.track.lastSample();
+		const fx = Math.sin(dir), fz = Math.cos(dir), rx = Math.cos(dir), rz = -Math.sin(dir);
+		const ahead = hAt(x + fx, z + fz, i) - hAt(x - fx, z - fz, i);
+		const side = hAt(x + rx * 0.7, z + rz * 0.7, i) - hAt(x - rx * 0.7, z - rz * 0.7, i);
+		model.position.y = y;
+		model.rotation.x = -Math.atan2(ahead, 2);
+		model.rotation.z = Math.atan2(side, 1.4);
+		return i;
+	}
+
 	placeModel(c, dt){
 		const k = Math.exp(-dt / 0.12);
 		c.vis.x *= k; c.vis.z *= k; c.vis.r *= k;
 		c.model.position.set(c.pos.x + c.vis.x, 0, c.pos.z + c.vis.z);
 		c.model.rotation.y = c.data.dir + c.vis.r;
+		if(this.track.elevated) c.hh = this.poseModel(c.model, c.model.position.x, c.model.position.z, c.model.rotation.y, c.hh ?? c.ci ?? -1);
 		animateCar(c.model, c.data.steer, Math.hypot(c.data.xv, c.data.yv), dt);
 	}
 

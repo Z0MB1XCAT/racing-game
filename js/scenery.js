@@ -37,8 +37,12 @@ class Builder {
 	}
 	// Box standing on y (bottom) at world (x, z), turned by ry. w runs along local x, d along local z.
 	// win: [cellWidth, cellHeight] puts windows on the sides. top: roof colour. skip: faces to leave off.
+	// On hilly circuits this.ground(x, z) gives the ground height. Heights (y) are above the
+	// ground there, and anything standing on the ground reaches a little below it so a slope
+	// never leaves a gap underneath.
 	box(o){
-		const { x, z, w, d, h, color } = o, y0 = o.y || 0, y1 = y0 + h, cs = Math.cos(o.ry || 0), sn = Math.sin(o.ry || 0);
+		const g = this.ground ? this.ground(o.x, o.z) : 0, sink = this.ground && !o.y ? 3 : 0;
+		const { x, z, w, d, color } = o, y0 = (o.y || 0) + g - sink, h = o.h + sink, y1 = y0 + h, cs = Math.cos(o.ry || 0), sn = Math.sin(o.ry || 0);
 		const P = (lx, y, lz) => [x + lx * cs + lz * sn, y, z - lx * sn + lz * cs];
 		const hw = w / 2, hd = d / 2;
 		const side = (ax, az, bx, bz, len, name) => {
@@ -58,7 +62,7 @@ class Builder {
 	}
 	// Gable roof on a w x d base at height y, ridge along local x.
 	roof(o){
-		const { x, z, w, d, h, color } = o, y0 = o.y, y1 = y0 + h, cs = Math.cos(o.ry || 0), sn = Math.sin(o.ry || 0);
+		const { x, z, w, d, h, color } = o, y0 = o.y + (this.ground ? this.ground(o.x, o.z) : 0), y1 = y0 + h, cs = Math.cos(o.ry || 0), sn = Math.sin(o.ry || 0);
 		const P = (lx, y, lz) => [x + lx * cs + lz * sn, y, z - lx * sn + lz * cs];
 		const hw = w / 2, hd = d / 2;
 		this.poly([P(-hw, y0, hd), P(hw, y0, hd), P(hw, y1, 0), P(-hw, y1, 0)], color);
@@ -68,7 +72,7 @@ class Builder {
 	}
 	// Upright billboard facing local +z, showing board `n` of the ads atlas.
 	board(o, n){
-		const { x, z, w, h } = o, y0 = o.y, cs = Math.cos(o.ry || 0), sn = Math.sin(o.ry || 0);
+		const { x, z, w, h } = o, y0 = o.y + (this.ground ? this.ground(o.x, o.z) : 0), cs = Math.cos(o.ry || 0), sn = Math.sin(o.ry || 0);
 		const P = (lx, y, lz) => [x + lx * cs + lz * sn, y, z - lx * sn + lz * cs];
 		const col = n % AD_COLS, row = Math.floor(n / AD_COLS) % AD_ROWS;
 		const u0 = col / AD_COLS, u1 = (col + 1) / AD_COLS, v1 = 1 - row / AD_ROWS, v0 = 1 - (row + 1) / AD_ROWS;
@@ -265,7 +269,12 @@ export function buildScenery(track, theme, ctx){
 	const sp = makeSpace(track);
 	const { c, hw, n } = sp;
 	const low = ctx.quality === "low";
+	const G = ctx.groundAt || (() => 0);
 	const B = new Builder();
+	if(ctx.groundAt) B.ground = G;
+	// Occluder heights are above the ground where they stand.
+	const occ0 = occ;
+	const place = o => { const g = G(o.x, o.z); o.y0 += g; o.y1 += g; occ0.add(o); };
 	const people = [];   // { x, y, z, ry }
 	const fill = low ? 0.4 : 0.85;
 	const standColor = theme.standColor ?? 0x2f63c9;
@@ -302,7 +311,7 @@ export function buildScenery(track, theme, ctx){
 		B.box({ x: px, z: pz, y: 0, w: 7.05, d: 6.4, h: 0.03, ry: f.ry, color: theme.road ?? 0x41444b });
 		const [lx, lz] = f.local(0, 0.6);
 		B.box({ x: lx, z: lz, y: 0.03, w: 7.05, d: 0.18, h: 0.01, ry: f.ry, color: 0xe9edf2 });
-		occ.add({ x: cx, z: cz, ry: f.ry, hw: 3.6, hd: 4.5, y0: 0, y1: 8.4 });
+		place({ x: cx, z: cz, ry: f.ry, hw: 3.6, hd: 4.5, y0: 0, y1: 8.4 });
 		sp.take(cx, cz, 5.5, "pits");
 		garages++;
 	}
@@ -312,7 +321,7 @@ export function buildScenery(track, theme, ctx){
 		if(sp.boxClear(f.x, f.z, f.ry, 7, 7, 1) && sp.free(f.x, f.z, 4.5, "pits")){
 			B.box({ x: f.x, z: f.z, w: 5.5, d: 5.5, h: 13, ry: f.ry, color: 0xe9edf2, win: [1.8, 3.2], top: 0x2a2e38 });
 			B.box({ x: f.x, z: f.z, y: 13, w: 7, d: 7, h: 3, ry: f.ry, color: 0x2a2e38, win: [1.4, 3] });
-			occ.add({ x: f.x, z: f.z, ry: f.ry, hw: 3.5, hd: 3.5, y0: 0, y1: 16 });
+			place({ x: f.x, z: f.z, ry: f.ry, hw: 3.5, hd: 3.5, y0: 0, y1: 16 });
 			sp.take(f.x, f.z, 5, "pits");
 		}
 	}
@@ -333,7 +342,7 @@ export function buildScenery(track, theme, ctx){
 				for(let k = 0; k < 11; k++){
 					if(rand() > fill) continue;
 					const [qx, qz] = f.local(-SEG / 2 + 0.4 + k * (SEG - 0.8) / 10 + (rand() - 0.5) * 0.15, -(r + 0.5) * ROW_D - 0.1);
-					people.push({ x: qx, y: top, z: qz, ry: f.ry + (rand() - 0.5) * 0.5 });
+					people.push({ x: qx, y: top + G(qx, qz), z: qz, ry: f.ry + (rand() - 0.5) * 0.5 });
 				}
 			}
 			const backZ = -ROWS * ROW_D - 0.2, topY = 0.5 + ROWS * ROW_H;
@@ -344,7 +353,7 @@ export function buildScenery(track, theme, ctx){
 			// Front wall with the stand colour.
 			const [wx, wz] = f.local(0, 0.1);
 			B.box({ x: wx, z: wz, w: SEG + 0.02, d: 0.2, h: 1.1, ry: f.ry, color: standColor });
-			occ.add({ x: cx, z: cz, ry: f.ry, hw: SEG / 2, hd: depth / 2, y0: 0, y1: topY + 3.6 });
+			place({ x: cx, z: cz, ry: f.ry, hw: SEG / 2, hd: depth / 2, y0: 0, y1: topY + 3.6 });
 			sp.take(cx, cz, SEG * 0.7, group);
 			made++;
 		}
@@ -384,7 +393,7 @@ export function buildScenery(track, theme, ctx){
 				for(let q = 0; q < 6; q++){
 					if(rand() > fill) continue;
 					const [qx, qz] = f.local((rand() - 0.5) * 2.8, 1.5 - rand() * 3.5);
-					people.push({ x: qx, y: 0, z: qz, ry: f.ry + (rand() - 0.5) * 0.8 });
+					people.push({ x: qx, y: G(qx, qz), z: qz, ry: f.ry + (rand() - 0.5) * 0.8 });
 				}
 				sp.take(f.x, f.z, 2.4, "bank" + k.i);
 				placed++;
@@ -427,7 +436,7 @@ export function buildScenery(track, theme, ctx){
 		const { i, L, R } = bridge;
 		for(const p of [L, R]){
 			B.box({ x: p.x, z: p.z, w: 1.6, d: 1.6, h: 6.2, ry: p.ry, color: 0xb9c0c9 });
-			occ.add({ x: p.x, z: p.z, ry: p.ry, hw: 0.8, hd: 0.8, y0: 0, y1: 6.2 });
+			place({ x: p.x, z: p.z, ry: p.ry, hw: 0.8, hd: 0.8, y0: 0, y1: 6.2 });
 			sp.take(p.x, p.z, 1.5, "bridge");
 		}
 		const mid = sp.at(i, 1, 0), span = (hw + 3.4) * 2;
@@ -439,7 +448,7 @@ export function buildScenery(track, theme, ctx){
 			B.board({ x: fx, z: fz, y: 6.9, w: span * 0.8, h: 1.3, ry: face }, 0);
 			B.box({ x: bx, z: bz, y: 6.9, w: 0.1, d: span, h: 1.3, ry: mid.ry, color: 0xe9edf2 });
 		}
-		occ.add({ x: mid.x, z: mid.z, ry: mid.ry, hw: 1.3, hd: span / 2, y0: 6.2, y1: 8.3 });
+		place({ x: mid.x, z: mid.z, ry: mid.ry, hw: 1.3, hd: span / 2, y0: 6.2, y1: 8.3 });
 	}
 
 	// --- City blocks (Monaco, Jeddah) from the scenery spots near the road.
@@ -478,7 +487,7 @@ export function buildScenery(track, theme, ctx){
 				if(s.r2 < 0.55) B.roof({ x: s.x, z: s.z, y: h, w: w + 0.6, d: d + 0.6, h: 2.6, ry, color: 0xc0623a, gable: color });
 				else B.box({ x: s.x, z: s.z, y: h, w: w * 0.3, d: d * 0.3, h: 1.4, ry, color: 0xb9c0c9 });
 			}
-			occ.add({ x: s.x, z: s.z, ry, hw: w / 2, hd: d / 2, y0: 0, y1: h + 3 });
+			place({ x: s.x, z: s.z, ry, hw: w / 2, hd: d / 2, y0: 0, y1: h + 3 });
 			sp.take(s.x, s.z, r * 0.92, id);
 			used.add(s);
 		}
@@ -538,9 +547,9 @@ export function buildScenery(track, theme, ctx){
 			if(sp.edge(s.x, s.z, crownR + 3) < crownR + 1.8) continue;
 			if(!sp.free(s.x, s.z, crownR * 0.6, "trees")) continue;
 			sp.take(s.x, s.z, crownR * 0.6, "trees");
-			tl.push({ x: s.x, z: s.z, s: scale, ry: s.r2 * 6, r: crownR, k: s.r });
+			tl.push({ x: s.x, y: G(s.x, s.z), z: s.z, s: scale, ry: s.r2 * 6, r: crownR, k: s.r });
 		}
-		buildTrees(kind, tl, theme, { group, keep, shadows, rand, occ });
+		buildTrees(kind, tl, theme, { group, keep, shadows, rand, occ: { add: o => { const g = G(o.x, o.z); o.y0 += g; o.y1 += g; occ.add(o); } } });
 	}
 
 	api.info = { straight: [s0, s1], garages, mainStand, cornerStands: chosen.length, fans: people.length, bridge: !!bridge, buildings: used.size };

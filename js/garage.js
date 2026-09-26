@@ -63,7 +63,7 @@ export function initGarage(ctx){
 				const missing = past.filter(id => !(id in cache));
 				const [st, tops, winners] = await Promise.all([
 					net.myStats(),
-					Promise.all(TRACKS.flatMap(d => d.code ? [d.id] : [d.id, d.id + "-rev"]).map(k => net.topLaps(k, 1).catch(() => []))),
+					Promise.all(TRACKS.flatMap(d => d.code ? [d.key || d.id] : [d.key || d.id, (d.key || d.id) + "-rev"]).map(k => net.topLaps(k, 1).catch(() => []))),
 					Promise.all(missing.map(id => net.weeklyWinner(id).catch(() => undefined)))
 				]);
 				missing.forEach((id, i) => { if(winners[i] !== undefined) cache[id] = winners[i]; });

@@ -9,9 +9,18 @@ original did).
 
 ## What's in it
 
-- **9 tracks**: the original Classic track, Monaco, Spa-Francorchamps, Monza, Suzuka (with
-  its crossover), Jeddah (at night), Daytona (tri-oval), Crossroads (a figure-8 with a flat
-  crossing) and Glacier Pass (snowy switchbacks). Every track except Classic can also be raced in reverse.
+- **9 tracks**: the original Classic track, Monaco, Spa-Francorchamps, Monza, Suzuka, Jeddah
+  (at night), Daytona (tri-oval), Crossroads (a figure-8 with a flat crossing) and Glacier Pass
+  (snowy switchbacks). Every track except Classic can also be raced in reverse.
+- **The five F1 tracks are the real circuits**: built from their real centrelines and real
+  elevation. Spa drops into Eau Rouge and climbs Raidillon (about 100 m of climb), Monaco climbs
+  from Ste Devote to the Casino and runs through the tunnel, Suzuka's back straight crosses the
+  Degner section on a bridge, and corners are gently banked. Hills, banking, the tunnel and the
+  bridge are looks only: the handling is the same flat physics as always. Corners are still opened
+  up where the original car (which can't brake) needs room, and a few spots where two parts of a
+  circuit run side by side are eased apart to fit barriers between them. These tracks have new lap
+  record boards. (The weekly challenge that was running when they arrived, Jeddah reversed in
+  week 2026-W39, finishes on the old layout.)
 - **Modes**: Race, Elimination (last car is out every lap), Championship (2 to 6 rounds, F1
   points, the leader starts at the back of the next round's grid) and Time trial against a ghost
   of your fastest lap ever. A slower lap never replaces the ghost. A **delta bar** at the top shows
@@ -253,7 +262,8 @@ but you can, as the owner of the Firebase project.
    lap-limit rules.
 2. Sign in on the game with the BVS account **bvs-11018**. An **Admin** button appears on the
    title screen.
-3. Open **Admin → Lap limits & bans → Publish lap limits** once. From then on, any lap faster
+3. Open **Admin → Lap limits & bans → Publish lap limits** once (and again after tracks change, like
+   the 2026 F1 remaster). From then on, any lap faster
    than that track's limit is refused. The limits sit about 18% below what the car can
    physically manage, so real laps are never blocked.
 4. To change who the admin is, edit `ACCOUNTS.admin` in `js/config.js` **and** the
@@ -313,6 +323,7 @@ Once it's on, open **Track editor** from the menu.
 | `js/slipstream.js` | Slipstream, applied on top of the physics each frame |
 | `js/tracks.js` | Track list: circuit shapes and the Classic track code |
 | `js/trackgen.js` | Turns a circuit into walls, kerbs, checkpoints and a racing line |
+| `js/circuits.js`, `js/terrain.js` | Real F1 circuit data (generated); hills, the Monaco tunnel and the Suzuka bridge |
 | `js/world.js`, `js/scenery.js` | Sky, road and themes for each track; pits, grandstands, fans, billboards, buildings and trees |
 | `js/race.js` | Race rules: laps, finishing, elimination, ghosts, syncing cars |
 | `js/bots.js`, `js/progress.js`, `js/navfield.js`, `js/rescue.js` | AI drivers, race order, getting cars back on track |
@@ -333,6 +344,9 @@ The last two also need puppeteer installed.
 - `node tools/physics-equivalence.mjs` checks that the physics matches the original.
 - `node tools/track-sim.mjs` drives bots round every track and reports lap times, stuck cars and escapes.
 - `node tools/draft-test.mjs daytona` compares slipstream on and off (lap times, gaps, lead changes).
+- `node tools/build-circuits.mjs` rebuilds `js/circuits.js` from `data/circuits/` (real layouts and elevation).
+- `node tools/spot-shots.mjs <trackId> [tunnel|bridge|high|low|top|0.25 ...]` screenshots chosen places round a track.
+- `node tools/walls-plot.mjs <trackId> <x> <z> [radius]` draws the physics walls around a point.
 - `node tools/sky-shots.mjs [trackId] [tod-weather ...]` screenshots a track at different times and weather (e.g. `monza night-rain`).
 - `node tools/scenery-shots.mjs [trackId ...]` takes screenshots of each track (overview, racing with the mirror, looking back, highlights).
 - `node tools/engine-demo.mjs` renders a clip of each engine to WAV (with spectrograms) for tuning the sound. Engine settings are `ENGINES` in `js/audio.js`.
@@ -342,6 +356,8 @@ The last two also need puppeteer installed.
 ## Credits and licence
 
 - Original game, physics and the Classic track: [jchabin/cars](https://github.com/jchabin/cars).
-- Circuit layouts are simplified from the real tracks.
+- F1 circuit centrelines: [bacinger/f1-circuits](https://github.com/bacinger/f1-circuits) (MIT, see
+  `data/circuits/`). Elevation: [Open Topo Data](https://www.opentopodata.org/) (EU-DEM, SRTM). Monaco's
+  heights are from its corners' known elevations, as the town is too steep for the elevation data.
 - Licensed under **GPL-3.0**, the same as the original (see [LICENSE](LICENSE)). If you share
   your version, keep it open source and keep this credit.

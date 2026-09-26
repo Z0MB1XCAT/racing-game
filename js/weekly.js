@@ -1,6 +1,6 @@
 // The weekly challenge picks itself: every Monday (00:00 UTC) a new track and direction
 // are chosen from the date, the same for everyone, with a fresh leaderboard.
-import { TRACKS } from "./tracks.js";
+import { TRACKS, LEGACY } from "./tracks.js";
 import { seededRandom } from "./trackgen.js";
 
 const DAY = 86400000, WEEK = DAY * 7;
@@ -30,9 +30,11 @@ export function weeklyChallenge(now = Date.now(), weeksBack = 0){
 	let { i, rev } = rawPick(monday);
 	// Never the same track two weeks running.
 	if(i === rawPick(monday - WEEK).i) i = (i + 1) % TRACKS.length;
-	const def = TRACKS[i];
+	const id = isoWeek(monday);
+	// A challenge that started before a track was remastered finishes on the old layout.
+	const def = (LEGACY[id] && LEGACY[id][TRACKS[i].id]) || TRACKS[i];
 	const reverse = rev && !def.code;
-	return { id: isoWeek(monday), def, reverse, start: monday, end: monday + WEEK };
+	return { id, def, reverse, start: monday, end: monday + WEEK };
 }
 
 export function timeLeft(ms){
