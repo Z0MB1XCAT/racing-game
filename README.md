@@ -24,6 +24,33 @@ top of the original handling and can be switched off per race.
   over WebRTC. Firebase only introduces players, then carries no positions at all while everyone
   is connected directly. Anyone whose network blocks direct links automatically falls back to
   Firebase, and the lobby shows each driver as *Direct* or *Via server*.
+- **Qualifying** (host's choice, or in solo setup): a hotlap session before the race. Cars are
+  see-through ghosts so nobody can block anyone, and slipstream is off. Everyone gets a flying
+  lap plus two timed laps, and the best lap sets the grid. It works before championship rounds too.
+- **TV coverage**:
+  - **Live spectating:** anyone who joins mid-race, gets knocked out or has finished watches
+    live on F1-style trackside cameras. A director follows the closest battle and cuts to crashes
+    and overtakes, with captions.
+  - **Controls:** ◀ ▶ (or ← →) to pick a driver, **C** to change camera (auto, trackside, chase,
+    helicopter, onboard).
+  - **Highlights:** after each race, an automatic reel of the start, overtakes, lead changes,
+    crashes and the finish (photo finishes included). It's skippable, and afterwards there's a
+    **Full replay** with play, pause, speed and a timeline.
+- **Garage** (unlockable looks, no effect on speed):
+  - **What you can change:** paint, race number, underglow, tyre-smoke colour and a title.
+  - **Paint** includes stripes, chequered, carbon, flames, chrome, gold, a **BVS** livery, and a
+    colour scheme for each of the 11 teams on the 2026 F1 grid (colours only, no logos or sponsor names).
+  - **Earning items:** your **driver level** (1–30) comes from XP in online races, plus
+    achievements (wins, podiums, championships, lap records, weekly wins). A few starter items
+    unlock from solo play.
+  - **The #1 number and a crown** go to whoever topped last week's weekly challenge, until the
+    next week ends.
+- **Moderation**:
+  - **Name filter:** rude driver names (including l33t spellings) are refused, and anyone else's
+    shows up as "Driver 1234".
+  - **Admin page:** the **bvs-11018** account gets it. From there you can rename (and lock the
+    name of), reset or ban any player, remove lap and weekly records, close rooms, and publish
+    **lap-time limits**, so impossible laps are refused by the database.
 - **Host migration**: if the host leaves or their laptop dies, the driver who has been in the
   room longest takes over, including running the bots, mid-race.
 - **Slipstream**: tuck in behind a car and you get towed along, worth about 7% extra speed at
@@ -178,6 +205,21 @@ WebRTC link. Firebase only passes a handful of small "introduction" messages per
 - To switch direct links off completely, set `P2P.enabled = false`. To test the fallback, add
   `&nop2p` to one tab's address with `?localnet`.
 
+### 7. Admin and lap limits
+
+1. Make sure the latest `database.rules.json` is published (step 2). It contains the admin, ban and
+   lap-limit rules.
+2. Sign in on the game with the BVS account **bvs-11018**. An **Admin** button appears on the
+   title screen.
+3. Open **Admin → Lap limits & bans → Publish lap limits** once. From then on, any lap faster
+   than that track's limit is refused. The limits sit about 18% below what the car can
+   physically manage, so real laps are never blocked.
+4. To change who the admin is, edit `ACCOUNTS.admin` in `js/config.js` **and** the
+   `bvs-11018@bvs.invalid` address in `database.rules.json`, then publish the rules again.
+
+The BVS livery uses placeholder navy and gold. Put the school's real colours in
+`BVS_COLOURS` in `js/cosmetics.js`. Team colours are in the same file.
+
 ### How much can we play for free?
 The free plan allows **100 people connected at once**. The title screen connects to load the
 weekly challenge and your account, so that includes people sitting in menus.
@@ -234,6 +276,9 @@ Once it's on, open **Track editor** from the menu.
 | `js/bots.js`, `js/progress.js`, `js/navfield.js`, `js/rescue.js` | AI drivers, race order, getting cars back on track |
 | `js/net.js` | Online rooms, accounts, leaderboards (Firebase, or `?localnet` for testing) |
 | `js/p2p.js` | Direct WebRTC links between players, with Firebase fallback |
+| `js/broadcast.js` | TV cameras, the director, highlights and the replay player |
+| `js/cosmetics.js`, `js/garage.js` | Unlockable looks, levels and the garage screen |
+| `js/filter.js`, `js/admin.js`, `js/limits.js` | Name filter, admin page, lap-time limits |
 | `js/champ.js`, `js/weekly.js` | Championship points and the automatic weekly challenge |
 | `js/main.js`, `js/hud.js` | Menus, HUD, camera and input |
 | `editor/` | Track editor |
@@ -245,7 +290,7 @@ The last two also need puppeteer installed.
 - `node tools/physics-equivalence.mjs` checks that the physics matches the original.
 - `node tools/track-sim.mjs` drives bots round every track and reports lap times, stuck cars and escapes.
 - `node tools/draft-test.mjs daytona` compares slipstream on and off (lap times, gaps, lead changes).
-- `node tools/e2e.mjs solo|online|p2p|champ|migrate|account|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
+- `node tools/e2e.mjs solo|online|p2p|champ|quali|tv|midjoin|admin|migrate|account|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
 
 ## Credits and licence
 

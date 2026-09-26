@@ -49,6 +49,7 @@
 						<div class="field">
 							<label class="eyebrow" for="nameInput">Driver name</label>
 							<input id="nameInput" class="text-input" maxlength="18" placeholder="Nerd with No Name" autocomplete="off" spellcheck="false">
+							<span class="opt-help name-note" id="nameNote" hidden></span>
 						</div>
 						<div class="field">
 							<label class="eyebrow" for="hueInput">Car colour</label>
@@ -58,6 +59,11 @@
 							<span class="eyebrow" id="bodyLabel">Car</span>
 							<div class="bodies" id="bodyPicker" role="radiogroup" aria-labelledby="bodyLabel"></div>
 						</div>
+						<button class="garage-btn" id="btnGarage">
+							<span class="gb-level"><small>Level</small><b id="titleLevel">1</b></span>
+							<span class="gb-text"><b>Garage</b><small>Paint, numbers, underglow and titles</small></span>
+							<span class="rb-arrow">&rarr;</span>
+						</button>
 						<div class="field">
 							<span class="eyebrow">Account</span>
 							<div class="acct-row">
@@ -82,6 +88,10 @@
 						</button>
 						<button class="race-btn small" id="btnBoards">
 							<span class="rb-text"><span class="rb-title">Leaderboards</span><span class="rb-sub">Most wins, most podiums and every track's lap record</span></span>
+							<span class="rb-arrow">&rarr;</span>
+						</button>
+						<button class="race-btn small" id="btnAdmin" hidden>
+							<span class="rb-text"><span class="rb-title">Admin</span><span class="rb-sub">Rename or ban players, remove records, close rooms</span></span>
 							<span class="rb-arrow">&rarr;</span>
 						</button>
 						<a class="race-btn small" href="editor/" id="btnEditor" hidden>
@@ -146,6 +156,13 @@
 							<button data-v="easy" aria-checked="false">Rookie</button>
 							<button data-v="medium" aria-checked="true">Racer</button>
 							<button data-v="hard" aria-checked="false">Ace</button>
+						</div>
+					</div>
+					<div class="opt-row" data-for="bots">
+						<span class="opt-label">Qualifying</span>
+						<div class="seg" id="setupQuali" role="radiogroup" aria-label="Qualifying">
+							<button data-v="1" aria-checked="false">On</button>
+							<button data-v="0" aria-checked="true">Off</button>
 						</div>
 					</div>
 					<div class="opt-row" data-for="bots">
@@ -240,6 +257,13 @@
 						<div class="stepper" data-stepper="lobbyLaps"><button data-d="-1" aria-label="Fewer laps">&minus;</button><output id="lobbyLaps">3</output><button data-d="1" aria-label="More laps">+</button></div>
 					</div>
 					<div class="opt-row">
+						<span class="opt-label">Qualifying</span>
+						<div class="seg" id="lobbyQuali" role="radiogroup" aria-label="Qualifying">
+							<button data-v="1" aria-checked="false">On</button>
+							<button data-v="0" aria-checked="true">Off</button>
+						</div>
+					</div>
+					<div class="opt-row">
 						<span class="opt-label">Slipstream</span>
 						<div class="seg" id="lobbyDraft" role="radiogroup" aria-label="Slipstream">
 							<button data-v="1" aria-checked="true">On</button>
@@ -256,6 +280,62 @@
 					<button class="go-btn" id="lobbyGo"><span>Start race</span></button>
 				</div>
 			</div>
+		</section>
+
+		<!-- Garage -->
+		<section class="screen scrim" id="screen-garage" data-screen="garage" hidden>
+			<header class="screen-head" style="flex-wrap:wrap">
+				<button class="back-btn" data-back>&larr; Back</button>
+				<h2 class="screen-title">Garage</h2>
+			</header>
+			<div class="garage-grid">
+				<div class="stack">
+					<div class="panel kerbed level-card">
+						<div class="lv-num"><small>Level</small><b id="garageLevel">1</b></div>
+						<div class="lv-info">
+							<div class="opt-row"><span class="eyebrow" id="garageXp">0 XP</span><span class="eyebrow" id="garageCount"></span></div>
+							<span class="xp-bar"><i id="garageXpBar"></i></span>
+							<p class="opt-help" style="margin:4px 0 0">XP comes from online races: 60 for racing, +90 for a podium, +150 for a win, +400 for a championship.</p>
+						</div>
+						<span class="crown-badge" id="garageCrown" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5z" fill="currentColor"/></svg>Weekly champion</span>
+					</div>
+					<div class="seg garage-tabs" id="garageTab" role="tablist" aria-label="Category">
+						<button data-v="livery" aria-checked="true">Paint</button>
+						<button data-v="number" aria-checked="false">Number</button>
+						<button data-v="glow" aria-checked="false">Underglow</button>
+						<button data-v="smoke" aria-checked="false">Tyre smoke</button>
+						<button data-v="title" aria-checked="false">Title</button>
+					</div>
+					<div class="gitems" id="garageItems"></div>
+					<div class="panel number-panel" id="garageNumberPanel" hidden>
+						<div class="num-big" id="garageNum">–</div>
+						<div class="flex gap-3" style="flex-wrap:wrap;justify-content:center">
+							<button class="back-btn" id="garageNumDown" aria-label="Lower number">&minus;</button>
+							<button class="back-btn" id="garageNumUp" aria-label="Higher number">+</button>
+							<button class="back-btn" id="garageNumOne" hidden>Wear #1</button>
+							<button class="back-btn" id="garageNumOff">No number</button>
+						</div>
+						<p class="opt-help" id="garageNumNote" style="text-align:center"></p>
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<!-- Admin -->
+		<section class="screen scrim-full" id="screen-admin" data-screen="admin" hidden>
+			<header class="screen-head" style="flex-wrap:wrap">
+				<button class="back-btn" data-back>&larr; Back</button>
+				<h2 class="screen-title">Admin</h2>
+				<div class="seg" id="adminTab" role="tablist" aria-label="Admin section" style="margin-left:auto">
+					<button data-v="drivers" aria-checked="true">Drivers</button>
+					<button data-v="laps" aria-checked="false">Lap records</button>
+					<button data-v="weekly" aria-checked="false">Weekly</button>
+					<button data-v="rooms" aria-checked="false">Rooms</button>
+					<button data-v="settings" aria-checked="false">Lap limits &amp; bans</button>
+				</div>
+			</header>
+			<p class="msg" id="adminMsg" style="margin:12px 0 0;color:var(--green)"></p>
+			<div class="panel admin-body" id="adminBody"></div>
 		</section>
 
 		<!-- Leaderboards -->
@@ -419,6 +499,27 @@
 			<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
 		</button>
 		<div class="hud-keys"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> or <kbd>A</kbd> <kbd>D</kbd> steer &middot; <kbd>R</kbd> reset car &middot; <kbd>C</kbd> camera &middot; <kbd>Esc</kbd> pause</div>
+	</div>
+	<!-- TV coverage: live spectating, highlights and replays -->
+	<div id="tv" hidden>
+		<div class="tv-tag"><span class="tv-dot"></span><b id="tvTag">Live</b><span id="tvSub"></span></div>
+		<div class="tv-third">
+			<span class="tv-pos" id="tvPos">P1</span>
+			<span class="tv-name" id="tvName">Driver</span>
+			<span class="tv-event" id="tvEvent" hidden></span>
+		</div>
+		<div class="tv-bar">
+			<button class="back-btn tv-btn" id="tvPrev" aria-label="Previous driver">&#9664;</button>
+			<button class="back-btn tv-btn" id="tvNext" aria-label="Next driver">&#9654;</button>
+			<button class="back-btn tv-btn" id="tvShot">Camera: Auto</button>
+			<span class="tv-replay" id="tvReplayCtl" hidden>
+				<button class="back-btn tv-btn" id="tvPlay">Pause</button>
+				<button class="back-btn tv-btn" id="tvSpeed">1&times;</button>
+				<input type="range" id="tvScrub" class="range tv-scrub" min="0" max="1000" value="0" aria-label="Replay position">
+			</span>
+			<button class="back-btn tv-btn" id="tvSkip" hidden>Skip highlights</button>
+			<button class="back-btn tv-btn" id="tvExit" hidden>Back to results</button>
+		</div>
 	</div>
 	<div id="touch" hidden>
 		<button class="touch-zone left" id="touchLeft" aria-label="Steer left"></button>

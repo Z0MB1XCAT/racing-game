@@ -4,9 +4,10 @@
     ".write": false,
 
     "rooms": {
+      ".read": "auth != null && auth.token.email === 'bvs-11018@bvs.invalid'",
       "$code": {
         ".read": "auth != null",
-        ".write": "auth != null && $code.matches(/^[A-Z]{4}$/) && (!data.exists() || data.child('host').val() === auth.uid || data.child('created').val() < now - 21600000)",
+        ".write": "auth != null && ($code.matches(/^[A-Z]{4}$/) && (!data.exists() || data.child('host').val() === auth.uid || data.child('created').val() < now - 21600000) || auth.token.email === 'bvs-11018@bvs.invalid')",
 
         "host": {
           ".write": "auth != null && newData.val() === auth.uid && root.child('rooms/' + $code + '/players/' + auth.uid).exists() && !root.child('rooms/' + $code + '/players/' + data.val()).exists()"
@@ -20,7 +21,7 @@
 
         "players": {
           "$pid": {
-            ".write": "auth != null && auth.uid === $pid",
+            ".write": "auth != null && auth.uid === $pid && (!newData.exists() || !root.child('banned/' + auth.uid).exists())",
             ".validate": "newData.hasChildren(['name', 'hue', 'body']) && newData.child('name').isString() && newData.child('name').val().length <= 24 && newData.child('hue').isNumber()"
           }
         },
@@ -38,8 +39,8 @@
       ".read": "auth != null",
       ".indexOn": ["wins", "podiums", "races"],
       "$uid": {
-        ".write": "auth != null && auth.uid === $uid",
-        ".validate": "newData.hasChildren(['n', 'h', 'races', 'wins', 'podiums', 'last', 'room']) && newData.child('n').isString() && newData.child('n').val().length <= 24 && newData.child('last').val() !== data.child('last').val() && root.child('rooms/' + newData.child('room').val() + '/humans').val() >= 2 && root.child('rooms/' + newData.child('room').val() + '/resultsBy/' + $uid + '/key').val() === newData.child('last').val() && newData.child('races').val() === (data.exists() ? data.child('races').val() : 0) + 1 && newData.child('wins').val() === (data.exists() ? data.child('wins').val() : 0) + (root.child('rooms/' + newData.child('room').val() + '/resultsBy/' + $uid + '/pos').val() === 1 ? 1 : 0) && newData.child('podiums').val() === (data.exists() ? data.child('podiums').val() : 0) + (root.child('rooms/' + newData.child('room').val() + '/resultsBy/' + $uid + '/pos').val() <= 3 ? 1 : 0)"
+        ".write": "auth != null && ((auth.uid === $uid && !root.child('banned/' + auth.uid).exists()) || auth.token.email === 'bvs-11018@bvs.invalid')",
+        ".validate": "auth.token.email === 'bvs-11018@bvs.invalid' || (newData.hasChildren(['n', 'h', 'races', 'wins', 'podiums', 'last', 'room']) && newData.child('n').isString() && newData.child('n').val().length <= 24 && newData.child('last').val() !== data.child('last').val() && root.child('rooms/' + newData.child('room').val() + '/humans').val() >= 2 && root.child('rooms/' + newData.child('room').val() + '/resultsBy/' + $uid + '/key').val() === newData.child('last').val() && newData.child('races').val() === (data.exists() ? data.child('races').val() : 0) + 1 && newData.child('wins').val() === (data.exists() ? data.child('wins').val() : 0) + (root.child('rooms/' + newData.child('room').val() + '/resultsBy/' + $uid + '/pos').val() === 1 ? 1 : 0) && newData.child('podiums').val() === (data.exists() ? data.child('podiums').val() : 0) + (root.child('rooms/' + newData.child('room').val() + '/resultsBy/' + $uid + '/pos').val() <= 3 ? 1 : 0) && (newData.child('titles').exists() ? newData.child('titles').val() : 0) === (data.child('titles').exists() ? data.child('titles').val() : 0) + (root.child('rooms/' + newData.child('room').val() + '/resultsBy/' + $uid + '/champ').val() === 1 ? 1 : 0))"
       }
     },
 
@@ -56,8 +57,8 @@
         ".read": "auth != null",
         ".indexOn": ["t"],
         "$uid": {
-          ".write": "auth != null && auth.uid === $uid && $week.matches(/^[0-9]{4}-W[0-9]{2}$/)",
-          ".validate": "newData.hasChildren(['n', 'h', 't']) && newData.child('t').isNumber() && newData.child('t').val() > 5000 && newData.child('n').isString() && newData.child('n').val().length <= 24"
+          ".write": "auth != null && ((auth.uid === $uid && !root.child('banned/' + auth.uid).exists() && $week.matches(/^[0-9]{4}-W[0-9]{2}$/)) || auth.token.email === 'bvs-11018@bvs.invalid')",
+          ".validate": "auth.token.email === 'bvs-11018@bvs.invalid' || !newData.exists() || (newData.hasChildren(['n', 'h', 't', 'k']) && newData.child('t').isNumber() && newData.child('t').val() > 5000 && newData.child('n').isString() && newData.child('n').val().length <= 24 && (!root.child('config/minLap/' + newData.child('k').val()).exists() || newData.child('t').val() >= root.child('config/minLap/' + newData.child('k').val()).val()))"
         }
       }
     },
@@ -67,10 +68,25 @@
         ".read": "auth != null",
         ".indexOn": ["t"],
         "$uid": {
-          ".write": "auth != null && auth.uid === $uid",
-          ".validate": "newData.hasChildren(['n', 'h', 't']) && newData.child('t').isNumber() && newData.child('t').val() > 5000 && newData.child('n').isString() && newData.child('n').val().length <= 24"
+          ".write": "auth != null && ((auth.uid === $uid && !root.child('banned/' + auth.uid).exists()) || auth.token.email === 'bvs-11018@bvs.invalid')",
+          ".validate": "auth.token.email === 'bvs-11018@bvs.invalid' || (newData.hasChildren(['n', 'h', 't']) && newData.child('t').isNumber() && newData.child('t').val() > 5000 && newData.child('n').isString() && newData.child('n').val().length <= 24 && (!root.child('config/minLap/' + $track).exists() || newData.child('t').val() >= root.child('config/minLap/' + $track).val()))"
         }
       }
+    },
+
+    "banned": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.token.email === 'bvs-11018@bvs.invalid'"
+    },
+
+    "nameLock": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.token.email === 'bvs-11018@bvs.invalid'"
+    },
+
+    "config": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.token.email === 'bvs-11018@bvs.invalid'"
     }
   }
 }

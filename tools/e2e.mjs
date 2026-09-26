@@ -123,6 +123,128 @@ const waitScreen = async (page, name, secs = 150) => {
 	return false;
 };
 
+if(flow === "tv"){
+	// A short race: live TV after you finish, highlights, then the full replay.
+	const page = await open(base);
+	await click(page, "#btnBots"); await wait(400);
+	await click(page, `#setupTracks [data-id="${trackId === "monza" ? "figure8" : trackId}"]`); await wait(500);
+	await page.evaluate(() => { const g = window.__game; g.setup.laps = 2; g.setup.bots = 5; });
+	await click(page, "#setupGo"); await wait(1500);
+	await autodrive(page);
+	// wait until you've finished and the TV has taken over
+	for(let i = 0; i < 200; i++){
+		const live = await page.evaluate(() => !document.getElementById("tv").hidden && document.getElementById("tvTag").textContent);
+		if(live === "Live") break;
+		await wait(500);
+	}
+	await wait(2500);
+	await shot(page, "tv-live");
+	for(let i = 0; i < 200; i++){
+		if(await page.evaluate(() => window.__game.screen) === "replay") break;
+		await wait(500);
+	}
+	await wait(4000);
+	await shot(page, "tv-highlights");
+	console.log("highlight clips:", await page.evaluate(() => { const r = window.__game.replay; return r && r.clips ? r.clips.map(c => c.type + ": " + c.text).join(" | ") : "none"; }));
+	console.log("results after highlights:", await waitScreen(page, "results", 120));
+	await page.evaluate(() => [...document.querySelectorAll("#resultsActions button")].find(b => b.textContent.includes("Full replay")).click());
+	await wait(500);
+	await page.evaluate(() => { const s = document.getElementById("tvScrub"); s.value = 550; s.dispatchEvent(new Event("input")); s.dispatchEvent(new Event("change")); });
+	await wait(2500);
+	await shot(page, "tv-replay");
+}
+
+if(flow === "admin"){
+	const page = await open(base + "?localnet");
+	await wait(600);
+	// a player with a rude name and some stats, then sign in as the admin account
+	await page.evaluate(async () => {
+		const { connect } = await import("/js/net.js");
+		const net = await connect();
+		await net.store.set("stats/local-rudeguy", { n: "sh1thead", h: 30, races: 4, wins: 1, podiums: 2, titles: 0, last: "x", room: "ABCD" });
+		await net.store.set("laps/monza/local-rudeguy", { n: "sh1thead", h: 30, t: 12000, at: Date.now() });
+	});
+	await click(page, "#acctBtn"); await wait(200);
+	await page.evaluate(() => { document.getElementById("bvsId").value = "bvs-11018"; document.getElementById("bvsPw").value = "admin-pass"; });
+	await click(page, "#bvsCreate"); await wait(900);
+	await page.evaluate(() => document.querySelector("#account [data-close]").click());
+	await wait(400);
+	console.log("admin button visible:", await page.evaluate(() => !document.getElementById("btnAdmin").hidden));
+	await click(page, "#btnAdmin"); await wait(1500);
+	await shot(page, "admin-drivers");
+	// rename the rude driver
+	await page.evaluate(() => {
+		const row = [...document.querySelectorAll("#adminBody tr")].find(tr => tr.textContent.includes("local-rudeguy"));
+		row.querySelector(".admin-name").value = "Racer X";
+		[...row.querySelectorAll("button")].find(b => b.textContent === "Rename").click();
+	});
+	await wait(1200);
+	console.log("renamed:", JSON.stringify(await page.evaluate(async () => { const { connect } = await import("/js/net.js"); const n = await connect(); return [await n.store.get("stats/local-rudeguy/n"), await n.store.get("nameLock/local-rudeguy"), await n.store.get("laps/monza/local-rudeguy/n")]; })));
+	await page.evaluate(() => document.querySelector('#adminTab [data-v="settings"]').click());
+	await wait(1500);
+	await page.evaluate(() => [...document.querySelectorAll("#adminBody button")].find(b => b.textContent.includes("Publish")).click());
+	await wait(1200);
+	console.log("published limits:", JSON.stringify(await page.evaluate(async () => { const { connect } = await import("/js/net.js"); const n = await connect(); return await n.store.get("config/minLap"); })));
+	await shot(page, "admin-limits");
+}
+
+if(flow === "midjoin"){
+	// Host races bots; a friend joins with the code while the race is running and watches live.
+	const host = await open(base + "?localnet");
+	await click(host, "#btnOnline"); await wait(400);
+	await click(host, "#hostBtn"); await wait(1200);
+	const code = await host.$eval("#roomCode", e => e.textContent);
+	for(let i = 0; i < 4; i++){ await click(host, "#addBot"); await wait(300); }
+	await host.evaluate(() => window.__game.net.updateSettings({ laps: 2, track: "monza" }));
+	await wait(500);
+	await click(host, "#lobbyGo");
+	await wait(1500);
+	await autodrive(host);
+	await wait(8000);
+	const popup = new Promise(r => browser.once("targetcreated", t => r(t.page())));
+	await host.evaluate(u => window.open(u, "guest", "popup,width=1280,height=760"), base + "?localnet");
+	const guest = await popup;
+	guest.on("pageerror", e => errors.push("guest pageerror: " + e.message));
+	await guest.setViewport({ width: 1280, height: 760 });
+	await guest.waitForFunction(() => window.__game, { timeout: 60000 });
+	await wait(1200);
+	await click(guest, "#btnOnline"); await wait(400);
+	await guest.evaluate(c => { const i = document.getElementById("codeInput"); i.value = c; i.dispatchEvent(new Event("input")); }, code);
+	await click(guest, "#joinBtn");
+	await wait(6000);
+	const g = await guest.evaluate(() => ({ screen: window.__game.screen, spectating: !!window.__game.race && !window.__game.race.me, tv: document.getElementById("tvTag").textContent, sub: document.getElementById("tvSub").textContent, cars: window.__game.race ? window.__game.race.cars.length : 0 }));
+	console.log("late joiner:", JSON.stringify(g));
+	await shot(guest, "midjoin-live");
+	await guest.evaluate(() => document.getElementById("tvShot").click());
+	await wait(2500);
+	await shot(guest, "midjoin-trackside");
+}
+
+if(flow === "quali"){
+	const page = await open(base);
+	await click(page, "#btnBots"); await wait(400);
+	await click(page, '#setupTracks [data-id="figure8"]'); await wait(500);
+	await click(page, '#setupQuali [data-v="1"]');
+	await page.evaluate(() => { const g = window.__game; g.setup.laps = 1; g.setup.bots = 3; });
+	await click(page, "#setupGo"); await wait(1500);
+	await autodrive(page);
+	await wait(6000);
+	await shot(page, "quali-running");
+	console.log("quali classification shown:", await waitScreen(page, "results", 200));
+	await wait(800);
+	await shot(page, "quali-results");
+	const order = await page.evaluate(() => [...document.querySelectorAll("#resultsBody tr")].map(tr => tr.children[1].textContent.trim() + " " + tr.children[2].textContent.trim()));
+	console.log("quali order:", order.join(" | "));
+	await page.evaluate(() => document.querySelector("#resultsActions button").click());
+	await wait(1500);
+	const grid = await page.evaluate(() => window.__game.race.cars.map(c => c.name));
+	console.log("race grid:", grid.join(", "), "| mode:", await page.evaluate(() => window.__game.race.mode));
+	await autodrive(page);
+	console.log("race done:", await waitScreen(page, "results", 200));
+	await wait(800);
+	await shot(page, "quali-race-results");
+}
+
 if(flow === "champ"){
 	const page = await open(base);
 	await click(page, "#btnBots"); await wait(400);

@@ -4,7 +4,7 @@ import { buildTrack } from "./trackgen.js";
 import { makeTracker } from "./progress.js";
 import { buildWorld } from "./world.js";
 import { makeCar, disposeCar, animateCar, BODIES } from "./cars.js";
-import { Race, COUNTDOWN } from "./race.js";
+import { Race, COUNTDOWN, QUALI_LAPS } from "./race.js";
 import { Hud, fmtTime } from "./hud.js";
 import { Effects } from "./fx.js";
 import * as audio from "./audio.js";
@@ -13,6 +13,12 @@ import { connect, onlineAvailable, normaliseBvs } from "./net.js";
 import { newChamp, scoreRound, champStandings, champGrid } from "./champ.js";
 import { weeklyChallenge, timeLeft } from "./weekly.js";
 import { Mesh } from "./p2p.js";
+import { DEFAULT_LOOK, botLook } from "./cosmetics.js";
+import { isRude, cleanName } from "./filter.js";
+import { initGarage } from "./garage.js";
+import { initAdmin } from "./admin.js";
+import { minLapMs } from "./limits.js";
+import { Director, Replay, buildHighlights, pickFocus, SHOT_NAMES } from "./broadcast.js";
 import { GAME_NAME, MAX_CARS, EDITOR_ENABLED, ACCOUNTS } from "./config.js";
 import * as phys from "./physics.js";
 
@@ -36,13 +42,15 @@ const S = {
 	race: null, ctx: null, frozen: false,
 	paused: false, pauseStart: 0, pausedTotal: 0,
 	net: null, room: null, raceId: null, resultsShown: null,
-	setup: { mode: "bots", trackId: "monza", reverse: false, laps: 3, bots: 5, level: "medium", gameMode: "race", draft: true, rounds: [] },
+	setup: { mode: "bots", trackId: "monza", reverse: false, laps: 3, bots: 5, level: "medium", gameMode: "race", draft: true, rounds: [], quali: false },
 	champ: null, champEntrants: null, lastHost: null,
 	lobbyLevel: "medium",
 	lastDelta: null,
 	shake: 0,
 	input: { left: false, right: false, tl: false, tr: false, tilt: null }
 };
+S.profile.look = Object.assign({}, DEFAULT_LOOK, S.profile.look);
+const CROWN_SVG = '<svg class="crown-ico" viewBox="0 0 24 24" aria-label="Weekly champion"><path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5z" fill="currentColor"/></svg>';
 const mobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.userAgent));
 
 function quality(){
@@ -111,12 +119,12 @@ function showTrack(def, reverse){
 // ---------- Menu showcase car ----------
 function placeShowcase(){
 	if(S.showcase){ scene.remove(S.showcase); disposeCar(S.showcase); }
-	S.showcase = makeCar(S.profile.body, S.profile.hue, { number: carNumber() });
+	S.showcase = makeCar(S.profile.body, S.profile.hue, { look: S.profile.look });
 	S.showcase.position.set(0, 0, 0);
 	S.showcase.visible = !S.race;
 	scene.add(S.showcase);
 }
-function carNumber(){ return (hash(S.profile.name || "x").charCodeAt(0) % 89) + 10; }
+function carNumber(){ const n = S.profile.look && S.profile.look.number; return n == null ? "--" : String(n).padStart(2, "0"); }
 
 // ---------- Screens ----------
 function showScreen(name){
@@ -166,9 +174,24 @@ $("nameInput").value = S.profile.name;
 $("hueInput").value = S.profile.hue;
 applyHue();
 $("nameInput").addEventListener("input", e => {
-	S.profile.name = e.target.value.replace(/[<>]/g, "").slice(0, 18);
+	const v = e.target.value.replace(/[<>]/g, "").slice(0, 18);
+	const rude = isRude(v);
+	$("nameNote").hidden = !rude;
+	$("nameNote").textContent = rude ? "Pick a different name. That one won't be shown to other players." : "";
+	if(rude) return;
+	S.profile.name = v;
 	saveProfile(); updateShowcaseTag();
 });
+function applyNameLock(name){
+	if(!name) return;
+	S.profile.name = name;
+	store.setProfile(S.profile);
+	$("nameInput").value = name;
+	$("nameInput").disabled = true;
+	$("nameNote").hidden = false;
+	$("nameNote").textContent = "An admin set your driver name.";
+	updateShowcaseTag();
+}
 $("hueInput").addEventListener("input", e => {
 	S.profile.hue = +e.target.value;
 	applyHue(); saveProfile(); placeShowcase(); updateShowcaseTag();
@@ -187,7 +210,7 @@ function renderBodies(){ bodyPicker.querySelectorAll("button").forEach(b => b.se
 renderBodies();
 function driverName(){ return S.profile.name.trim() || "Nerd with No Name"; }
 function updateShowcaseTag(){
-	$("showNum").textContent = String(carNumber()).padStart(2, "0");
+	$("showNum").textContent = carNumber();
 	$("showName").textContent = driverName();
 	$("showBody").textContent = (BODIES.find(b => b.id === S.profile.body) || BODIES[0]).name;
 }
@@ -274,6 +297,7 @@ seg($("setupMode"), "race", v => {
 	refreshSetup();
 });
 seg($("setupDraft"), "1", v => { S.setup.draft = v === "1"; });
+seg($("setupQuali"), "0", v => { S.setup.quali = v === "1"; });
 seg($("setupLevel"), "medium", v => { S.setup.level = v; });
 const lapStep = stepper("laps", () => S.setup.laps, v => { S.setup.laps = v; }, () => 1, () => 20);
 const botStep = stepper("bots", () => S.setup.bots, v => { S.setup.bots = v; }, () => S.setup.gameMode === "elim" ? 1 : 0, () => MAX_CARS - 1);
@@ -368,11 +392,11 @@ function spreadHues(n, avoid){
 function startSolo(){
 	const st = S.setup;
 	const def = defFor(st.trackId);
-	const entrants = [{ id: "me", name: driverName(), hue: S.profile.hue, body: S.profile.body, local: true }];
+	const entrants = [{ id: "me", name: driverName(), hue: S.profile.hue, body: S.profile.body, look: S.profile.look, local: true }];
 	if(st.mode === "bots"){
 		const hues = spreadHues(st.bots, S.profile.hue);
 		const names = [...BOT_NAMES].sort(() => Math.random() - 0.5);
-		for(let i = 0; i < st.bots; i++) entrants.push({ id: "bot" + i, name: names[i % names.length], hue: hues[i], body: BODIES[Math.floor(Math.random() * BODIES.length)].id, bot: st.level, local: true });
+		for(let i = 0; i < st.bots; i++) entrants.push({ id: "bot" + i, name: names[i % names.length], hue: hues[i], body: BODIES[Math.floor(Math.random() * BODIES.length)].id, look: botLook(), bot: st.level, local: true });
 		entrants.sort(() => Math.random() - 0.5);
 	}
 	if(champMode()){
@@ -382,21 +406,34 @@ function startSolo(){
 		return;
 	}
 	const mode = st.mode === "trial" ? "trial" : st.gameMode;
-	beginRace({
-		source: "solo", def, reverse: st.reverse, mode, laps: mode === "elim" ? 99 : st.laps, entrants, myId: "me", draft: mode !== "trial" && st.draft,
+	const race = grid => beginRace({
+		source: "solo", def, reverse: st.reverse, mode, laps: mode === "elim" ? 99 : st.laps,
+		entrants: grid ? grid.map(id => entrants.find(e => e.id === id)).filter(Boolean) : entrants, myId: "me", draft: mode !== "trial" && st.draft,
 		startAt: soloNow() + 700 + COUNTDOWN, authority: true, restart: startSolo
+	});
+	if(st.quali && st.mode === "bots") startQuali(def, st.reverse, entrants, race);
+	else race();
+}
+
+// Qualifying: a hotlap session (no contact, no slipstream). Best lap sets the grid.
+function startQuali(def, reverse, entrants, then){
+	beginRace({
+		source: "solo", def, reverse, mode: "quali", laps: QUALI_LAPS, entrants, myId: "me", draft: false,
+		startAt: soloNow() + 700 + COUNTDOWN, authority: true, qualiThen: then,
+		restart: () => startQuali(def, reverse, entrants, then)
 	});
 }
 
-function startChampRound(){
+function startChampRound(qualiGrid){
 	const c = S.champ;
 	const def = defFor(c.rounds[c.idx].track);
+	if(S.setup.quali && !qualiGrid){ startQuali(def, c.reverse && !def.code, S.champEntrants, grid => startChampRound(grid)); return; }
 	const ids = S.champEntrants.map(e => e.id);
-	const order = c.idx === 0 ? ids : champGrid(c, ids);
+	const order = qualiGrid || (c.idx === 0 ? ids : champGrid(c, ids));
 	beginRace({
 		source: "solo", def, reverse: c.reverse && !def.code, mode: "race", laps: c.laps,
 		entrants: order.map(id => S.champEntrants.find(e => e.id === id)), myId: "me", draft: S.setup.draft,
-		startAt: soloNow() + 700 + COUNTDOWN, authority: true, champ: true, restart: startChampRound
+		startAt: soloNow() + 700 + COUNTDOWN, authority: true, champ: true, restart: () => startChampRound(qualiGrid)
 	});
 }
 
@@ -406,7 +443,7 @@ function startChallenge(){
 	S.setup.mode = "trial";
 	beginRace({
 		source: "solo", def: wk.def, reverse: wk.reverse, mode: "trial", laps: 1,
-		entrants: [{ id: "me", name: driverName(), hue: S.profile.hue, body: S.profile.body, local: true }], myId: "me", draft: false,
+		entrants: [{ id: "me", name: driverName(), hue: S.profile.hue, body: S.profile.body, look: S.profile.look, local: true }], myId: "me", draft: false,
 		startAt: soloNow() + 700 + COUNTDOWN, authority: true, restart: startChallenge
 	});
 }
@@ -443,6 +480,7 @@ function beginRace(opts){
 		el.style.setProperty("--c", `hsl(${c.hue},100%,55%)`);
 		el.innerHTML = `<b></b><span></span>`;
 		el.lastElementChild.textContent = c.name;
+		if(garage && garage.crown && c.id === garage.crown) el.lastElementChild.insertAdjacentHTML("afterbegin", CROWN_SVG);
 		$("labels").appendChild(el);
 		c.label = el;
 	}
@@ -460,6 +498,9 @@ function beginRace(opts){
 }
 
 function endRace(keepTrack){
+	clearInterval(S.qualiTimer);
+	stopTv();
+	S.replay = null;
 	if(S.race){ S.race.dispose(); S.race = null; }
 	for(const el of $("labels").querySelectorAll(".label")) el.remove();
 	hud.show(false);
@@ -473,9 +514,16 @@ function endRace(keepTrack){
 	fx.clear();
 }
 
+// Spectating: joined mid-race, knocked out, or finished a few seconds ago.
+function spectating(){
+	const r = S.race;
+	if(!r || S.frozen || r.mode === "trial") return false;
+	return !r.me || r.me.elim !== null || (r.me.finish !== null && r.raceTime - r.me.finish > 3500);
+}
 function focusCar(){
 	const r = S.race;
 	if(!r) return null;
+	if(spectating()){ const c = r.byId.get(tv.focusId); if(c && !c.gone && c.elim === null) return c; }
 	if(r.me && r.me.elim === null) return r.me;
 	const st = r.standings().find(s => s.car.elim === null && !s.car.gone);
 	return st ? st.car : r.cars[0];
@@ -487,6 +535,7 @@ function onRaceEvent(type, d){
 	const focus = focusCar();
 	switch(type){
 		case "go":
+			if(r.mode === "quali"){ hud.banner("Qualifying", "Best lap sets the grid", "go", 1800); audio.sfx.go(); break; }
 			hud.banner("Go", "", "go", 900);
 			audio.sfx.go();
 			break;
@@ -514,10 +563,11 @@ function onRaceEvent(type, d){
 					if(r.ghostData) store.setGhost(key, r.ghostData);
 					submitRecord(key, d.ms);
 				}
+				if(isRecord && TRACKS.every(t => store.getBest(trackKey(t, false)) != null)) garageNote(garage.afterSolo(["allTracks"]), true);
 				const wk = weeklyChallenge();
 				if(S.ctx.def.id === wk.def.id && !!S.ctx.reverse === wk.reverse){
 					const wkKey = "weekly:" + wk.id, prev = store.getBest(wkKey);
-					if(prev == null || d.ms < prev){ store.setBest(wkKey, d.ms); submitWeekly(wk.id, d.ms); if(!isRecord) weeklyBest = true; }
+					if(prev == null || d.ms < prev){ store.setBest(wkKey, d.ms); submitWeekly(wk.id, d.ms, key); if(!isRecord) weeklyBest = true; }
 				}
 			}
 			const sessionPrev = d.car.lapTimes.length > 1 ? Math.min(...d.car.lapTimes.slice(0, -1)) : null;
@@ -531,6 +581,13 @@ function onRaceEvent(type, d){
 			}
 			break;
 		}
+		case "qualiDone":
+			if(d.car.me){
+				const pos = r.standings().findIndex(s => s.car === d.car) + 1;
+				hud.banner(d.ms != null ? "Qualified P" + pos : "No time set", d.ms != null ? fmtTime(d.ms) : "", "finish", 3000);
+				audio.sfx.finish();
+			}
+			break;
 		case "finalLap":
 			hud.banner("Final lap", "", "final", 1600);
 			audio.sfx.finalLap();
@@ -554,6 +611,11 @@ function onRaceEvent(type, d){
 			hud.toast("Back on track");
 			break;
 		case "end":
+			if(r.mode === "quali"){
+				if(S.ctx.source === "solo") setTimeout(() => showResults(d, false, { quali: true }), 900);
+				else if(S.net && S.net.isHost) S.net.finishQuali(d);
+				break;
+			}
 			if(S.ctx.source === "solo"){
 				if(S.ctx.champ && S.champ) S.champ = scoreRound(S.champ, d);
 				setTimeout(() => showResults(d, false), 900);
@@ -565,13 +627,17 @@ function onRaceEvent(type, d){
 	}
 }
 
-async function submitWeekly(week, ms){
-	if(!onlineAvailable()) return;
-	try { await (await connect()).submitWeekly(week, ms, { name: driverName(), hue: S.profile.hue }); } catch {}
+function lapFloor(key){
+	const entry = trackCache.get(key);
+	return entry ? minLapMs(entry) : 0;
+}
+async function submitWeekly(week, ms, key){
+	if(!onlineAvailable() || ms < lapFloor(key)) return;
+	try { await (await connect()).submitWeekly(week, ms, { name: driverName(), hue: S.profile.hue }, key); } catch {}
 }
 
 async function submitRecord(key, ms){
-	if(!onlineAvailable() || key.startsWith("custom")) return;
+	if(!onlineAvailable() || key.startsWith("custom") || ms < lapFloor(key)) return;
 	try {
 		const net = await connect();
 		await net.submitLap(key, ms, { name: driverName(), hue: S.profile.hue });
@@ -579,8 +645,21 @@ async function submitRecord(key, ms){
 }
 
 // ---------- Results ----------
-function showResults(results, online){
+function showResults(results, online, opts = {}){
+	const quali = !!opts.quali;
+	clearInterval(S.qualiTimer);
 	if(!S.race && !online) return;
+	const key = (online ? "o" : "s") + (S.race ? S.race.startAt : "");
+	if(online && !quali && S.statsKey !== key){ S.statsKey = key; recordStats(); }
+	if(!quali && !opts.afterHighlights && S.race && S.highlightsKey !== key && S.race.rec.frames.length > 60){
+		S.highlightsKey = key;
+		S.frozen = true;
+		audio.stopEngine();
+		$("touch").hidden = true;
+		startReplay("highlights", () => showResults(results, online, Object.assign({}, opts, { afterHighlights: true })));
+		if(S.replay) return;
+	}
+	stopTv();
 	S.frozen = true;
 	audio.stopEngine();
 	hud.show(false);
@@ -588,7 +667,7 @@ function showResults(results, online){
 	for(const el of $("labels").querySelectorAll(".label")) el.style.display = "none";
 	const myId = S.race ? S.race.myId : S.net && S.net.uid;
 	const def = S.ctx ? S.ctx.def : null;
-	$("resultsTrack").textContent = def ? `${def.name}${S.ctx.reverse ? " reversed" : ""} · ${S.ctx.mode === "elim" ? "Elimination" : S.ctx.laps + (S.ctx.laps === 1 ? " lap" : " laps")}` : "Results";
+	$("resultsTrack").textContent = def ? `${def.name}${S.ctx.reverse ? " reversed" : ""} · ${quali ? "Qualifying" : S.ctx.mode === "elim" ? "Elimination" : S.ctx.laps + (S.ctx.laps === 1 ? " lap" : " laps")}` : "Results";
 	const me = results.find(r => r.id === myId);
 	$("resultsTitle").textContent = !me ? "Chequered flag"
 		: me.pos === 1 && me.status !== "dnf" ? "You won"
@@ -609,7 +688,8 @@ function showResults(results, online){
 		<td>${r.time != null ? fmtTime(r.time) : r.status === "out" ? "Out" : "DNF"}</td>
 		<td class="best ${r.best != null && r.best === fastest ? "fastest" : ""}">${r.best != null ? fmtTime(r.best) : "--"}</td>
 		<td>${r.pos === 1 ? "" : r.gap || ""}</td></tr>`).join("");
-	const champ = S.ctx && S.ctx.champ ? (online ? S.room && S.room.champ : S.champ) : null;
+	if(quali) $("resultsTitle").textContent = me ? (me.status === "finished" ? `You qualified P${me.pos}` : "No time set") : "Qualifying";
+	const champ = !quali && S.ctx && S.ctx.champ ? (online ? S.room && S.room.champ : S.champ) : null;
 	$("champPanel").hidden = !champ;
 	if(champ){
 		const table = champStandings(champ);
@@ -626,8 +706,18 @@ function showResults(results, online){
 	const acts = $("resultsActions");
 	acts.innerHTML = "";
 	const addBtn = (label, cls, fn) => { const b = document.createElement("button"); b.className = "go-btn " + cls; b.innerHTML = `<span>${label}</span>`; b.addEventListener("click", () => { audio.sfx.click(); fn(); }); acts.appendChild(b); return b; };
-	$("resultsNote").textContent = "";
-	if(!online && champ){
+	$("resultsNote").textContent = (S.pendingNote || []).join(" ");
+	S.pendingNote = [];
+	if(quali){
+		// Race starts from this order: straight away if you press the button, or after 10 seconds.
+		const go = () => { clearInterval(S.qualiTimer); S.qualiTimer = null; if(online) hostAfterQuali(); else if(S.ctx && S.ctx.qualiThen) S.ctx.qualiThen(results.map(r => r.id)); };
+		if(!online || (S.net && S.net.isHost)){
+			const b = addBtn("Start the race", "", go);
+			let left = 10;
+			S.qualiTimer = setInterval(() => { left--; b.firstElementChild.textContent = `Start the race (${left})`; if(left <= 0) go(); }, 1000);
+		}else $("resultsNote").textContent = "The race starts in a few seconds, from this grid.";
+		addBtn(online ? "Leave room" : "Main menu", "ghost", online ? leaveRoom : goTitle);
+	}else if(!online && champ){
 		if(!champ.done) addBtn("Next round: " + nextName, "", () => { audio.unlock(); S.champ.idx++; startChampRound(); });
 		else addBtn("New championship", "", () => { audio.unlock(); startSolo(); });
 		addBtn("Main menu", "ghost", goTitle);
@@ -648,9 +738,22 @@ function showResults(results, online){
 		$("resultsNote").textContent = "Waiting for the host to start the next race.";
 		addBtn("Leave room", "ghost", leaveRoom);
 	}
+	if(!quali && S.race && S.race.rec.frames.length > 60){
+		const again = Object.assign({}, opts, { afterHighlights: true });
+		addBtn("Highlights", "ghost", () => startReplay("highlights", () => showResults(results, online, again)));
+		addBtn("Full replay", "ghost", () => startReplay("replay", () => showResults(results, online, again)));
+	}
 	showScreen("results");
 	camMode = "winner";
-	if(online) recordStats();
+	// Solo results tick off solo goals in the garage (once per race).
+	if(!quali && !online && S.soloFlagsKey !== key && me && S.ctx && S.ctx.mode !== "trial" && results.length > 1){
+		const flags = [];
+		if(me.status === "finished" || (me.pos === 1 && S.ctx.mode === "elim")) flags.push("race");
+		const lvl = S.setup.level;
+		if(me.pos === 1 && me.status !== "dnf"){ if(lvl === "medium" || lvl === "hard") flags.push("winRacer"); if(lvl === "hard") flags.push("winAce"); }
+		S.soloFlagsKey = key;
+		garageNote(garage.afterSolo(flags));
+	}
 	S.winnerId = results[0] && results[0].id;
 }
 
@@ -691,6 +794,10 @@ addEventListener("keydown", e => {
 	if((k === "Escape" || k === "KeyP") && S.race && !S.frozen){ $("pause").hidden ? pause() : resume(); }
 	else if(k === "Escape"){ document.querySelectorAll(".modal").forEach(m => { if(m.id !== "pause") m.hidden = true; }); }
 	if(k === "KeyR" && S.race && !S.paused) S.race.requestRescue();
+	if((S.replay || spectating()) && (k === "ArrowLeft" || k === "ArrowRight")){ cycleFocus(k === "ArrowLeft" ? -1 : 1); return; }
+	if((S.replay || spectating()) && k === "KeyC"){ const sh = director().cycleShot(); $("tvShot").textContent = "Camera: " + SHOT_NAMES[sh]; return; }
+	if(S.replay && k === "Escape"){ endReplay(); return; }
+	if(S.replay && k === "Space"){ $("tvPlay").click(); e.preventDefault(); return; }
 	if(k === "KeyC"){ const order = ["classic", "far", "hood"]; S.settings.camera = order[(order.indexOf(S.settings.camera) + 1) % 3]; saveSettings(); hud.toast("Camera: " + ({ classic: "Classic", far: "Far", hood: "Bonnet" })[S.settings.camera], 1200); }
 	if(k === "KeyM"){ S.muted = !S.muted; audio.setVolume(S.muted ? 0 : S.settings.volume); hud.toast(S.muted ? "Sound off" : "Sound on", 1200); }
 });
@@ -793,6 +900,117 @@ function menuCamera(dt){
 	}
 }
 
+// ---------- TV coverage ----------
+const tv = { director: null, live: false, focusId: null, holdUntil: 0, manualUntil: 0 };
+function director(){
+	if(!tv.director || tv.director.track !== S.track) tv.director = new Director(camera, S.track, S.tracker);
+	return tv.director;
+}
+function showTv(kind){
+	const el = $("tv");
+	el.hidden = false;
+	document.body.classList.add("tv-on");
+	el.classList.toggle("replay", kind !== "live");
+	$("tvTag").textContent = kind === "live" ? "Live" : kind === "highlights" ? "Highlights" : "Replay";
+	$("tvSub").textContent = kind === "live" && S.race && !S.race.me ? "You'll race next time" : "";
+	$("tvReplayCtl").hidden = kind !== "replay";
+	$("tvSkip").hidden = kind !== "highlights";
+	$("tvExit").hidden = kind !== "replay";
+	$("tvShot").textContent = "Camera: " + SHOT_NAMES[director().shot];
+	hud.spectating("");
+}
+function stopTv(){
+	if(tv.director) tv.director.release();
+	tv.live = false;
+	$("tv").hidden = true;
+	document.body.classList.remove("tv-on");
+}
+function tvThird(car, pos, text){
+	if(!car) return;
+	const name = $("tvName");
+	if(name._id !== car.id){ name._id = car.id; name.textContent = car.name; name.style.setProperty("--c", `hsl(${car.hue},100%,55%)`); }
+	const p = pos ? "P" + pos : "";
+	if($("tvPos").textContent !== p) $("tvPos").textContent = p;
+	const ev = $("tvEvent");
+	if(ev.textContent !== (text || "")) ev.textContent = text || "";
+	ev.hidden = !text;
+}
+function cycleFocus(step){
+	const r = S.race;
+	if(!r) return;
+	const list = S.replay ? r.cars.filter(c => !c.gone) : r.standings().map(x => x.car).filter(c => c.elim === null && !c.gone);
+	if(!list.length) return;
+	const cur = S.replay ? S.replay.focusId : tv.focusId;
+	const i = list.findIndex(c => c.id === cur);
+	const next = list[(i + step + list.length) % list.length].id;
+	if(S.replay) S.replay.focusId = next;
+	else { tv.focusId = next; tv.manualUntil = r.raceTime + 20000; }
+	director().newFocus();
+}
+function updateSpectator(dt, r){
+	if(!tv.live){ tv.live = true; showTv("live"); director().newFocus(); }
+	const t = r.raceTime / 1000;
+	if(!tv.focusId || !r.byId.get(tv.focusId) || r.raceTime > tv.manualUntil){
+		const f = pickFocus(r, tv.focusId, tv.holdUntil, t);
+		if(f !== tv.focusId){ tv.focusId = f; tv.holdUntil = t + 6; director().newFocus(); }
+	}
+	const c = r.byId.get(tv.focusId);
+	if(!c) return;
+	director().update(dt, t, { x: c.model.position.x, z: c.model.position.z, dir: c.model.rotation.y });
+	const pos = r.standings().findIndex(x => x.car === c) + 1;
+	const ev = r.events.length ? r.events[r.events.length - 1] : null;
+	tvThird(c, pos, ev && r.raceTime - ev.t < 3500 && (ev.a === c.id || ev.b === c.id) ? ev.text : "");
+}
+
+// Highlights reel or full replay of the race that just finished.
+function startReplay(kind, then){
+	const r = S.race;
+	if(!r || !r.rec.frames.length){ if(then) then(); return; }
+	const endT = r.rec.frames[r.rec.frames.length - 1].t;
+	const clips = kind === "highlights" ? buildHighlights(r.events, endT) : null;
+	if(kind === "highlights" && clips.length < 2){ if(then) then(); return; }
+	const winner = r.standings()[0];
+	S.replay = new Replay(r, clips, (r.me && r.me.id) || (winner && winner.car.id));
+	S.replayKind = kind;
+	S.replayThen = then;
+	document.querySelectorAll("[data-screen]").forEach(el => { el.hidden = true; });
+	S.screen = "replay";
+	hud.show(false);
+	director().newFocus();
+	showTv(kind);
+	$("tvPlay").textContent = "Pause";
+}
+function endReplay(){
+	const then = S.replayThen;
+	S.replay = null;
+	S.replayThen = null;
+	stopTv();
+	if(then) then();
+}
+function replayFrame(dt){
+	const rp = S.replay;
+	rp.step(dt);
+	if(rp.done){ endReplay(); return; }
+	const focus = rp.apply(dt);
+	if(rp.cutNeeded){ director().newFocus(); rp.cutNeeded = false; }
+	if(focus) director().update(dt, rp.t / 1000, focus);
+	tvThird(focus && focus.car, null, rp.caption);
+	if(S.replayKind === "replay" && rp.end > rp.start){
+		const v = Math.round((rp.t - rp.start) / (rp.end - rp.start) * 1000);
+		if(!$("tvScrub")._drag) $("tvScrub").value = v;
+	}
+	updateLabels([], focus && focus.car);
+}
+$("tvPrev").addEventListener("click", () => cycleFocus(-1));
+$("tvNext").addEventListener("click", () => cycleFocus(1));
+$("tvShot").addEventListener("click", () => { const sh = director().cycleShot(); $("tvShot").textContent = "Camera: " + SHOT_NAMES[sh]; });
+$("tvSkip").addEventListener("click", () => endReplay());
+$("tvExit").addEventListener("click", () => endReplay());
+$("tvPlay").addEventListener("click", () => { if(!S.replay) return; S.replay.playing = !S.replay.playing; if(S.replay.playing && S.replay.t >= S.replay.end) S.replay.seek(0); $("tvPlay").textContent = S.replay.playing ? "Pause" : "Play"; });
+$("tvSpeed").addEventListener("click", () => { if(!S.replay) return; const order = [1, 2, 0.5, 0.25]; S.replay.speed = order[(order.indexOf(S.replay.speed) + 1) % order.length]; $("tvSpeed").textContent = S.replay.speed + "×"; });
+$("tvScrub").addEventListener("input", e => { if(S.replay){ S.replay.seek(e.target.value / 1000); e.target._drag = true; } });
+$("tvScrub").addEventListener("change", e => { e.target._drag = false; });
+
 // ---------- Name tags ----------
 const proj = new THREE.Vector3();
 function updateLabels(standings, focus){
@@ -801,7 +1019,7 @@ function updateLabels(standings, focus){
 	for(const c of r.cars){
 		const el = c.label;
 		if(!el) continue;
-		if(c === focus || c.gone || c.elim !== null || S.frozen){ el.style.display = "none"; continue; }
+		if(c === focus || c.gone || (c.elim !== null && !S.replay) || (S.frozen && !S.replay) || !c.model.visible){ el.style.display = "none"; continue; }
 		proj.set(c.model.position.x, 2.1, c.model.position.z);
 		const dist = proj.distanceTo(camera.position);
 		proj.project(camera);
@@ -811,7 +1029,7 @@ function updateLabels(standings, focus){
 		const s = Math.max(0.55, Math.min(1.1, 22 / dist));
 		el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) translate(-50%, -100%) scale(${s.toFixed(2)})`;
 		el.style.zIndex = String(1000 - Math.round(dist));
-		const p = "P" + place.get(c);
+		const p = place.has(c) ? "P" + place.get(c) : "";
 		if(el._p !== p){ el._p = p; el.firstElementChild.textContent = p; }
 	}
 }
@@ -824,6 +1042,13 @@ function frame(now){
 	last = now;
 	const r = S.race;
 	let focus = null;
+	if(S.replay && r){
+		replayFrame(dt);
+		fx.update(dt);
+		if(S.world) S.world.update(dt, camera.position);
+		renderer.render(scene, camera);
+		return;
+	}
 	if(r && !S.frozen){
 		if(!S.paused){
 			const steer = $("pause").hidden ? steerInput() : 0;
@@ -847,7 +1072,8 @@ function frame(now){
 			if(!S.paused && r.phase === "racing") fx.trail(c, dt);
 		}
 		fx.update(dt);
-		followCamera(dt);
+		if(spectating()) updateSpectator(dt, r);
+		else { if(tv.live) stopTv(); followCamera(dt); }
 		if(focus){
 			const d = focus.data;
 			const speed = Math.hypot(d.xv, d.yv);
@@ -908,6 +1134,7 @@ async function withBusy(btn, fn){
 $("hostBtn").addEventListener("click", () => withBusy($("hostBtn"), async () => {
 	audio.unlock(); requestTilt();
 	const net = await connect();
+	if(await net.isBanned().catch(() => false)) throw new Error("This account has been banned from online play by the admin.");
 	S.net = net;
 	await net.createRoom({ name: driverName(), hue: S.profile.hue, body: S.profile.body }, lobbyDefaults());
 	enterLobby();
@@ -917,6 +1144,7 @@ $("joinBtn").addEventListener("click", () => withBusy($("joinBtn"), async () => 
 	const code = $("codeInput").value.trim();
 	if(code.length !== 4) throw new Error("Room codes are four letters.");
 	const net = await connect();
+	if(await net.isBanned().catch(() => false)) throw new Error("This account has been banned from online play by the admin.");
 	S.net = net;
 	await net.joinRoom(code, { name: driverName(), hue: S.profile.hue, body: S.profile.body });
 	enterLobby();
@@ -976,7 +1204,8 @@ function onRoom(room){
 		if(S.race && !S.frozen) hud.toast(who + " now hosting", 2600);
 		else $("lobbyStatus").textContent = who + " now hosting";
 		if(S.race && S.ctx && S.ctx.source === "online") S.race.setAuthority(room.host === S.net.uid);
-		if(S.screen === "results" && room.results){ S.lastHost = room.host; showResults(room.results, true); }
+		if(S.screen === "results" && room.phase === "qualiResults" && room.quali){ S.lastHost = room.host; showResults(room.quali.results, true, { quali: true }); }
+		else if(S.screen === "results" && room.results){ S.lastHost = room.host; showResults(room.results, true); }
 	}
 	S.lastHost = room.host;
 	if(S.net.mesh) S.net.mesh.sync(room.players);
@@ -990,6 +1219,9 @@ function onRoom(room){
 		beginOnlineRace(room);
 	}else if(room.phase === "race" && S.race){
 		S.race.applyElims(race && race.elim);
+	}else if(room.phase === "qualiResults" && room.quali && S.resultsShown !== "q" + (race && race.id)){
+		S.resultsShown = "q" + (race && race.id);
+		showResults(room.quali.results, true, { quali: true });
 	}else if(room.phase === "results" && room.results && S.resultsShown !== (race && race.id)){
 		S.resultsShown = race && race.id;
 		showResults(room.results, true);
@@ -1003,12 +1235,18 @@ function onRoom(room){
 
 const lobbySettingsControls = {
 	draft: seg($("lobbyDraft"), "1", v => S.net.updateSettings({ draft: v === "1" })),
+	quali: seg($("lobbyQuali"), "0", v => S.net.updateSettings({ quali: v === "1" })),
 	mode: seg($("lobbyMode"), "race", v => S.net.updateSettings({ mode: v })),
 	dir: seg($("lobbyDir"), "0", v => S.net.updateSettings({ reverse: v === "1" })),
 	level: seg($("lobbyLevel"), "medium", v => { S.lobbyLevel = v; }),
 	laps: stepper("lobbyLaps", () => (S.room && S.room.settings && S.room.settings.laps) || 3, v => S.net.updateSettings({ laps: v }), () => 1, () => 20)
 };
 let lobbyGridKey = null;
+function lookTitle(p){
+	if(p.bot || !p.look || !p.look.title || p.look.title === "rookie") return "";
+	const t = { botslayer: "Bot Slayer", racer: "Racer", winner: "Race Winner", podium: "Podium Hunter", veteran: "Veteran", record: "Record Holder", weekly: "Weekly Winner", serial: "Serial Winner", champion: "Champion", legend: "Legend" }[p.look.title];
+	return t ? `<span class="ptitle">${t}</span>` : "";
+}
 // How my car's updates reach this driver: straight to them, or through Firebase.
 function netTag(p){
 	if(p.bot || !S.net || p.id === S.net.uid) return "";
@@ -1027,7 +1265,7 @@ function renderLobby(room){
 		li.className = "player";
 		const tags = [p.id === room.host ? '<span class="tag host">Host</span>' : "", p.bot ? `<span class="tag bot">AI · ${({ easy: "Rookie", medium: "Racer", hard: "Ace" })[p.bot]}</span>` : p.id === room.host ? "" : `<span class="tag ${p.ready ? "ready" : ""}">${p.ready ? "Ready" : "Not ready"}</span>`].join(" ");
 		li.innerHTML = `<i class="chip" style="background:hsl(${p.hue},100%,55%)"></i>
-			<span class="pname">${escapeHtml(p.name)}${p.id === net.uid ? " (you)" : ""}<span class="pbody">${(BODIES.find(b => b.id === p.body) || BODIES[0]).name}</span></span>
+			<span class="pname">${garage && garage.crown === p.id ? CROWN_SVG : ""}${escapeHtml(cleanName(p.name, p.id))}${p.id === net.uid ? " (you)" : ""}<span class="pbody">${(BODIES.find(b => b.id === p.body) || BODIES[0]).name}${p.look && p.look.number != null ? " · #" + p.look.number : ""}</span>${lookTitle(p)}</span>
 			<span>${tags}${netTag(p)}</span>`;
 		const x = document.createElement("button");
 		x.className = "x-btn";
@@ -1068,6 +1306,9 @@ function renderLobby(room){
 	lobbySettingsControls.mode(st.mode);
 	lobbySettingsControls.dir(st.reverse ? "1" : "0");
 	lobbySettingsControls.draft(st.draft === false ? "0" : "1");
+	lobbySettingsControls.quali(st.quali ? "1" : "0");
+	$("lobbyQuali").dataset.locked = host ? "" : "1";
+	$("lobbyQuali").querySelectorAll("button").forEach(b => { b.disabled = !host; });
 	$("lobbyDraft").dataset.locked = host ? "" : "1";
 	$("lobbyDraft").querySelectorAll("button").forEach(b => { b.disabled = !host; });
 	lobbySettingsControls.laps.render();
@@ -1118,23 +1359,31 @@ function hostStart(){
 		startChampRoundOnline(newChamp(rounds.map(id => ({ track: id })), st.reverse, st.laps || 3));
 		return;
 	}
-	net.startRace({
+	const next = { track: st.track, reverse: !!st.reverse, laps: st.laps || 3, mode: st.mode || "race", custom: st.custom || null, draft: st.draft !== false };
+	net.startRace(Object.assign({}, next, {
 		id: ((room.race && room.race.id) || S.raceId || 0) + 1,
-		startAt: net.now() + 1800 + COUNTDOWN,
-		grid, track: st.track, reverse: !!st.reverse, laps: st.laps || 3, mode: st.mode || "race", custom: st.custom || null, draft: st.draft !== false
-	});
+		startAt: net.now() + 1800 + COUNTDOWN, grid
+	}, st.quali ? { mode: "quali", laps: QUALI_LAPS, draft: false, next } : {}));
 }
 
-function startChampRoundOnline(champ){
+function startChampRoundOnline(champ, qualiGrid){
 	const room = S.room, net = S.net, st = room.settings || lobbyDefaults();
 	const ids = Object.entries(room.players || {}).sort((a, b) => (a[1].joined || 0) - (b[1].joined || 0)).map(([id]) => id).slice(0, MAX_CARS);
 	const r = champ.rounds[champ.idx];
-	net.startRace({
-		id: ((room.race && room.race.id) || S.raceId || 0) + 1,
-		startAt: net.now() + 1800 + COUNTDOWN,
-		grid: champ.idx === 0 ? ids : champGrid(champ, ids), track: r.track, reverse: !!champ.reverse && !trackById(r.track).code,
-		laps: champ.laps, mode: "race", custom: null, draft: st.draft !== false, champ: true
-	}, champ);
+	const next = { track: r.track, reverse: !!champ.reverse && !trackById(r.track).code, laps: champ.laps, mode: "race", custom: null, draft: st.draft !== false, champ: true };
+	const base = { id: ((room.race && room.race.id) || S.raceId || 0) + 1, startAt: net.now() + 1800 + COUNTDOWN, grid: champ.idx === 0 ? ids : champGrid(champ, ids) };
+	if(st.quali) net.startRace(Object.assign({}, next, base, { mode: "quali", laps: QUALI_LAPS, draft: false, champ: false, next }), champ);
+	else net.startRace(Object.assign({}, next, base), champ);
+}
+// After qualifying: race from the qualifying order (anyone who joined since goes to the back).
+function hostAfterQuali(){
+	const room = S.room;
+	if(!room || !S.net || !S.net.isHost || room.phase !== "qualiResults" || !room.race || !room.race.next) return;
+	const order = ((room.quali && room.quali.order) || []).filter(id => room.players && room.players[id]);
+	const rest = Object.keys(room.players || {}).filter(id => !order.includes(id));
+	S.net.startRace(Object.assign({}, room.race.next, {
+		id: room.race.id + 1, startAt: S.net.now() + 1800 + COUNTDOWN, grid: [...order, ...rest].slice(0, MAX_CARS)
+	}));
 }
 function hostNextRound(){
 	const room = S.room;
@@ -1149,7 +1398,7 @@ function beginOnlineRace(room){
 	const players = room.players || {};
 	const entrants = r.grid.filter(id => players[id]).map(id => {
 		const p = players[id];
-		return { id, name: p.name, hue: p.hue, body: p.body, bot: p.bot || null, local: id === net.uid || (!!p.bot && room.host === net.uid) };
+		return { id, name: cleanName(p.name, id), hue: p.hue, body: p.body, look: p.look || (p.bot ? botLook() : null), bot: p.bot || null, local: id === net.uid || (!!p.bot && room.host === net.uid) };
 	});
 	const def = defFor(r.track, r.custom);
 	beginRace({
@@ -1199,7 +1448,7 @@ function whenAgo(ts){
 	return new Date(ts).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 const emptyRow = (cols, text) => `<tr class="empty"><td colspan="${cols}">${text}</td></tr>`;
-const driverCell = (n, h, me) => `<td class="name"><i style="background:hsl(${h},100%,55%)"></i>${escapeHtml(n || "Driver")}${me ? " (you)" : ""}</td>`;
+const driverCell = (n, h, me, id) => `<td class="name"><i style="background:hsl(${h},100%,55%)"></i>${garage && id && garage.crown === id ? CROWN_SVG : ""}${escapeHtml(cleanName(n, id))}${me ? " (you)" : ""}</td>`;
 
 async function loadDrivers(){
 	const token = ++boards.token;
@@ -1216,7 +1465,7 @@ async function loadDrivers(){
 		if(token !== boards.token) return;
 		const k = boards.sort;
 		body.innerHTML = rows.length ? rows.map((r, i) => `<tr class="${r.id === net.uid ? "me" : ""} ${i ? "" : "first"}">
-			<td class="pos">${i + 1}</td>${driverCell(r.n, r.h, r.id === net.uid)}
+			<td class="pos">${i + 1}</td>${driverCell(r.n, r.h, r.id === net.uid, r.id)}
 			<td class="num ${k === "wins" ? "hl lead" : "dim"}">${r.wins || 0}</td>
 			<td class="num ${k === "podiums" ? "hl lead" : "dim"}">${r.podiums || 0}</td>
 			<td class="num ${k === "races" ? "hl lead" : "dim"}">${r.races || 0}</td>
@@ -1258,7 +1507,7 @@ async function loadLaps(){
 	if(!rows.length && mine) rows = [{ n: driverName(), h: S.profile.hue, t: mine, me: true }];
 	const first = rows[0] && rows[0].t;
 	body.innerHTML = rows.length ? rows.map((r, i) => `<tr class="${r.me ? "me" : ""} ${i ? "" : "first"}">
-		<td class="pos">${i + 1}</td>${driverCell(r.n, r.h, r.me)}
+		<td class="pos">${i + 1}</td>${driverCell(r.n, r.h, r.me, r.id)}
 		<td class="num ${i ? "" : "hl"}">${fmtTime(r.t)}</td>
 		<td class="dim">${i ? "+" + ((r.t - first) / 1000).toFixed(3) : ""}</td>
 		<td class="dim">${whenAgo(r.at)}</td></tr>`).join("")
@@ -1266,7 +1515,7 @@ async function loadLaps(){
 }
 
 // ---------- Weekly challenge ----------
-const boardRows = (rows, uid) => rows.map((r, i) => `<li class="${i ? "" : "first"}"><span>${i + 1}</span><i class="chip" style="background:hsl(${r.h},100%,55%)"></i><span>${escapeHtml(r.n)}${r.id === uid ? " (you)" : ""}</span><span class="t">${fmtTime(r.t)}</span></li>`).join("");
+const boardRows = (rows, uid) => rows.map((r, i) => `<li class="${i ? "" : "first"}"><span>${i + 1}</span><i class="chip" style="background:hsl(${r.h},100%,55%)"></i><span>${escapeHtml(cleanName(r.n, r.id))}${r.id === uid ? " (you)" : ""}</span><span class="t">${fmtTime(r.t)}</span></li>`).join("");
 async function loadWeeklyCard(){
 	const wk = weeklyChallenge();
 	$("weeklyTitle").textContent = wk.def.name + (wk.reverse ? " reversed" : "");
@@ -1309,7 +1558,7 @@ async function loadWeeklyBoard(){
 		if(token !== boards.token) return;
 		const first = rows[0] && rows[0].t;
 		body.innerHTML = rows.length ? rows.map((r, i) => `<tr class="${r.id === net.uid ? "me" : ""} ${i ? "" : "first"}">
-			<td class="pos">${i + 1}</td>${driverCell(r.n, r.h, r.id === net.uid)}
+			<td class="pos">${i + 1}</td>${driverCell(r.n, r.h, r.id === net.uid, r.id)}
 			<td class="num ${i ? "" : "hl"}">${fmtTime(r.t)}</td><td class="dim">${i ? "+" + ((r.t - first) / 1000).toFixed(3) : ""}</td>
 			<td class="dim">${whenAgo(r.at)}</td></tr>`).join("") : emptyRow(5, "No laps yet this week. Be the first.");
 		$("wkLastBoard").innerHTML = last.length ? boardRows(last, net.uid) : `<li class="empty">Nobody raced it.</li>`;
@@ -1326,9 +1575,16 @@ function renderAccount(){
 		: `<b>${a.kind === "bvs" ? escapeHtml(a.label.toUpperCase()) : "Hwb"}</b> · stats saved to your account`;
 	$("acctBtn").textContent = a.kind === "guest" ? "Sign in" : "Account";
 }
+function profileForSync(){ return Object.assign({}, S.profile, { solo: garage ? garage.soloFlags() : {} }); }
 async function refreshAccount(){
 	if(!onlineAvailable()) return renderAccount();
-	try { acct.info = (await connect()).account(); } catch {}
+	try {
+		const net = await connect();
+		acct.info = net.account();
+		$("btnAdmin").hidden = !net.isAdmin();
+		const lock = await net.nameLock().catch(() => null);
+		if(lock) applyNameLock(lock);
+	} catch {}
 	renderAccount();
 }
 function acctMsg(text, ok){
@@ -1356,12 +1612,18 @@ $("acctBtn").addEventListener("click", () => { audio.sfx.click(); openAccount();
 async function afterSignIn(net, uidBefore){
 	if(net.uid !== uidBefore){
 		const p = await net.loadProfile().catch(() => null);
-		if(p) store.setProfile(Object.assign(store.getProfile(), p));
+		if(p){
+			const { solo, ...rest } = p;
+			store.setProfile(Object.assign(store.getProfile(), rest));
+			if(solo) store.save("solo", Object.assign(store.load("solo", {}), solo));
+		}
 		location.reload();
 		return;
 	}
-	await net.saveProfile(S.profile).catch(() => {});
+	await net.saveProfile(profileForSync()).catch(() => {});
 	acct.info = net.account();
+	$("btnAdmin").hidden = !net.isAdmin();
+	garage.refresh(true).then(() => { $("titleLevel").textContent = garage.level; });
 	renderAccount();
 	openAccount();
 	acctMsg("Account ready. Your stats now follow you to any computer.", true);
@@ -1409,19 +1671,51 @@ let profileSyncTimer = null;
 function syncProfileSoon(){
 	if(acct.info.kind === "guest") return;
 	clearTimeout(profileSyncTimer);
-	profileSyncTimer = setTimeout(() => { connect().then(n => n.saveProfile(S.profile)).catch(() => {}); }, 1200);
+	profileSyncTimer = setTimeout(() => { connect().then(n => n.saveProfile(profileForSync())).catch(() => {}); }, 1200);
 }
 
 async function recordStats(){
 	if(!S.net) return;
 	try {
 		const st = await S.net.recordResult({ name: driverName(), hue: S.profile.hue });
-		if(st && S.screen === "results"){
+		if(st){
 			const note = $("resultsNote");
-			note.textContent = [note.textContent, `Career: ${st.wins} win${st.wins === 1 ? "" : "s"}, ${st.podiums} podium${st.podiums === 1 ? "" : "s"} from ${st.races} race${st.races === 1 ? "" : "s"}.`].filter(Boolean).join(" ");
+			const career = `Career: ${st.wins} win${st.wins === 1 ? "" : "s"}, ${st.podiums} podium${st.podiums === 1 ? "" : "s"} from ${st.races} race${st.races === 1 ? "" : "s"}.`;
+			// While the highlights play, keep the note for the results screen.
+			if(S.screen !== "results") (S.pendingNote = S.pendingNote || []).push(career);
+			else note.textContent = [note.textContent, `Career: ${st.wins} win${st.wins === 1 ? "" : "s"}, ${st.podiums} podium${st.podiums === 1 ? "" : "s"} from ${st.races} race${st.races === 1 ? "" : "s"}.`].filter(Boolean).join(" ");
+			garageNote(await garage.afterOnline());
 		}
 	} catch(e){ console.warn("Couldn't save race stats:", e.message || e); }
 }
+
+// ---------- Garage and admin ----------
+const garage = initGarage({
+	S, connect, onlineAvailable, acct, escapeHtml, audio, showScreen, placeShowcase,
+	saveProfile: () => { saveProfile(); updateShowcaseTag(); },
+	setCam: m => { camMode = m; }
+});
+function garageNote(res, toast){
+	if(!res) return;
+	const bits = [];
+	if(res.levelUp) bits.push(`Level ${res.levelUp}!`);
+	if(res.unlocked && res.unlocked.length) bits.push("New in your garage: " + res.unlocked.join(", ") + ".");
+	if(!bits.length) return;
+	if(toast && S.race && !S.frozen) hud.toast(bits.join(" "), 3500);
+	else if(S.screen !== "results"){ (S.pendingNote = S.pendingNote || []).push(...bits); }
+	else{ const note = $("resultsNote"); note.textContent = [note.textContent, ...bits].filter(Boolean).join(" "); }
+	$("titleLevel").textContent = garage.level;
+}
+$("btnGarage").addEventListener("click", () => { audio.sfx.click(); garage.open(); });
+const admin = initAdmin({
+	connect, escapeHtml, fmtTime, showScreen, audio,
+	setCam: m => { camMode = m; },
+	trackKeys: () => TRACKS.flatMap(d => d.code ? [d.id] : [d.id, d.id + "-rev"]),
+	trackName: k => { const d = trackById(k.replace(/-rev$/, "")); return d ? d.name + (k.endsWith("-rev") ? " reversed" : "") : k; },
+	weeks: () => [weeklyChallenge().id, weeklyChallenge(Date.now(), 1).id],
+	minLapMap: () => Object.fromEntries(TRACKS.flatMap(d => (d.code ? [false] : [false, true]).map(rev => { const e = getTrack(d, rev); return [e.key, minLapMs(e)]; })))
+});
+$("btnAdmin").addEventListener("click", () => { audio.sfx.click(); admin.open(); });
 
 // ---------- Boot ----------
 showTrack(defFor(S.setup.trackId), false);
@@ -1438,6 +1732,6 @@ showScreen("title");
 	if(play){ params.delete("play"); history.replaceState(null, "", location.pathname + (params.toString() ? "?" + params : "")); }
 }
 loadWeeklyCard();
-refreshAccount();
+refreshAccount().then(() => garage.refresh(true)).then(() => { $("titleLevel").textContent = garage.level; });
 requestAnimationFrame(frame);
 window.__game = S;   // handy for debugging in the console

@@ -10,8 +10,10 @@ import { applySlipstream } from "./slipstream.js";
 
 const THREE = globalThis.THREE;
 export const COUNTDOWN = 3000;          // same three seconds as the original
+export const QUALI_LAPS = 2;            // timed laps in qualifying (after a flying start)
 const FINISH_WAIT = 30000;              // after the winner, everyone else gets this long
-const AVG_SPEED = 21;                   // world units per second, for gap estimates
+const AVG_SPEED = 21;
+const fmtLap = ms => { const m = Math.floor(ms / 60000), sec = (ms % 60000) / 1000; return m ? m + ":" + sec.toFixed(3).padStart(6, "0") : sec.toFixed(3); };                   // world units per second, for gap estimates
 
 export class Race {
 	// opts: { scene, track, tracker?, laps, mode: "race"|"elim"|"trial", entrants, myId, now(), startAt,
@@ -22,7 +24,8 @@ export class Race {
 			myId: opts.myId, now: opts.now, startAt: opts.startAt, authority: !!opts.authority,
 			net: opts.net || null, onEvent: opts.onEvent || (() => {})
 		});
-		this.draft = opts.draft !== false;
+		this.draft = opts.draft !== false && opts.mode !== "quali";
+		this.qualiLimit = opts.qualiLimit || null;
 		this.tracker = opts.tracker || makeTracker(this.track);
 		this.lapLen = this.tracker.path ? this.tracker.path.len : 500;
 		this.rand = seededRandom("race" + this.startAt);
@@ -34,6 +37,15 @@ export class Race {
 		this.ended = false;
 		this.sendTimer = 0;
 		this.hitCooldown = new Map();
+		// Recording for replays and highlights: every car 20 times a second, plus key moments.
+		this.rec = { frames: [] };
+		this.events = [];
+		this.nextRec = 0;
+		this.nextOrder = 0;
+		this.prevOrder = null;
+		this.pairSeen = new Map();
+		this.bestLapAll = null;
+		this.finishers = [];
 		const lineCount = this.track.lines.length;
 
 		opts.entrants.forEach((e, slot) => {
@@ -43,7 +55,7 @@ export class Race {
 				isBot: !!e.bot, skill: e.bot || null, local: !!e.local, me: e.id === this.myId,
 				bot: e.bot && e.local ? new Bot(e.bot, this.rand, this.track.def && this.track.def.botTune) : null,
 				data, pos: new THREE.Vector3(data.x, phys.CAR_Y, data.y),
-				model: makeCar(e.body || "classic", e.hue),
+				model: makeCar(e.body || "classic", e.hue, { look: e.look, ghost: opts.mode === "quali" && e.id !== opts.myId }),
 				finish: null, elim: null, best: null, lapStart: null, lapTimes: [],
 				vis: { x: 0, z: 0, r: 0 }, bestProg: 0, bestProgT: 0
 			};
@@ -75,7 +87,11 @@ export class Race {
 			for(const c of this.cars) this.placeModel(c, dt);
 			return;
 		}
-		if(this.phase === "countdown"){ this.phase = "racing"; this.onEvent("go"); }
+		if(this.phase === "countdown"){
+			this.phase = "racing";
+			if(this.mode !== "quali" && this.mode !== "trial" && this.cars[0]) this.addEvent("start", 0, { a: this.cars[0].id, text: "Lights out" + (this.track.name ? " at " + this.track.name : "") });
+			this.onEvent("go");
+		}
 
 		const warp = Math.min(phys.MAX_WARP, dt * 1000 / 16);
 		const active = this.active;
@@ -88,7 +104,9 @@ export class Race {
 		}
 		const lapsBefore = active.map(c => c.data.lap);
 		if(this.draft) applySlipstream(active, warp);
-		phys.stepCars(active, this.track.walls, this.track.lines, this.track.oob, warp, (type, car, strength, other) => this.onHit(type, car, strength, other));
+		const hit = (type, car, strength, other) => this.onHit(type, car, strength, other);
+		if(this.mode === "quali") for(const c of active) phys.stepCars([c], this.track.walls, this.track.lines, this.track.oob, warp, hit);
+		else phys.stepCars(active, this.track.walls, this.track.lines, this.track.oob, warp, hit);
 
 		active.forEach((c, k) => {
 			this.tracker.update(c);
@@ -105,6 +123,7 @@ export class Race {
 
 		if(this.authority && !this.ended) this.rules(t);
 		for(const c of this.cars) this.placeModel(c, dt);
+		this.record(t);
 
 		if(this.net){
 			this.sendTimer -= dt;
@@ -122,6 +141,13 @@ export class Race {
 		if(t - last < 120) return;
 		this.hitCooldown.set(key, t);
 		this.onEvent("hit", { type, car, strength, other });
+		const rt = this.raceTime;
+		if(this.mode !== "trial" && this.mode !== "quali" && rt > 2000){
+			const last = this.events[this.events.length - 1];
+			const recent = last && rt - last.t < 1500 && (last.a === car.id || last.b === car.id) && (last.type === "crash" || last.type === "contact");
+			if(!recent && type === "wall" && strength > 0.22) this.addEvent("crash", rt, { a: car.id, pos: this.posOf(car), text: `${car.name} hits the wall` });
+			else if(!recent && type === "car" && other && strength > 0.18) this.addEvent("contact", rt, { a: car.id, b: other.id, pos: this.posOf(car), text: `${car.name} and ${other.name} make contact` });
+		}
 	}
 
 	onLap(c, t){
@@ -132,6 +158,10 @@ export class Race {
 			const pb = c.best === null || lapMs < c.best;
 			if(pb) c.best = lapMs;
 			this.onEvent("lap", { car: c, ms: lapMs, best: pb });
+			if(this.mode !== "trial" && (this.bestLapAll === null || lapMs < this.bestLapAll)){
+				if(this.bestLapAll !== null) this.addEvent("fastest", t, { a: c.id, text: `${c.name} sets the fastest lap: ${fmtLap(lapMs)}` });
+				this.bestLapAll = lapMs;
+			}
 			if(c.me && this.ghostModel && this.recording){
 				if(pb) this.ghostData = { ms: lapMs, s: this.recording };
 				this.recording = [];
@@ -139,9 +169,14 @@ export class Race {
 		}
 		c.lapStart = t;
 		if(c.me && this.recording) this.recording = [];
+		if(this.mode === "quali" && c.lapTimes.length >= this.laps && c.finish === null){
+			c.finish = t;
+			this.onEvent("qualiDone", { car: c, ms: c.best });
+		}
 		if(this.mode === "race" && c.data.lap > this.laps && c.finish === null){
 			c.finish = t;
 			if(this.firstFinish === null) this.firstFinish = t;
+			this.noteFinish(c, t);
 			this.onEvent("finish", { car: c, ms: t, position: this.standings().findIndex(s => s.car === c) + 1 });
 		}else if(this.mode === "race" && c.me && c.data.lap === this.laps && this.laps > 1){
 			this.onEvent("finalLap", {});
@@ -225,6 +260,9 @@ export class Race {
 				if(active[0] && active[0].finish === null){ active[0].finish = t; this.onEvent("finish", { car: active[0], ms: t, position: 1 }); }
 				this.endAt = t + 2500;
 			}
+		}else if(this.mode === "quali"){
+			const limit = this.qualiLimit || (this.laps + 1.4) * this.lapLen / 17 * 1000 + 20000;
+			if(!this.endAt && (active.every(c => c.finish !== null) || t > limit)) this.endAt = t + 1500;
 		}else if(this.mode === "race"){
 			const unfinished = active.filter(c => c.finish === null);
 			const humansLeft = unfinished.filter(c => !c.isBot).length;
@@ -246,8 +284,63 @@ export class Race {
 		c.elim = order;
 		this.elimOrder = Math.max(this.elimOrder, order);
 		c.model.visible = false;
+		this.addEvent("out", this.raceTime, { a: c.id, text: `${c.name} is eliminated` });
 		this.onEvent("eliminated", { car: c });
 		if(this.net && this.authority) this.net.eliminate(id, order);
+	}
+
+	// ----- replay recording -----
+	addEvent(type, t, data){
+		this.events.push(Object.assign({ type, t }, data));
+	}
+	posOf(car){ return this.standings().findIndex(s => s.car === car) + 1; }
+	noteFinish(c, t){
+		if(this.mode !== "race" || this.finishers.includes(c.id)) return;
+		this.finishers.push(c.id);
+		if(this.finishers.length === 1) this.addEvent("finish", t, { a: c.id, text: `${c.name} wins` });
+		else if(this.finishers.length === 2){
+			const w = this.byId.get(this.finishers[0]);
+			const gap = t - (w.finish ?? t);
+			if(gap < 500){
+				const i = this.events.findIndex(e => e.type === "finish");
+				if(i >= 0) this.events.splice(i, 1);
+				this.addEvent("photo", w.finish, { a: w.id, b: c.id, text: `Photo finish! ${w.name} beats ${c.name} by ${(gap / 1000).toFixed(3)}s` });
+			}
+		}
+	}
+	record(t){
+		if(t < 0 || this.mode === "trial") return;
+		if(t >= this.nextRec){
+			this.nextRec = t + 50;
+			const f = new Float32Array(this.cars.length * 6);
+			this.cars.forEach((c, i) => {
+				const o = i * 6;
+				f[o] = c.model.position.x; f[o + 1] = c.model.position.z; f[o + 2] = c.model.rotation.y;
+				f[o + 3] = c.data.steer; f[o + 4] = Math.hypot(c.data.xv, c.data.yv);
+				f[o + 5] = c.gone || c.elim !== null ? 0 : 1;
+			});
+			this.rec.frames.push({ t, f });
+			if(this.rec.frames.length > 14000) this.rec.frames.shift();
+		}
+		// Overtakes: two cars next to each other in the order swap places.
+		if(this.mode !== "quali" && t > 4000 && t >= this.nextOrder){
+			this.nextOrder = t + 500;
+			const st = this.standings();
+			const done = st.filter(x => x.car.finish !== null).length;
+			const order = st.filter(x => x.car.elim === null && x.car.finish === null && !x.car.gone).map(x => x.car.id);
+			if(this.prevOrder){
+				for(let i = 0; i < order.length - 1; i++){
+					const a = order[i], b = order[i + 1];
+					if(this.prevOrder.indexOf(a) !== i + 1 || this.prevOrder.indexOf(b) !== i) continue;
+					const again = this.pairSeen.get(a + ">" + b), back = this.pairSeen.get(b + ">" + a);
+					this.pairSeen.set(a + ">" + b, t);
+					if((again && t - again < 6000) || (back && t - back < 3000)) continue;
+					const A = this.byId.get(a), B = this.byId.get(b), pos = done + i + 1;
+					this.addEvent("pass", t, { a, b, pos, text: pos === 1 ? `${A.name} takes the lead from ${B.name}` : `${A.name} passes ${B.name} for P${pos}` });
+				}
+			}
+			this.prevOrder = order;
+		}
 	}
 
 	// Host migration: the new host starts driving the bots and running the rules.
@@ -264,6 +357,13 @@ export class Race {
 
 	// Race order, best first.
 	standings(){
+		if(this.mode === "quali"){
+			const q = this.cars.filter(c => !c.gone).map(car => ({ car, prog: raceProgress(car) }));
+			q.sort((a, b) => (a.car.best ?? Infinity) - (b.car.best ?? Infinity) || b.prog - a.prog);
+			const top = q[0] && q[0].car.best;
+			q.forEach((s, i) => { s.gap = s.car.best == null ? "NO TIME" : i === 0 ? fmtLap(s.car.best) : "+" + ((s.car.best - top) / 1000).toFixed(3); });
+			return q;
+		}
 		const list = this.cars.filter(c => !c.gone).map(car => ({ car, prog: raceProgress(car) }));
 		list.sort((a, b) => {
 			const fa = a.car.finish, fb = b.car.finish;
@@ -290,6 +390,10 @@ export class Race {
 	}
 
 	results(){
+		if(this.mode === "quali") return this.standings().map((s, i) => ({
+			id: s.car.id, name: s.car.name, hue: s.car.hue, body: s.car.body, bot: s.car.isBot,
+			pos: i + 1, time: s.car.best, best: s.car.best, status: s.car.best != null ? "finished" : "dnf", gap: i ? s.gap : ""
+		}));
 		return this.standings().map((s, i) => ({
 			id: s.car.id, name: s.car.name, hue: s.car.hue, body: s.car.body, bot: s.car.isBot,
 			pos: i + 1, time: s.car.finish, best: s.car.best,
@@ -330,6 +434,7 @@ export class Race {
 		if(s.f != null && c.finish === null){
 			c.finish = s.f;
 			if(this.firstFinish === null || s.f < this.firstFinish) this.firstFinish = s.f;
+			this.noteFinish(c, s.f);
 			this.onEvent("finish", { car: c, ms: s.f });
 		}
 		if(s.b != null) c.best = s.b;

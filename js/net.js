@@ -2,6 +2,7 @@
 // Firebase Realtime Database (the real thing) and a same-computer version over
 // BroadcastChannel (open the game with ?localnet in two tabs to test without Firebase).
 import { FIREBASE_CONFIG, firebaseReady, MAX_CARS, ACCOUNTS, P2P, SEND_RATE } from "./config.js";
+import { champStandings } from "./champ.js";
 
 const CODE_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const STALE_ROOM = 6 * 60 * 60 * 1000;
@@ -367,7 +368,7 @@ export class Net {
 	claimHost(){ return this.store.set(this.path("host"), this.uid); }
 
 	playerRecord(profile, ready){
-		return { name: profile.name, hue: profile.hue, body: profile.body, ready: !!ready, joined: this.now(), owner: this.uid };
+		return { name: profile.name, hue: profile.hue, body: profile.body, look: profile.look || null, ready: !!ready, joined: this.now(), owner: this.uid };
 	}
 
 	// cb(room) whenever anything except car positions changes; cb(null) if the room disappears.
@@ -375,7 +376,7 @@ export class Net {
 		const room = {};
 		let seen = false;
 		const emit = () => { this.room = room.host ? room : null; cb(this.room); };
-		for(const key of ["host", "phase", "settings", "players", "race", "results", "champ"]){
+		for(const key of ["host", "phase", "settings", "players", "race", "results", "champ", "quali"]){
 			this.unsubs.push(this.store.onValue(this.path(key), v => {
 				room[key] = v;
 				if(key === "host"){
@@ -402,9 +403,13 @@ export class Net {
 		return this.store.remove(this.path("players/" + id));
 	}
 	startRace(race, champ){
-		const u = { race, phase: "race", results: null, resultsBy: null, humans: null, state: null };
+		const u = { race, phase: "race", results: null, resultsBy: null, humans: null, state: null, quali: null };
 		if(champ !== undefined) u.champ = champ;
 		return this.store.update(this.path(), u);
+	}
+	// Qualifying finished: publish the order. The host then starts the race from it.
+	finishQuali(results){
+		return this.store.update(this.path(), { phase: "qualiResults", quali: { results, order: results.map(r => r.id) } });
 	}
 	eliminate(id, order){ return this.store.set(this.path("race/elim/" + id), order); }
 
@@ -419,6 +424,10 @@ export class Net {
 			if(r.bot) continue;
 			humans++;
 			resultsBy[r.id] = { pos: r.status === "dnf" ? 99 : r.pos, key };
+		}
+		if(champ && champ.done){
+			const top = champStandings(champ)[0];
+			if(top && resultsBy[top.id]) resultsBy[top.id].champ = 1;
 		}
 		const u = { phase: "results", results, resultsBy, humans };
 		if(champ !== undefined) u.champ = champ;
@@ -437,6 +446,7 @@ export class Net {
 			races: (cur.races || 0) + 1,
 			wins: (cur.wins || 0) + (mine.pos === 1 ? 1 : 0),
 			podiums: (cur.podiums || 0) + (mine.pos <= 3 ? 1 : 0),
+			titles: (cur.titles || 0) + (mine.champ === 1 ? 1 : 0),
 			last: mine.key, room: this.code, at: this.now()
 		};
 		await this.store.set("stats/" + this.uid, next);
@@ -487,12 +497,46 @@ export class Net {
 	topLaps(key, n = 10){ return this.store.top(`laps/${key}`, "t", n); }
 
 	// Weekly challenge board (resets itself: each week has its own board).
-	async submitWeekly(week, ms, profile){
+	async submitWeekly(week, ms, profile, trackKey){
 		const mine = await this.store.get(`weekly/${week}/${this.uid}`);
 		if(mine && mine.t <= ms) return false;
-		await this.store.set(`weekly/${week}/${this.uid}`, { n: String(profile.name).slice(0, 20), h: profile.hue, t: Math.round(ms), at: this.now() });
+		await this.store.set(`weekly/${week}/${this.uid}`, { n: String(profile.name).slice(0, 20), h: profile.hue, t: Math.round(ms), at: this.now(), k: trackKey });
 		return true;
 	}
+	// Last week's winner holds the crown and the #1 number this week.
+	async crownHolder(lastWeek){
+		const top = await this.store.top(`weekly/${lastWeek}`, "t", 1);
+		return top[0] ? top[0].id : null;
+	}
+	// Weekly wins over past weeks (finished weeks never change, so the caller caches them).
+	async weeklyWinner(week){
+		const top = await this.store.top(`weekly/${week}`, "t", 1);
+		return top[0] ? top[0].id : null;
+	}
+
+	// ----- moderation -----
+	isAdmin(){ const a = this.account(); return a.kind === "bvs" && a.label === ACCOUNTS.admin; }
+	nameLock(uid = this.uid){ return this.store.get("nameLock/" + uid); }
+	isBanned(uid = this.uid){ return this.store.get("banned/" + uid).then(v => !!v); }
+	minLaps(){ return this.store.get("config/minLap"); }
+	// Admin only (the database rules refuse these for anyone else).
+	allDrivers(n = 200){ return this.store.top("stats", "races", n, true); }
+	async renameDriver(uid, name, trackKeys, weeks){
+		await this.store.set("nameLock/" + uid, name);
+		const st = await this.store.get("stats/" + uid);
+		if(st) await this.store.update("stats/" + uid, { n: name });
+		for(const k of trackKeys){ if(await this.store.get(`laps/${k}/${uid}`)) await this.store.update(`laps/${k}/${uid}`, { n: name }); }
+		for(const w of weeks){ if(await this.store.get(`weekly/${w}/${uid}`)) await this.store.update(`weekly/${w}/${uid}`, { n: name }); }
+	}
+	unlockName(uid){ return this.store.remove("nameLock/" + uid); }
+	resetStats(uid){ return this.store.remove("stats/" + uid); }
+	setBanned(uid, on){ return on ? this.store.set("banned/" + uid, { at: this.now() }) : this.store.remove("banned/" + uid); }
+	bannedList(){ return this.store.get("banned").then(v => v || {}); }
+	removeLap(trackKey, uid){ return this.store.remove(`laps/${trackKey}/${uid}`); }
+	removeWeekly(week, uid){ return this.store.remove(`weekly/${week}/${uid}`); }
+	publishMinLaps(map){ return this.store.set("config/minLap", map); }
+	liveRooms(){ return this.store.get("rooms").then(v => v || {}); }
+	closeRoom(code){ return this.store.remove("rooms/" + code); }
 	topWeekly(week, n = 10){ return this.store.top(`weekly/${week}`, "t", n); }
 
 	// ----- accounts -----
@@ -504,7 +548,7 @@ export class Net {
 	// Your driver name, colour and car follow your account between devices.
 	saveProfile(p){
 		if(this.account().kind === "guest") return Promise.resolve();
-		return this.store.set("users/" + this.uid, { name: String(p.name).slice(0, 18), hue: p.hue, body: p.body });
+		return this.store.set("users/" + this.uid, { name: String(p.name).slice(0, 18), hue: p.hue, body: p.body, look: p.look || null, solo: p.solo || null });
 	}
 	loadProfile(){ return this.store.get("users/" + this.uid); }
 }

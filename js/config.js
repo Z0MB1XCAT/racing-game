@@ -24,7 +24,10 @@ export const ACCOUNTS = {
 	// Only Microsoft accounts with these endings count as Hwb.
 	hwbDomains: ["hwbmail.net", "hwbcymru.net"],
 	// "organizations" = any school or work Microsoft account (the domain check above then limits it to Hwb).
-	hwbTenant: "organizations"
+	hwbTenant: "organizations",
+	// This BVS account gets the Admin page (rename/ban players, remove records).
+	// If you change it, change the same address in database.rules.json too.
+	admin: "bvs-11018"
 };
 
 export const GAME_NAME = "Online Racing Game";

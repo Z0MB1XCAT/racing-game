@@ -35,7 +35,7 @@ export class Hud {
 		this.track = track;
 		this.mode = mode;
 		setText(this.el.laps, mode === "trial" ? "" : mode === "elim" ? "" : "/" + laps);
-		setText(this.el.lapLabel, mode === "elim" ? "Lap" : "Lap");
+		setText(this.el.lapLabel, mode === "quali" ? "Quali" : "Lap");
 		this.el.lights.hidden = true;
 		this.el.banner.hidden = true;
 		this.el.spect.hidden = true;

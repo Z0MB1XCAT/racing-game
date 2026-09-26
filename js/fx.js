@@ -79,6 +79,9 @@ export class Effects {
 				this.puffHead = (this.puffHead + 1) % this.puffs.length;
 				pf.life = 1;
 				pf.s.visible = true;
+				const sc = car.model && car.model.userData.smoke;
+				if(sc === "rainbow") pf.s.material.color.setHSL(Math.random(), 1, 0.65);
+				else pf.s.material.color.set(sc || "#ebebf0");
 				pf.s.position.set(rear[0][0] * 0.5 + rear[1][0] * 0.5, 0.5, rear[0][1] * 0.5 + rear[1][1] * 0.5);
 				pf.s.scale.setScalar(1.2);
 			}
