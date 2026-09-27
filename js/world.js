@@ -11,8 +11,8 @@ const THREE = globalThis.THREE;
 export const THEMES = {
 	classic: { sky: 0x7fb0ff, ground: 0x57c115, stripes: true, wall: 0xf48342, wallH: 1.5, trees: "classic", mountains: "cubes", mountainColor: 0x888888, sun: 0.7, amb: 0.5 },
 	monaco: { sky: [0x4f9dea, 0xd6ebff], ground: 0xcdc3ae, wall: "redwhite", road: 0x45484f, trees: "palm", treeDensity: 0.25,
-		buildings: { density: 0.9, palette: [0xf2d7b6, 0xf0c9a8, 0xe8e0cf, 0xf5e6c8, 0xd9b99b, 0xf4efe6, 0xe9c9c0] },
-		sea: { dir: [0.9, -0.45], color: 0x1f6fb0 }, mountains: "hills", mountainColor: 0x7f956a, fog: [0xd6ebff, 500, 1600], grandstand: 2, standColor: 0xd8342f, fans: false },
+		buildings: { density: 0.9, tall: [12, 30], palette: [0xf2d7b6, 0xf0c9a8, 0xe8e0cf, 0xf5e6c8, 0xd9b99b, 0xf4efe6, 0xe9c9c0] },
+		catchFence: true, sea: { dir: [0.9, -0.45], color: 0x1f6fb0 }, mountains: "hills", mountainColor: 0x7f956a, fog: [0xd6ebff, 500, 1600], grandstand: 2, standColor: 0xd8342f, fans: false },
 	spa: { sky: [0x7f90a6, 0xcbd4dd], ground: 0x3f7b34, stripes: true, wall: 0xa9b1ba, road: 0x3c4047, trees: "pine", treeDensity: 1.3,
 		mountains: "hills", mountainColor: 0x3d663a, fog: [0xbcc6d0, 320, 1300], grandstand: 2, standColor: 0xf4c542, sun: 0.55, amb: 0.6 },
 	monza: { sky: [0x4a9eff, 0xd2eaff], ground: 0x5ea94a, stripes: true, wall: 0xb9c1c9, road: 0x41444b, trees: "round", treeDensity: 1.0,
@@ -258,11 +258,48 @@ export function buildWorld(track, opts = {}){
 		seaEdge = { ux, uy, edge: edge + 25 };
 	}
 	const isSea = seaEdge ? (x, z) => { const [mx, my] = track.toMap(x, z); return mx * seaEdge.ux + my * seaEdge.uy > seaEdge.edge; } : null;
+	// A harbour beside part of the lap (Monaco's Port Hercule, from the tunnel exit round Tabac and
+	// the Swimming Pool): water from a quay beside the road out to the open sea.
+	let harbour = null;
+	if(track.def && track.def.harbour && track.center && track.center.h){
+		const c = track.center, n = c.n, [f0, f1] = track.def.harbour, rev = !!track.reverse;
+		const a = Math.floor((rev ? 1 - f1 : f0) * n), b = Math.floor((rev ? 1 - f0 : f1) * n), side = rev ? -1 : 1, off = c.hw + 9;
+		const quay = [];
+		for(let i = a; i <= b; i += 2){
+			const s = i % n, x = c.x[s] + c.tz[s] * side * off, z = c.z[s] - c.tx[s] * side * off;
+			// Inside a tight corner the offset line folds over itself: leave out points that end up
+			// closer to the road than the quay should be, and any that would step backwards.
+			let near = Infinity;
+			c.hash.near(x, z, off, j => { near = Math.min(near, Math.hypot(c.x[j] - x, c.z[j] - z)); });
+			if(near < off - 0.5) continue;
+			const prev = quay[quay.length - 1];
+			if(prev && ((x - prev.x) * c.tx[s] + (z - prev.z) * c.tz[s]) <= 0) continue;
+			quay.push({ s, x, z });
+		}
+		// Water: points whose nearest bit of this stretch of road has them on the harbour side,
+		// past the quay (and not past the ends of the stretch).
+		const S = [];
+		for(let i = a; i <= b; i++) S.push(i % n);
+		const inside = (x, z) => {
+			let best = Infinity, j = -1;
+			for(const s of S){ const d = (c.x[s] - x) ** 2 + (c.z[s] - z) ** 2; if(d < best){ best = d; j = s; } }
+			const dx = x - c.x[j], dz = z - c.z[j];
+			const lat = (dx * c.tz[j] - dz * c.tx[j]) * side, along = dx * c.tx[j] + dz * c.tz[j];
+			return lat > off - 0.5 && lat < 420 && Math.abs(along) < 3;
+		};
+		// Its extent, for the water surface.
+		const bb = track.bounds, box = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
+		for(let x = bb.minX - 300; x <= bb.maxX + 300; x += 8) for(let z = bb.minZ - 300; z <= bb.maxZ + 300; z += 8) if(inside(x, z)){
+			box.minX = Math.min(box.minX, x); box.maxX = Math.max(box.maxX, x); box.minZ = Math.min(box.minZ, z); box.maxZ = Math.max(box.maxZ, z);
+		}
+		harbour = { quay, inside, side, box };
+	}
+	const isWater = harbour ? (x, z) => (isSea && isSea(x, z)) || harbour.inside(x, z) : isSea;
 
 	// Elevated circuits get rolling ground built from the road's own heights.
 	let terrain = null;
 	if(track.elevated){
-		terrain = buildTerrain(track, { isSea, uvOrigin: { x: cx - groundSize / 2, z: cz + groundSize / 2 } });
+		terrain = buildTerrain(track, { isSea: isWater, uvOrigin: { x: cx - groundSize / 2, z: cz + groundSize / 2 } });
 		keep(terrain.geometry);
 		let tmat = groundMat;
 		if(theme.stripes && groundMat.emissiveMap){
@@ -371,6 +408,25 @@ export function buildWorld(track, opts = {}){
 	const wallMesh = new THREE.Mesh(keep(track.elevated ? wallStrips(track, wallItems, wallH, heightAt) : mergedBoxes(wallItems)), keep(new THREE.MeshLambertMaterial({ vertexColors: true })));
 	wallMesh.castShadow = wallMesh.receiveShadow = shadows;
 	group.add(wallMesh);
+	// Catch fencing on top of the barriers (Monaco): posts, two rails and see-through mesh.
+	if(theme.catchFence && track.center && track.elevated){
+		const t = track.features && track.features.tunnel, n = track.center.n;
+		const inTunnel = s => t && s >= 0 && ((s - t[0] + n) % n) <= ((t[1] - t[0] + n) % n) + 2;
+		const fenceItems = wallItems.filter(w => !inTunnel(w.seg ?? -1));
+		const FH = 2.6, top = wallH + FH;
+		const rails = [], mesh = [];
+		for(const w of fenceItems){
+			for(const y of [wallH + FH * 0.5, top]) rails.push(Object.assign({}, w, { y, h: 0.07, d: 0.07, color: 0x8d949c }));
+			mesh.push(Object.assign({}, w, { y: wallH + FH / 2, h: FH, d: 0.02, color: 0x9aa3ad }));
+		}
+		group.add(new THREE.Mesh(keep(wallStrips(track, rails, 0.07, heightAt)), keep(new THREE.MeshLambertMaterial({ vertexColors: true }))));
+		const wire = new THREE.Mesh(keep(wallStrips(track, mesh, FH, heightAt)), keep(new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide })));
+		wire.renderOrder = 2;
+		group.add(wire);
+		const posts = [];
+		fenceItems.forEach((w, k) => { if(k % 2) return; const y = heightAt(w.x, w.z, w.seg ?? -1); posts.push({ x: w.x, y: y + wallH + FH / 2, z: w.z, sx: 0.1, sy: FH, sz: 0.1, ry: w.ry }); });
+		group.add(instanced(keep(new THREE.BoxBufferGeometry(1, 1, 1)), keep(new THREE.MeshLambertMaterial({ color: 0x7d848c })), posts, shadows));
+	}
 	if(style === "concrete"){
 		// Jeddah: a strip of light along the top of every wall.
 		const strip = wallItems.map(w => Object.assign({}, w, { y: wallH + 0.05, h: 0.1, d: 0.32, color: 0x7ad7ff }));
@@ -379,7 +435,7 @@ export function buildWorld(track, opts = {}){
 
 	// Trees, grandstands, pits, billboards, buildings (see scenery.js).
 	const scenery = track.scenery || [];
-	const extras = buildScenery(track, theme, { group, keep, shadows, quality, rand, groundAt });
+	const extras = buildScenery(track, theme, { group, keep, shadows, quality, rand, groundAt, harbour });
 	const occluders = extras.occluders;
 	updaters.push(...extras.updaters);
 	if(theme.trees === "classic"){
@@ -416,6 +472,29 @@ export function buildWorld(track, opts = {}){
 		deck.castShadow = deck.receiveShadow = shadows;
 		group.add(deck);
 		for(const o of br.occluders) occluders.add(o);
+	}
+
+	// The harbour's water, with a stone quay wall down to it.
+	if(harbour && terrain){
+		// One flat sheet at sea level: the ground is dipped under it in the harbour and stays
+		// above it everywhere else, so the shoreline is where they meet.
+		const hbx = harbour.box, hg = keep(new THREE.PlaneBufferGeometry(hbx.maxX - hbx.minX + 30, hbx.maxZ - hbx.minZ + 30));
+		hg.rotateX(-Math.PI / 2);
+		hg.translate((hbx.minX + hbx.maxX) / 2, 0, (hbx.minZ + hbx.maxZ) / 2);
+		const water = new THREE.Mesh(hg, keep(new THREE.MeshLambertMaterial({ color: theme.sea ? theme.sea.color : 0x1f6fb0, emissive: theme.night ? 0x050b18 : 0x0a2a4a, side: THREE.DoubleSide })));
+		water.position.y = terrain.base + 0.03;
+		group.add(water);
+		const c = track.center, pos = [], idx = [];
+		harbour.quay.forEach((p, k) => {
+			const top = c.h[p.s] - 0.3;
+			pos.push(p.x, top, p.z, p.x, terrain.base - 1, p.z);
+			if(k) idx.push((k - 1) * 2, (k - 1) * 2 + 1, k * 2, k * 2, (k - 1) * 2 + 1, k * 2 + 1);
+		});
+		const qg = new THREE.BufferGeometry();
+		qg.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+		qg.setIndex(idx);
+		qg.computeVertexNormals();
+		group.add(new THREE.Mesh(keep(qg), keep(new THREE.MeshLambertMaterial({ color: 0xbfb4a0, side: THREE.DoubleSide }))));
 	}
 
 	// Sea beyond one side of the circuit, in real compass terms.
@@ -644,7 +723,7 @@ export function buildWorld(track, opts = {}){
 	return {
 		group, theme, sun, fog, farPlane, occluders, info: extras.info,
 		// Height of the ground (terrain) and of the road surface at (x, z).
-		groundAt, heightAt,
+		groundAt, heightAt, harbour,
 		look,
 		// { hour 0-24, cloud 0-1, rain 0-1 }. Cheap to call every frame.
 		setAtmosphere(a){ now.hour = a.hour; now.cloud = a.cloud; now.rain = a.rain; },

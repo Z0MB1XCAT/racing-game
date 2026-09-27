@@ -187,15 +187,17 @@ function makeSpace(track){
 }
 
 // ---------- Textures ----------
-const AD_COLS = 2, AD_ROWS = 8;
+const AD_COLS = 2, AD_ROWS = 9, AD_RANDOM = 16;   // (the last row: signs for particular places)
 const ADS_TEXT = [
 	["GRAND PRIX", "#e23b3b", "#fff"], ["BVS RACING", "#1f4fbf", "#fff"], ["FULL THROTTLE", "#111418", "#f4c542"], ["APEX ENERGY", "#3ddc84", "#08140c"],
 	["TURBO COLA", "#c8102e", "#fff"], ["NITRO TYRES", "#f4c542", "#111"], ["SLIPSTREAM", "#2580db", "#fff"], ["PIT LANE PIZZA", "#f48342", "#1b0e04"],
 	["POLE POSITION", "#fff", "#111"], ["BOX BOX", "#a95cff", "#fff"], ["CHEQUERED", "#111", "#fff"], ["KERB APPEAL", "#e23b3b", "#fff"],
-	["LAP ONE FUEL", "#0e7c86", "#fff"], ["PODIUM", "#f4f6fa", "#c8102e"], ["GRID GARAGE", "#2a2f3d", "#7ad7ff"], ["DRIFT KING", "#ff5ea8", "#fff"]
+	["LAP ONE FUEL", "#0e7c86", "#fff"], ["PODIUM", "#f4f6fa", "#c8102e"], ["GRID GARAGE", "#2a2f3d", "#7ad7ff"], ["DRIFT KING", "#ff5ea8", "#fff"],
+	["MONTE-CARLO", "#c8102e", "#fff"]
 ];
+const AD_MONTE_CARLO = 16;
 function adsTexture(){
-	return canvasTexture(1024, 512, (g, W, H) => {
+	return canvasTexture(1024, 576, (g, W, H) => {
 		const bw = W / AD_COLS, bh = H / AD_ROWS;
 		ADS_TEXT.forEach(([text, bg, fg], k) => {
 			const x = (k % AD_COLS) * bw, y = Math.floor(k / AD_COLS) * bh;
@@ -272,6 +274,30 @@ export function buildScenery(track, theme, ctx){
 	const G = ctx.groundAt || (() => 0);
 	const B = new Builder();
 	if(ctx.groundAt) B.ground = G;
+	// Keep everything out of the harbour: mark its water as taken, and moor yachts along the quay.
+	const hb = ctx.harbour;
+	if(hb){
+		const { minX, maxX, minZ, maxZ } = hb.box;
+		for(let x = minX; x <= maxX; x += 6) for(let z = minZ; z <= maxZ; z += 6) if(hb.inside(x, z)) sp.take(x, z, 4.5, "harbour");
+		// Moored stern-on to the quay in a row, with a second row of bigger ones further out.
+		const yachts = [];
+		const clear = (x, z, r) => yachts.every(y => Math.hypot(y.x - x, y.z - z) > y.len * 0.3 + r);
+		for(let k = 2; k < hb.quay.length - 2; k++){
+			const p = hb.quay[k], s = p.s, nx = c.tz[s] * hb.side, nz = -c.tx[s] * hb.side, ry = Math.atan2(nx, nz);
+			for(const [row, len] of [[1.5, 5 + (k * 7) % 4], [22, 9 + (k * 3) % 7]]){
+				const x = p.x + nx * (row + len / 2), z = p.z + nz * (row + len / 2);
+				if(!hb.inside(x + nx * len / 2, z + nz * len / 2) || !hb.inside(x - nx * len / 2, z - nz * len / 2) || !clear(x, z, len * 0.3 + 0.8) || rand() < 0.35) continue;
+				yachts.push({ x, z, ry, len });
+			}
+		}
+		const seaY = G(1e6, 1e6) + 0.03;
+		for(const y of yachts){
+			const w = y.len * 0.32;
+			B.box({ x: y.x, z: y.z, y: seaY - G(y.x, y.z) - 0.2, w, d: y.len, h: 1.2, ry: y.ry, color: 0xf6f7f9, bottom: true });
+			B.box({ x: y.x, z: y.z, y: seaY - G(y.x, y.z) + 1, w: w * 0.7, d: y.len * 0.5, h: 0.9, ry: y.ry, color: 0xe3e8ee, top: 0x2c3440 });
+			if(y.len > 11) B.box({ x: y.x, z: y.z, y: seaY - G(y.x, y.z) + 1.9, w: w * 0.5, d: y.len * 0.3, h: 0.7, ry: y.ry, color: 0xf6f7f9 });
+		}
+	}
 	// Occluder heights are above the ground where they stand.
 	const occ0 = occ;
 	const place = o => { const g = G(o.x, o.z); o.y0 += g; o.y1 += g; occ0.add(o); };
@@ -410,7 +436,7 @@ export function buildScenery(track, theme, ctx){
 		const f = sp.at(i, s, hw + 0.9);
 		const [bx, bz] = f.local(0, -0.1);
 		if(!sp.boxClear(bx, bz, f.ry, 8.4, 0.6, 0.6) || !sp.free(bx, bz, 4.2, "ads")) continue;
-		B.board({ x: bx, z: bz, y: 0.35, w: 8, h: 1.2, ry: f.ry }, Math.floor(rand() * ADS_TEXT.length));
+		B.board({ x: bx, z: bz, y: 0.35, w: 8, h: 1.2, ry: f.ry }, Math.floor(rand() * AD_RANDOM));
 		const [kx, kz] = f.local(0, -0.18);
 		B.box({ x: kx, z: kz, w: 8, d: 0.12, h: 1.6, ry: f.ry, color: 0x2a2e38 });
 		sp.take(bx, bz, 4.2, "ads");
@@ -419,9 +445,16 @@ export function buildScenery(track, theme, ctx){
 	// --- A bridge over a straight, away from the start.
 	let bridge = null;
 	const from = Math.floor(n * (0.25 + rand() * 0.2));
+	// Not in, or in the view of, a tunnel (the Monaco tunnel mouth under the hotel).
+	const tunnelNear = i => {
+		const t = track.features && track.features.tunnel;
+		if(!t) return false;
+		const past = (i - (t[0] - 130) + n) % n, len = (t[1] - t[0] + n) % n;
+		return past <= len + 130 + 40;
+	};
 	for(let tries = 0; tries < n * 0.5 && !bridge; tries += 5){
 		const i = (from + tries) % n;
-		if(Math.min(i, n - i) < 80 || sp.bend(i, 10) > 1 / 160) continue;
+		if(Math.min(i, n - i) < 80 || sp.bend(i, 10) > 1 / 160 || tunnelNear(i)) continue;
 		const L = sp.at(i, 1, hw + 2.4), R = sp.at(i, -1, hw + 2.4);
 		if(!sp.boxClear(L.x, L.z, L.ry, 2.4, 2.4, 1) || !sp.boxClear(R.x, R.z, R.ry, 2.4, 2.4, 1)) continue;
 		// No other road under the deck either.
@@ -451,6 +484,75 @@ export function buildScenery(track, theme, ctx){
 		place({ x: mid.x, z: mid.z, ry: mid.ry, hw: 1.3, hd: span / 2, y0: 6.2, y1: 8.3 });
 	}
 
+	// --- Monaco: the tunnel runs under the Fairmont hotel. The hotel stands over the mouth and
+	// the first half of the tunnel, reaching back inland on a podium, with the red Monte-Carlo
+	// banner over the entrance, a white curved stair tower beside it and a fence along the sea
+	// on the way in; lower seafront buildings cover the rest of the tunnel.
+	const tun = track.features && track.features.tunnel;
+	if(tun && c.h){
+		const [a, b] = tun, to = b >= a ? b : b + n, len = to - a, sm = i => ((i % n) + n) % n;
+		const H = i => c.h[sm(i)];
+		// Which side is the sea (the ground drops away there)?
+		const probe = s => G(c.x[sm(a - 20)] + c.tz[sm(a - 20)] * s * 30, c.z[sm(a - 20)] - c.tx[sm(a - 20)] * s * 30);
+		const sea = probe(1) < probe(-1) - 0.5 ? 1 : probe(-1) < probe(1) - 0.5 ? -1 : 0, land = sea ? -sea : 1;
+		// How far inland the buildings can reach at sample i without covering another road.
+		const reach = (i, want) => {
+			for(let ext = want; ext > 0; ext -= 2){
+				let ok = true;
+				for(let o = hw + 1.4; o <= hw + 1.4 + ext && ok; o += 2) for(const dz of [-4, 0, 4]){
+					const j = sm(i + dz), px = c.x[j] + c.tz[j] * land * o, pz = c.z[j] - c.tx[j] * land * o;
+					c.hash.near(px, pz, hw + 3, k => { if(Math.min(Math.abs(k - j), n - Math.abs(k - j)) > 40 && Math.hypot(c.x[k] - px, c.z[k] - pz) < hw + 3) ok = false; });
+				}
+				if(ok) return ext;
+			}
+			return 0;
+		};
+		const block = (i, floors, d, color, want, id) => {
+			const s = sm(i), ry = Math.atan2(c.tx[s], c.tz[s]), ext = reach(s, want);
+			const W = (hw + 1.4) * 2 + ext, off = land * ext / 2;
+			const x = c.x[s] + c.tz[s] * off, z = c.z[s] - c.tx[s] * off;
+			const base = H(s) + 7.4, top = base + floors * 3;
+			B.box({ x, z, y: base - G(x, z), w: W, d, h: floors * 3, ry, color, win: [2.4, 3], top: 0xcfc4b2 });
+			place({ x, z, ry, hw: W / 2, hd: d / 2, y0: base - 7.4 - G(x, z), y1: top - G(x, z) });
+			sp.take(x, z, Math.max(W, d) / 2, id);
+			// The podium under the inland part, down to the ground.
+			if(ext > 1){
+				const px = c.x[s] + c.tz[s] * land * (hw + 1.4 + ext / 2), pz = c.z[s] - c.tx[s] * land * (hw + 1.4 + ext / 2);
+				B.box({ x: px, z: pz, w: ext, d, h: Math.max(1, base - G(px, pz)), ry, color: 0xb9ab94, win: [3.2, 3.6] });
+			}
+			// Balconies along the sea side.
+			if(floors > 3) for(let f = 1; f < floors; f++){
+				const bx = c.x[s] - c.tz[s] * land * (hw + 1.75), bz = c.z[s] + c.tx[s] * land * (hw + 1.75);
+				B.box({ x: bx, z: bz, y: base + f * 3 - 0.1 - G(bx, bz), w: 0.7, d, h: 0.22, ry, color: 0xf4f6fa });
+			}
+		};
+		const hotelTo = a + Math.round(len * 0.55);
+		for(let i = a + 4; i <= hotelTo; i += 7) block(i, i < a + 30 ? 6 : 7, 8, 0xe9dcc4, 14, "hotel");
+		for(let i = hotelTo + 7; i <= to - 4; i += 7) block(i, 2, 8, 0xd8cdb8, 8, "seafront");
+		// Front of the hotel over the mouth, and the banner.
+		const s0 = sm(a), ry0 = Math.atan2(c.tx[s0], c.tz[s0]), face = Math.atan2(-c.tx[s0], -c.tz[s0]);
+		const mx = c.x[s0] - c.tx[s0] * 0.6, mz = c.z[s0] - c.tz[s0] * 0.6;
+		B.box({ x: mx, z: mz, y: H(s0) + 5.8 - G(mx, mz), w: (hw + 1.4) * 2, d: 1.2, h: 1.7, ry: ry0, color: 0x6b675f });
+		const fx = c.x[s0] - c.tx[s0] * 1.25, fz = c.z[s0] - c.tz[s0] * 1.25;
+		B.board({ x: fx, z: fz, y: H(s0) + 5.85 - G(fx, fz), w: hw * 2 + 0.8, h: 1.5, ry: face }, AD_MONTE_CARLO);
+		// The white curved stair tower on the land side, rising towards the hotel.
+		for(let k = 0; k < 7; k++){
+			const s = sm(a - 14 + k * 2), o = hw + 3.2 + k * 0.25;
+			const x = c.x[s] + c.tz[s] * land * o, z = c.z[s] - c.tx[s] * land * o;
+			if(sp.edge(x, z, 3) < 1.2) continue;
+			const top = H(s) + 3 + (k / 6) ** 1.6 * 14;
+			B.box({ x, z, w: 3.4, d: 2.3, h: Math.max(1, top - G(x, z)), ry: Math.atan2(c.tx[s], c.tz[s]), color: 0xf3f2ee });
+			sp.take(x, z, 2, "hotel");
+		}
+		// Fence along the sea on the way in: posts and two rails on top of the barrier.
+		if(sea) for(let i = a - 90; i < a; i += 3){
+			const s = sm(i), o = hw + 0.35, ry = Math.atan2(c.tx[s], c.tz[s]);
+			const x = c.x[s] + c.tz[s] * sea * o, z = c.z[s] - c.tx[s] * sea * o, y = H(s) + 1.2 - G(x, z);
+			B.box({ x, z, y, w: 0.12, d: 0.12, h: 3, ry, color: 0x8d949c });
+			for(const r of [1.4, 2.9]) B.box({ x, z, y: y + r, w: 0.08, d: 3.05, h: 0.08, ry, color: 0x8d949c });
+		}
+	}
+
 	// --- City blocks (Monaco, Jeddah) from the scenery spots near the road.
 	const spots = (track.scenery || []).slice().sort((a, b) => a.off - b.off);
 	const used = new Set();
@@ -458,7 +560,7 @@ export function buildScenery(track, theme, ctx){
 	if(bdef){
 		for(const s of spots){
 			if(s.off > 46 || s.r > bdef.density) continue;
-			const tall = bdef.night ? 22 + s.r2 * 70 : 9 + s.r2 * 18;
+			const tall = bdef.night ? 22 + s.r2 * 70 : bdef.tall ? bdef.tall[0] + s.r2 * bdef.tall[1] : 9 + s.r2 * 18;
 			const w = 9 + s.r * 9, d = 8 + s.r2 * 7;
 			const ry = s.face;                     // front towards the road
 			const m = bdef.night ? 4 : 3;

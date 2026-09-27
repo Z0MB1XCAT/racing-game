@@ -575,11 +575,15 @@ export class Race {
 		const hAt = this.track.heightAt;
 		const y = hAt(x, z, hint), i = this.track.lastSample();
 		const fx = Math.sin(dir), fz = Math.cos(dir), rx = Math.cos(dir), rz = -Math.sin(dir);
-		const ahead = hAt(x + fx, z + fz, i) - hAt(x - fx, z - fz, i);
+		const ahead = hAt(x + fx * 1.5, z + fz * 1.5, i) - hAt(x - fx * 1.5, z - fz * 1.5, i);
 		const side = hAt(x + rx * 0.7, z + rz * 0.7, i) - hAt(x - rx * 0.7, z - rz * 0.7, i);
 		model.position.y = y;
-		model.rotation.x = -Math.atan2(ahead, 2);
-		model.rotation.z = Math.atan2(side, 1.4);
+		// Pitch and roll ease towards the road's (so the car settles, not twitches).
+		const u = model.userData, now = performance.now(), dt = Math.min(0.1, u.poseAt ? (now - u.poseAt) / 1000 : 1);
+		const k = u.poseAt ? 1 - Math.exp(-dt * 14) : 1;
+		u.poseAt = now;
+		model.rotation.x += (-Math.atan2(ahead, 3) - model.rotation.x) * k;
+		model.rotation.z += (Math.atan2(side, 1.4) - model.rotation.z) * k;
 		return i;
 	}
 

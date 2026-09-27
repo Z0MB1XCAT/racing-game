@@ -19,9 +19,12 @@ const CONF = {
 	// Everywhere else the road is level side to side. From track guides and onboard laps.
 	// hills: the smallest rise or dip (m) kept from the DEM; anything smaller is noise and is
 	// smoothed out, so the road runs in clean climbs and descents.
-	monaco: { file: "mc-1929", length: 1300, width: 11, startPoint: 120, dem: "eudem25m", tunnel: [640, 1080], hills: 1,
-		profile: { 0: 45, 10: 36, 20: 25, 30: 17, 40: 8, 50: 5, 58: 3, 70: 2, 85: 1, 100: 2, 110: 3, 120: 6, 130: 11, 140: 27, 150: 41 },
-		camber: [[792, 864, -4]] },                                      // Casino: off-camber over the crest
+	// hairpin: [tip m, leg m, gap m]: a hairpin whose legs are closer than the game's road allows.
+	// The legs are widened just enough (each pair of points level with each other, about their
+	// middle) to this centre-to-centre gap, keeping them parallel and the tip a half circle.
+	monaco: { file: "mc-1929", length: 1800, width: 10, hairpin: [1195, 90, 24], startPoint: 120, dem: "eudem25m", tunnel: [640, 1080], hills: 1,
+		profile: { 0: 45, 10: 36, 20: 25, 30: 17, 40: 8, 50: 5, 58: 3, 70: 2, 85: 1, 100: 2, 110: 3, 120: 6, 130: 11, 140: 27, 150: 41 } },
+	// (Monaco is level side to side all round: Casino's off-camber read as a drop.)
 	spa: { file: "be-1925", length: 1700, width: 14, dem: "eudem25m", hills: 5,
 		camber: [[876, 924, 5], [960, 1080, 3], [1104, 1152, -3],        // Eau Rouge left, Raidillon right, off-camber crest left
 			[3600, 3972, 2],                                             // Pouhon
@@ -166,6 +169,33 @@ for(const [id, conf] of Object.entries(CONF)){
 	// elev[i] is at distance start + i * step, so index by distance from the start.
 	const E = s => { const u = ((((s - start) / L) * ne) % ne + ne) % ne, i = Math.floor(u), f = u - i; return elev[i] + (elev[(i + 1) % ne] - elev[i]) * f; };
 
+	// ----- Hairpin legs -----
+	if(conf.hairpin){
+		const [tipM, legM, gap] = conf.hairpin, r = gap / 2, sM = L / N;
+		// The tip: the point near tipM farthest from where the legs start.
+		const i0 = Math.round(tipM / sM), K0 = Math.round(legM / sM);
+		const ex = (Q[(i0 - K0 + N) % N].x + Q[(i0 + K0) % N].x) / 2, ey = (Q[(i0 - K0 + N) % N].y + Q[(i0 + K0) % N].y) / 2;
+		let tip = i0, best = -1;
+		for(let o = -Math.round(40 / sM); o <= Math.round(40 / sM); o++){
+			const i = (i0 + o + N) % N, d = Math.hypot(Q[i].x - ex, Q[i].y - ey);
+			if(d > best){ best = d; tip = i; }
+		}
+		const orig = Q.map(q => ({ x: q.x, y: q.y }));
+		if(process.env.DEBUG_HILLS) console.log("hairpin tip", tip, (tip * sM).toFixed(0) + " m", [5, 10, 15].map(k => Math.hypot(orig[(tip + k) % N].x - orig[(tip - k + N) % N].x, orig[(tip + k) % N].y - orig[(tip - k + N) % N].y).toFixed(1)).join(" "));
+		const K = Math.round(legM / sM);
+		for(let k = 1; k <= K; k++){
+			const a = orig[(tip - k + N) % N], b = orig[(tip + k) % N];
+			const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, half = Math.hypot(b.x - a.x, b.y - a.y) / 2 || 1e-6;
+			const want = r * Math.sin(Math.min(k * sM / r, Math.PI / 2));
+			// Ease back to the real line over the last third of the legs.
+			const w = Math.min(1, (K - k) / (K / 3));
+			const h2 = half + Math.max(0, want - half) * w;
+			const ux = (b.x - a.x) / (2 * half), uy = (b.y - a.y) / (2 * half);
+			Object.assign(Q[(tip - k + N) % N], { x: mx - ux * h2, y: my - uy * h2 });
+			Object.assign(Q[(tip + k) % N], { x: mx + ux * h2, y: my + uy * h2 });
+		}
+	}
+
 	// ----- Ease apart sections that run too close -----
 	const k = conf.length / L;                       // game units per metre
 	const minSep = (conf.width + 4) / k;              // centre to centre, in metres
@@ -262,12 +292,12 @@ for(const [id, conf] of Object.entries(CONF)){
 	// (Again after the bridge, so its ramps join the hills either side without a dip.)
 	if(cross && conf.hills) h = cleanHills(h, conf.hills);
 	if(conf.flatten !== undefined){ const mean = h.reduce((a, b) => a + b, 0) / h.length; h = h.map(v => mean + (v - mean) * conf.flatten); }
-	// Camber, per output point: tan of the angle (+ = into the corner), eased in and out over ~30 m.
+	// Camber, per output point: tan of the angle (+ = into the corner), eased in and out over ~60 m.
 	let camber = null;
 	if(conf.camber){
 		camber = new Array(M).fill(0);
 		for(const [a, b, deg] of conf.camber) for(let m = 0; m < M; m++){
-			const s = m * OUT_STEP, ramp = 30;
+			const s = m * OUT_STEP, ramp = 60;
 			const w = Math.max(0, Math.min(1, (s - a + ramp) / ramp, (b + ramp - s) / ramp));
 			if(w > 0) camber[m] += Math.tan(deg * Math.PI / 180) * (0.5 - 0.5 * Math.cos(Math.PI * w));
 		}

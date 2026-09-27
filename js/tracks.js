@@ -52,9 +52,14 @@ export const TRACKS = [
 		botTune: { look: 6, over: 1.2, gain: 6, hairpin: 0.25, analog: true }
 	},
 	{
-		id: "monaco", key: "monaco-v2", name: "Monaco", place: "Monte Carlo", kind: "gp", flag: "MC",
+		id: "monaco", key: "monaco-v3", name: "Monaco", place: "Monte Carlo", kind: "gp", flag: "MC",
 		blurb: "Up the hill to the Casino, down through the hairpin and the tunnel. Barriers everywhere.",
-		realLength: "3.337 km", length: 1300, width: 11, laps: 3, theme: "monaco",
+		realLength: "3.337 km", length: 1800, width: 10, laps: 3, theme: "monaco",
+		// The Grand Hotel hairpin and the chicane after the tunnel keep their real tightness
+		// (metres from the start line).
+		tight: [[1130, 1250, 0.5], [1995, 2080, 4]].map(([a, b, room]) => [a / CIRCUITS.monaco.meters, b / CIRCUITS.monaco.meters, room]),
+		// The harbour runs beside the track from the tunnel exit to La Rascasse (on the left).
+		harbour: [1905 / CIRCUITS.monaco.meters, 2840 / CIRCUITS.monaco.meters],
 		// The real circuit (js/circuits.js): centreline, elevation, the tunnel.
 		pts: CIRCUITS.monaco.pts, elev: CIRCUITS.monaco.elev, camber: CIRCUITS.monaco.camber, tunnel: CIRCUITS.monaco.tunnel
 	},

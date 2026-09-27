@@ -9,7 +9,7 @@ const { buildTrack } = await import("../js/trackgen.js");
 const { buildTerrain } = await import("../js/terrain.js");
 let bad = 0;
 for(const def of TRACKS.filter(d => d.elev)) for(const rev of [false, true]){
-	const t = buildTrack(def, rev), c = t.center, n = c.n, { groundAt } = buildTerrain(t);
+	const t = buildTrack(def, rev), c = t.center, n = c.n, { groundAt } = buildTerrain(t, { isSea: () => false });   // (as in the game: land above sea level)
 	const f = t.features || {};
 	const near = (i, k) => k && Math.min(...k.map(a => Math.min(Math.abs(i - a), n - Math.abs(i - a)))) < 70;
 	const inTunnel = i => f.tunnel && (f.tunnel[0] < f.tunnel[1] ? i >= f.tunnel[0] && i <= f.tunnel[1] : i >= f.tunnel[0] || i <= f.tunnel[1]);

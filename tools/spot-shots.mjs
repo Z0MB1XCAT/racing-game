@@ -31,6 +31,22 @@ for(const spot of spots){
 		else if(spot === "high" && c.h) i = c.h.indexOf(Math.max(...c.h));
 		else if(spot === "low" && c.h) i = c.h.indexOf(Math.min(...c.h));
 		else if(spot === "over" && f.bridge) i = (f.bridge[1] - 30 + n) % n;
+		else if(spot === "tunnelin" && f.tunnel) i = (f.tunnel[0] - 32 + n) % n;
+		else if(spot.startsWith("above")){
+			// Straight down from above sample above<i> (or the tunnel mouth), 60 up.
+			const j = spot === "above" && f.tunnel ? f.tunnel[0] : spot.includes(".") ? Math.floor(+spot.slice(5) * n) % n : +spot.slice(5) % n;
+			g.freeCam = { p: [c.x[j] + 0.01, c.h[j] + 60, c.z[j] - 20], t: [c.x[j], c.h[j], c.z[j]] };
+			g.frozen = true;
+			return true;
+		}
+		else if((spot === "tunnelview" && f.tunnel) || spot.startsWith("v")){
+			// Raised view from well back along the road, looking at the spot (tunnel mouth or sample v<i>).
+			const j = spot === "tunnelview" ? f.tunnel[0] : spot.includes(".") ? Math.floor(+spot.slice(1) * n) % n : +spot.slice(1) % n, k = (j - 40 + n) % n;
+			g.freeCam = { p: [c.x[k] + c.tz[k] * 6, c.h[k] + 9, c.z[k] - c.tx[k] * 6], t: [c.x[j], c.h[j] + 4, c.z[j]] };
+			g.frozen = true;
+			return true;
+		}
+		else if(spot === "tunnelout" && f.tunnel) i = (f.tunnel[1] - 12 + n) % n;
 		else if(spot === "bridgeside" && f.bridge){
 			// From off to the side of the crossing, along the lower road's line, a little raised.
 			const lo = f.bridge[0], up = f.bridge[1];

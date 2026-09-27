@@ -14,7 +14,7 @@ export function buildTerrain(track, opts = {}){
 	const cell = Math.max(5, Math.max(spanX, spanZ) / 220);
 	const nx = Math.ceil(spanX / cell), nz = Math.ceil(spanZ / cell), W = nx + 1, D = nz + 1;
 	let minH = Infinity;
-	for(let i = 0; i < n; i++) minH = Math.min(minH, c.h[i]);
+	for(let i = 0; i < n; i++) minH = Math.min(minH, c.h[i] - Math.abs(c.bank[i]) * (hw + 1));    // (the low edge of any banking)
 	const base = minH - 0.6;
 	const sumW = new Float32Array(W * D), sumH = new Float32Array(W * D);
 	const near = new Float32Array(W * D).fill(1e9), nearH = new Float32Array(W * D).fill(0);
@@ -32,7 +32,7 @@ export function buildTerrain(track, opts = {}){
 			const k = gz * W + gx;
 			// Just under the road surface across it (following the camber), level with its edges beyond.
 			const lat = Math.max(-hw - 1, Math.min(hw + 1, (px - x) * tz - (pz - z) * tx));
-			const low = h + lat * bank - 0.3;
+			const low = h + lat * bank - 0.3 - Math.abs(bank) * 2;
 			// Next to the road the ground takes the nearest road's height, but never rises
 			// into any road whose surface spans this cell.
 			if(d < near[k]){ near[k] = d; nearH[k] = low; }
@@ -50,6 +50,7 @@ export function buildTerrain(track, opts = {}){
 		const gx = k % W, gz = Math.floor(k / W);
 		const px = x0 + gx * cell, pz = z0 + gz * cell;
 		if(opts.isSea && opts.isSea(px, pz)) y = Math.min(y, base - 2);
+		else if(opts.isSea) y = Math.max(y, base + 0.1);          // (land stays above sea level)
 		// Fade to the base level at the edges of the patch.
 		const e = Math.min(gx, gz, nx - gx, nz - gz) / 6;
 		if(e < 1) y = base + (y - base) * Math.max(0, e);

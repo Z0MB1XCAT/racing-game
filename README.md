@@ -19,7 +19,12 @@ original did).
   kept to the real climbs and descents (small wobbles in the elevation data are smoothed out), and
   only corners that really have camber get it (Casino, Eau Rouge/Raidillon, Pouhon, Blanchimont,
   the Lesmos, Suzuka Turn 1, the Reverse Bank, Spoon and 130R); the rest are level side to side,
-  and raised road edges get retaining walls. Hills, camber, the tunnel and the
+  and raised road edges get retaining walls.
+  Monaco is matched corner by corner to photos: a narrower road at a larger scale so the Grand
+  Hotel hairpin is a real hairpin (parallel legs, tight tip) and the Nouvelle Chicane a real
+  chicane; the tunnel runs under the Fairmont hotel (red Monte-Carlo banner over the mouth, the
+  white stair tower, sea fence on the way in); catch fencing along the barriers; taller buildings;
+  and the harbour with moored yachts beside the track from the tunnel exit to La Rascasse. Hills, camber, the tunnel and the
   bridge are looks only: the handling is the same flat physics as always. Corners are still opened
   up where the original car (which can't brake) needs room, and a few spots where two parts of a
   circuit run side by side are eased apart to fit barriers between them. These tracks have new lap
@@ -351,6 +356,7 @@ The last two also need puppeteer installed.
 - `node tools/build-circuits.mjs` rebuilds `js/circuits.js` from `data/circuits/` (real layouts and elevation).
 - `node tools/build-circuits.mjs --corners` also lists each circuit's corners by distance from the start line (for placing camber).
 - `node tools/spot-shots.mjs <trackId> [rev] [tunnel|bridge|over|bridgeside|high|low|top|0.25|s700 ...]` screenshots chosen places round a track.
+- `node tools/corner-plot.mjs <trackId> <lap fraction> [radius] [label]` overlays the game's road on the real layout (with distance labels) to see how much a corner has been opened up.
 - `node tools/terrain-check.mjs` checks the ground never pokes through the road on the F1 tracks (both directions).
 - `node tools/montage.mjs out.png cols a.png b.png ...` puts several screenshots on one sheet.
 - `node tools/walls-plot.mjs <trackId> <x> <z> [radius]` draws the physics walls around a point.

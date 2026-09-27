@@ -125,7 +125,7 @@ function makeHash(xs, zs, cell){
 // The original physics bounces cars off walls in a way that can shove them through
 // the next wall on a very tight bend, so no corner may be tighter than `minR`.
 // Relaxes offending points towards their neighbours until everything is wide enough.
-function openTightCorners(pts, minR){
+function openTightCorners(pts, minRAt){
 	const n = pts.length, k = 3;
 	const p = pts.map(q => [q[0], q[1]]);
 	const radius = i => {
@@ -138,7 +138,7 @@ function openTightCorners(pts, minR){
 		let moved = 0;
 		for(let i = 0; i < n; i++){
 			if(i < 30 || i > n - 30) continue;       // leave the start straight alone
-			if(radius(i) >= minR) continue;
+			if(radius(i) >= minRAt(i / n)) continue;
 			const a = p[(i - k + n) % n], c = p[(i + k) % n];
 			for(let j = -1; j <= 1; j++){
 				const q = p[(i + j + n) % n], f = j ? 0.15 : 0.35;
@@ -172,7 +172,16 @@ export function buildCircuit(def, reverse = false){
 	const scale = def.length / loopLength(dense);
 	const pre = dense.map(p => [-p[0] * scale, p[1] * scale]);
 	const hw = def.width / 2;
-	const { pts } = resample(openTightCorners(resample(pre, STEP).pts, hw + (def.cornerRoom ?? 5)), STEP);
+	// Corners tighter than this are opened up so the car fits round (def.tight: stretches of the
+	// lap, as fractions, that keep more of their real tightness, like the Monaco hairpin).
+	const roomAt = f => {
+		for(const [a, b, room] of def.tight || []){
+			const [fa, fb] = reverse ? [1 - b, 1 - a] : [a, b];
+			if(f >= fa && f <= fb) return hw + room;
+		}
+		return hw + (def.cornerRoom ?? 5);
+	};
+	const { pts } = resample(openTightCorners(resample(pre, STEP).pts, roomAt), STEP);
 	const n = pts.length;
 
 	// Rotate so the start points +z, then move the start line to (0, START_Z).
@@ -374,14 +383,17 @@ export function buildCircuit(def, reverse = false){
 // Also gives the nearest sample, which callers can pass back as the next hint.
 function roadHeight(c, x, z, hint){
 	const i = nearestOnPath(c, x, z, hint);
-	const j = (i + 1) % c.n;
+	// Interpolate along the piece of road the point is on (the one behind the nearest sample
+	// if it's behind it), so the height is continuous and cars don't twitch at each sample.
 	const along = (x - c.x[i]) * c.tx[i] + (z - c.z[i]) * c.tz[i];
-	const f = Math.max(0, Math.min(1, along / c.step));
-	const base = c.h[i] + (c.h[j] - c.h[i]) * f;
+	const a = along >= 0 ? i : (i - 1 + c.n) % c.n, b = (a + 1) % c.n;
+	const f = Math.max(0, Math.min(1, along >= 0 ? along / c.step : 1 + along / c.step));
+	const base = c.h[a] + (c.h[b] - c.h[a]) * f;
+	const bank = c.bank[a] + (c.bank[b] - c.bank[a]) * f;
 	const lat = (x - c.x[i]) * c.tz[i] - (z - c.z[i]) * c.tx[i];
 	const clamped = Math.max(-c.hw - 1, Math.min(c.hw + 1, lat));
 	roadHeight.last = i;
-	return base + clamped * c.bank[i];
+	return base + clamped * bank;
 }
 export function lastRoadSample(){ return roadHeight.last; }
 
