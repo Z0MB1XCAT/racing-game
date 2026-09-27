@@ -130,8 +130,9 @@ export const LAYOUTS = [
 	layout("monaco-fe", "monaco", { name: "Monaco Formula E", layoutName: "Formula E", place: "Monte Carlo", flag: "MC",
 		blurb: "Formula E's Monaco (2015-2019): Sainte-Devote, along the harbour to a hairpin, then Tabac, the pool and La Rascasse.",
 		realLength: "1.765 km", width: 10, laps: 5, theme: "monaco",
-		// The harbour beside the lap from the hairpin round Tabac and the pool (on the left).
-		harbour: [0.22, 0.62] }),
+		// The harbour beside the lap from the Nouvelle Chicane round Tabac and the pool to La Rascasse
+		// (on the left).
+		harbour: [0.31, 0.77] }),
 	layout("spa-moto", "spa", { name: "Spa-Francorchamps Moto", layoutName: "Moto", place: "Belgium", flag: "BE",
 		blurb: "The motorcycle layout: the full lap, with the old, faster Bus Stop at the end.",
 		realLength: "6.985 km", width: 14, laps: 2, theme: "spa" }),

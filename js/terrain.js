@@ -8,7 +8,8 @@ const THREE = globalThis.THREE;
 // bridge) the ground follows the lower one.
 export function buildTerrain(track, opts = {}){
 	const c = track.center, hw = c.hw, n = c.n;
-	const b = track.bounds, margin = 240;
+	// (opts.bounds: a bigger area, when there's more road than the track's own: see remnants.js.)
+	const b = opts.bounds || track.bounds, margin = 240;
 	const x0 = b.minX - margin, z0 = b.minZ - margin;
 	const spanX = b.maxX - b.minX + margin * 2, spanZ = b.maxZ - b.minZ + margin * 2;
 	// (A banked oval is small, and its banking changes quickly across and along: a finer grid.)
@@ -17,6 +18,7 @@ export function buildTerrain(track, opts = {}){
 	const nx = Math.ceil(spanX / cell), nz = Math.ceil(spanZ / cell), W = nx + 1, D = nz + 1;
 	let minH = Infinity;
 	for(let i = 0; i < n; i++) minH = Math.min(minH, c.h[i] - Math.abs(c.bank[i]) * (hw + 1));    // (the low edge of any banking)
+	for(const e of opts.extra || []) minH = Math.min(minH, e.h - Math.abs(e.bank) * (hw + 1));
 	const oval = isOval;
 	const base = oval ? -0.9 : minH - 0.6;
 	const sumW = new Float32Array(W * D), sumH = new Float32Array(W * D);
@@ -32,8 +34,12 @@ export function buildTerrain(track, opts = {}){
 	// (The band next to the road is two cells wider than it, so no hill cell is
 	// ever blended into the road surface.)
 	const R = 110, ROAD = hw + 1.5 + cell * 2, COVER = hw + 1 + cell;
-	for(let i = 0; i < n; i++){
-		const x = c.x[i], z = c.z[i], h = c.h[i], tx = c.tx[i], tz = c.tz[i], bank = c.bank[i];
+	// The track's road, then any other road (opts.extra: [{ x, z, h, tx, tz, bank }], the rest of the
+	// venue's circuit): the ground is shaped round all of it.
+	const extra = opts.extra || [];
+	for(let i = 0; i < n + extra.length; i++){
+		const e = i >= n ? extra[i - n] : null;
+		const x = e ? e.x : c.x[i], z = e ? e.z : c.z[i], h = e ? e.h : c.h[i], tx = e ? e.tx : c.tx[i], tz = e ? e.tz : c.tz[i], bank = e ? e.bank : c.bank[i];
 		const r = i % 3 === 0 ? R : ROAD;
 		const ga = Math.max(0, Math.floor((x - r - x0) / cell)), gb = Math.min(nx, Math.ceil((x + r - x0) / cell));
 		const ha = Math.max(0, Math.floor((z - r - z0) / cell)), hb = Math.min(nz, Math.ceil((z + r - z0) / cell));

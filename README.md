@@ -78,11 +78,16 @@ original did).
     aren't mapped, so they're added where the real ones go).
   - **Daytona**: Oval, and the **Road course** (the Rolex 24 lap: the tri-oval, the infield, the
     Bus Stop on the backstretch and the banking in Turns 3 and 4, at the oval's real banking).
-  Each layout is traced from OpenStreetMap along the real roads, shares its circuit's scenery and
-  surroundings, takes its heights and camber from the main layout wherever they share the road,
+  Whichever layout you race, the rest of the venue's circuit is still there, closed off: Monza's
+  old oval (crossing over the GP track by the Lesmos) when racing the GP, the climb to the Casino
+  when racing Monaco's Formula E lap, the rest of the figure-of-eight and the South Course at
+  Suzuka East, and so on, as road with a barrier across it wherever it meets the track (looks
+  only: the track's own barriers keep the cars on the lap). Each layout is traced from
+  OpenStreetMap along the real roads, shares its circuit's scenery and surroundings, takes its heights and camber from the main layout wherever they share the road,
   and has its own lap records. (There's no "Jeddah Half" layout: it doesn't exist. Monaco's GP
   and "full" layouts are the same one. Monza's bankings have no published height survey, so their
-  rise, about 6 m, is an estimate.) The weekly challenge picks from the main layouts only.
+  rise, about 6 m, is an estimate.) The weekly challenge picks from the main layouts only
+  (a week can also be picked by hand: `CHOSEN` in `js/weekly.js`; 2026-W40 is Monaco).
 - **Modes**: Race, Elimination (last car is out every lap), Championship (2 to 6 rounds, F1
   points, the leader starts at the back of the next round's grid) and Time trial against a ghost
   of your fastest lap ever. A slower lap never replaces the ghost. A **delta bar** at the top shows
@@ -416,6 +421,7 @@ Once it's on, open **Track editor** from the menu.
 | `js/trackgen.js` | Turns a circuit into walls, kerbs, checkpoints and a racing line |
 | `js/circuits.js`, `js/terrain.js` | Real F1 circuit data (generated); hills, the Monaco tunnel and the Suzuka bridge |
 | `js/world.js`, `js/scenery.js` | Sky, road and themes for each track; pits, grandstands, fans, billboards, buildings and trees |
+| `js/remnants.js` | The rest of a venue's circuit (its other layouts' roads), closed off |
 | `js/race.js` | Race rules: laps, finishing, elimination, ghosts, syncing cars |
 | `js/bots.js`, `js/progress.js`, `js/navfield.js`, `js/rescue.js` | AI drivers, race order, getting cars back on track |
 | `js/net.js` | Online rooms, accounts, leaderboards (Firebase, or `?localnet` for testing) |
@@ -440,7 +446,7 @@ The last two also need puppeteer installed.
 - `node tools/route-layouts.mjs [layout ...]` traces the other layouts (Monaco Formula E, Monza Oval, Suzuka East...) through the OpenStreetMap roads in `data/osm/*-roads.json` into `data/circuits/<layout>.geojson`.
 - `node tools/build-circuits.mjs` rebuilds `js/circuits.js` from `data/circuits/` (real layouts and elevation).
 - `node tools/build-circuits.mjs --corners` also lists each circuit's corners by distance from the start line (for placing camber).
-- `node tools/spot-shots.mjs <trackId> [rev] [tunnel|bridge|over|bridgeside|high|low|top|0.25|s700 ...]` screenshots chosen places round a track.
+- `node tools/spot-shots.mjs <trackId> [rev] [tunnel|bridge|over|bridgeside|high|low|top|0.25|s700|end0|rem0 ...]` screenshots chosen places round a track (`end<k>`, `rem<k>`: the closed-off roads of the venue's other layouts).
 - `node tools/corner-plot.mjs <trackId> <lap fraction> [radius] [label]` overlays the game's road on the real layout (with distance labels) to see how much a corner has been opened up.
 - `node tools/terrain-check.mjs` checks the ground never pokes through the road on the F1 tracks (both directions).
 - `node tools/montage.mjs out.png cols a.png b.png ...` puts several screenshots on one sheet.

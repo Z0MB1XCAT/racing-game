@@ -1,7 +1,8 @@
 // Screenshots from chosen places around a track (a camera parked beside the road), for
 // checking elevation, tunnels and bridges. Needs node serve.mjs running.
 //   node tools/spot-shots.mjs <trackId> [fraction or feature ...]
-//   e.g. node tools/spot-shots.mjs monaco tunnel 0.25 high     (features: tunnel, bridge, high, low, top)
+//   e.g. node tools/spot-shots.mjs monaco tunnel 0.25 high     (features: tunnel, bridge, high, low, top;
+//   end<k> / rem<k>: the closed-off roads of the venue's other layouts)
 import puppeteer from "puppeteer";
 import { mkdirSync } from "node:fs";
 
@@ -44,6 +45,24 @@ for(const spot of spots){
 			// Raised view from well back along the road, looking at the spot (tunnel mouth or sample v<i>).
 			const j = spot === "tunnelview" ? f.tunnel[0] : spot.includes(".") ? Math.floor(+spot.slice(1) * n) % n : +spot.slice(1) % n, k = (j - 40 + n) % n;
 			g.freeCam = { p: [c.x[k] + c.tz[k] * 6, c.h[k] + 9, c.z[k] - c.tx[k] * 6], t: [c.x[j], c.h[j] + 4, c.z[j]] };
+			g.frozen = true;
+			return true;
+		}
+		else if(/^(end|rem)\d+$/.test(spot)){
+			// The rest of the venue's circuit (remnants.js): end<k> looks at the k-th barrier across a
+			// closed road from along it; rem<k> looks along the k-th closed road from above its middle.
+			const list = g.track.remnants || [], k = +spot.replace(/\D/g, "");
+			if(spot.startsWith("end")){
+				const ends = list.flatMap(r => r.ends.map(e => ({ r, e })));
+				if(!ends[k]) return false;
+				const { r, e } = ends[k], rc = r.center, m = rc.n, i = e.i, back = (i - e.dir * 22 + m) % m;
+				g.freeCam = { p: [rc.x[back] + rc.tz[back] * 3, rc.h[back] + 5, rc.z[back] - rc.tx[back] * 3], t: [rc.x[i], rc.h[i] + 1, rc.z[i]] };
+			}else{
+				const r = list[k];
+				if(!r) return false;
+				const open = [...r.open.keys()].filter(i => r.open[i]), i = open[Math.floor(open.length / 2)], rc = r.center, j = (i + 30) % rc.n;
+				g.freeCam = { p: [rc.x[i] - rc.tx[i] * 12 + rc.tz[i] * 5, rc.h[i] + 12, rc.z[i] - rc.tz[i] * 12 - rc.tx[i] * 5], t: [rc.x[j], rc.h[j], rc.z[j]] };
+			}
 			g.frozen = true;
 			return true;
 		}
