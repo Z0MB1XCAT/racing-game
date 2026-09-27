@@ -95,6 +95,7 @@ export class Race {
 		// Someone else's ghost to race (from a leaderboard): { name, hue, body, look, ms, s }.
 		this.rival = opts.mode === "trial" && opts.rival ? opts.rival : null;
 		this.rivalModel = null;
+		this.hideOwnGhost = !!opts.hideOwnGhost;
 		// Sectors: session bests for purple, and (time trial) reference times from outside:
 		// { pb: your all-time best sectors, purple: the best anyone's done that we know of }.
 		this.bestSec = [Infinity, Infinity, Infinity];
@@ -271,7 +272,8 @@ export class Race {
 			if(this.recording.length > 6000) this.recording = null;
 		}
 		const lt = c.lapStart === null ? null : t - c.lapStart;
-		playGhost(this.ghostModel, this.ghostData, lt);
+		// Racing someone else's ghost, you can hide your own so only theirs is on track.
+		playGhost(this.ghostModel, this.hideOwnGhost && this.rival ? null : this.ghostData, lt);
 		if(this.rivalModel) playGhost(this.rivalModel, this.rival, lt);
 		if(this.track.elevated) for(const [m, g] of [[this.ghostModel, this.ghostData], [this.rivalModel, this.rival]]){
 			if(m && m.visible && g) g.hh = this.poseModel(m, m.position.x, m.position.z, m.rotation.y, g.hh ?? -1);

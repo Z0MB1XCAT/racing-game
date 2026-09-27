@@ -254,8 +254,12 @@ class FirebaseStore {
 		ref.on("value", h);
 		return () => ref.off("value", h);
 	}
-	onChild(p, cb){
-		const ref = this.db.ref(p);
+	// Unique, time-ordered key for a new child (chat messages).
+	newKey(p){ return this.db.ref(p).push().key; }
+	// Stamped with the server's clock when the write lands (the rules check it).
+	serverTime(){ return window.firebase.database.ServerValue.TIMESTAMP; }
+	onChild(p, cb, last){
+		const ref = last ? this.db.ref(p).limitToLast(last) : this.db.ref(p);
 		const a = s => cb("added", s.key, s.val()), c = s => cb("changed", s.key, s.val()), r = s => cb("removed", s.key, null);
 		ref.on("child_added", a); ref.on("child_changed", c); ref.on("child_removed", r);
 		return () => { ref.off("child_added", a); ref.off("child_changed", c); ref.off("child_removed", r); };
@@ -450,6 +454,8 @@ class LocalStore {
 		queueMicrotask(() => this.notify());
 		return () => this.listeners.delete(l);
 	}
+	newKey(){ return Date.now().toString(36).padStart(9, "0") + Math.random().toString(36).slice(2, 8); }
+	serverTime(){ return Date.now(); }
 	onChild(p, cb){
 		const l = { p, kind: "child", cb, last: {} };
 		this.listeners.add(l);
@@ -714,6 +720,27 @@ export class Net {
 		return top[0] ? top[0].id : null;
 	}
 
+	// ----- chat -----
+	// Room chat: the last 60 messages. Each one is stamped by the server, and the database
+	// refuses messages sent too quickly, from anyone banned or muted, and (for guests)
+	// anything long or with @ in it. The wording is filtered before it's sent (filter.js).
+	watchChat(cb){
+		const off = this.store.onChild(this.path("chat"), cb, 60);
+		this.unsubs.push(off);
+		return off;
+	}
+	sendChat(msg){
+		const key = this.store.newKey(this.path("chat")), t = this.store.serverTime();
+		return this.store.update(this.path(), { ["chat/" + key]: Object.assign({}, msg, { u: this.uid, t }), ["chatLast/" + this.uid]: t });
+	}
+	// The host keeps the room's chat short.
+	removeChat(key, code = this.code){ return this.store.remove(`rooms/${code}/chat/${key}`); }
+	chatMuted(uid = this.uid){ return this.store.get("chatBan/" + uid).then(v => !!v); }
+	// Anyone can report a message; only the admin can read reports.
+	reportChat(key, m){
+		return this.store.set("reports/" + this.store.newKey("reports"), { by: this.uid, u: m.u, n: String(m.n || "").slice(0, 20), m: String(m.m || "").slice(0, 200), room: this.code || "", k: key, t: this.store.serverTime() });
+	}
+
 	// ----- moderation -----
 	isAdmin(){ const a = this.account(); return a.kind === "bvs" && a.label === ACCOUNTS.admin; }
 	nameLock(uid = this.uid){ return this.store.get("nameLock/" + uid); }
@@ -738,6 +765,10 @@ export class Net {
 	liveRooms(){ return this.store.get("rooms").then(v => v || {}); }
 	closeRoom(code){ return this.store.remove("rooms/" + code); }
 	topWeekly(week, n = 10){ return this.store.top(`weekly/${week}`, "t", n); }
+	chatBans(){ return this.store.get("chatBan").then(v => v || {}); }
+	setChatBan(uid, on){ return on ? this.store.set("chatBan/" + uid, { at: this.now() }) : this.store.remove("chatBan/" + uid); }
+	chatReports(){ return this.store.get("reports").then(v => v || {}); }
+	removeReport(id){ return this.store.remove("reports/" + id); }
 
 	// ----- accounts -----
 	account(){ return this.store.account(); }

@@ -15,10 +15,11 @@ import { connect, onlineAvailable, normaliseBvs, normaliseHwb } from "./net.js";
 import { newChamp, scoreRound, champStandings, champGrid } from "./champ.js";
 import { weeklyChallenge, timeLeft } from "./weekly.js";
 import { Mesh } from "./p2p.js";
-import { DEFAULT_LOOK, botLook } from "./cosmetics.js";
+import { DEFAULT_LOOK, botLook, item as lookItem } from "./cosmetics.js";
 import { isRude, cleanName } from "./filter.js";
 import { initGarage } from "./garage.js";
 import { initAdmin } from "./admin.js";
+import { initChat } from "./chat.js";
 import { minLapMs } from "./limits.js";
 import { Director, Replay, buildHighlights, pickFocus, SHOT_NAMES } from "./broadcast.js";
 import { GAME_NAME, MAX_CARS, EDITOR_ENABLED, ACCOUNTS, VERSION } from "./config.js";
@@ -126,11 +127,13 @@ function placeShowcase(){
 	S.showcase.position.set(0, S.track && S.track.heightAt ? S.track.heightAt(0, 0) : 0, 0);
 	S.showcase.visible = !S.race;
 	scene.add(S.showcase);
+	if(S.beamPreview && S.screen === "garage") showcaseBeam(true);
 }
 function carNumber(){ const n = S.profile.look && S.profile.look.number; return n == null ? "--" : String(n).padStart(2, "0"); }
 
 // ---------- Screens ----------
 function showScreen(name){
+	if(name !== "garage" && S.beamPreview) showcaseBeam(false);
 	S.screen = name;
 	setTimeout(() => { if(typeof showUpdateBar === "function") showUpdateBar(); }, 0);
 	audio.playMusic("menu");
@@ -234,6 +237,7 @@ seg($("setCamera"), S.settings.camera, v => { S.settings.camera = v; saveSetting
 seg($("setRaceMusic"), S.settings.raceMusic ? "1" : "0", v => { S.settings.raceMusic = v === "1"; saveSettings(); if(S.screen === "race" && S.race && S.race.phase !== "countdown") audio.playMusic(S.settings.raceMusic ? "race" : null); });
 seg($("setShake"), S.settings.shake ? "1" : "0", v => { S.settings.shake = v === "1"; saveSettings(); });
 seg($("setMirror"), S.settings.mirror ? "1" : "0", v => { S.settings.mirror = v === "1"; saveSettings(); });
+seg($("setChat"), S.settings.chat === false ? "0" : "1", v => { S.settings.chat = v === "1"; saveSettings(); chat.render(); });
 seg($("setTouch"), S.settings.touch, v => { S.settings.touch = v; saveSettings(); updateTouchZones(); });
 $("setVolume").value = S.settings.volume;
 $("setVolume").addEventListener("input", e => { S.settings.volume = +e.target.value; saveSettings(); audio.setVolume(S.settings.volume); });
@@ -322,6 +326,7 @@ seg($("setupTod"), "default", v => { S.setup.tod = v; });
 seg($("setupWeather"), "clear", v => { S.setup.weather = v; });
 seg($("setupQuali"), "0", v => { S.setup.quali = v === "1"; });
 seg($("setupChase"), "mine", v => { S.setup.chase = v; });
+const setupOwnGhost = seg($("setupOwnGhost"), S.settings.hideMyGhost ? "0" : "1", v => { S.settings.hideMyGhost = v === "0"; saveSettings(); });
 seg($("setupLevel"), "medium", v => { S.setup.level = v; });
 const lapStep = stepper("laps", () => S.setup.laps, v => { S.setup.laps = v; }, () => 1, () => 20);
 const botStep = stepper("bots", () => S.setup.bots, v => { S.setup.bots = v; }, () => S.setup.gameMode === "elim" ? 1 : 0, () => MAX_CARS - 1);
@@ -574,7 +579,7 @@ function beginRace(opts){
 		scene, track: entry.track, tracker: entry.tracker, laps: opts.laps, mode: opts.mode,
 		entrants: opts.entrants, myId: opts.myId, startAt: opts.startAt, authority: opts.authority,
 		now: opts.source === "online" ? () => S.net.now() : soloNow,
-		net: opts.source === "online" ? S.net : null, ghost, rival: opts.rival || null, draft: opts.draft !== false, contact: opts.contact,
+		net: opts.source === "online" ? S.net : null, ghost, rival: opts.rival || null, draft: opts.draft !== false, contact: opts.contact, hideOwnGhost: S.settings.hideMyGhost,
 		onEvent: (t, d) => onRaceEvent(t, d)
 	});
 	S.race.key = key;
@@ -601,6 +606,7 @@ function beginRace(opts){
 		c.label = el;
 	}
 	if(S.race.rivalModel){
+		setTimeout(() => { if(S.race && S.race.rival) hud.toast(`${S.race.hideOwnGhost ? "Your ghost is hidden" : "Your ghost is on track too"} · ${mobile ? "Pause to" : "G to"} ${S.race.hideOwnGhost ? "show" : "hide"} it`, 3200); }, 1400);
 		const el = document.createElement("div");
 		el.className = "label ghost-label";
 		el.style.setProperty("--c", `hsl(${S.race.rival.hue ?? 0},100%,55%)`);
@@ -656,22 +662,35 @@ const beamTex = (() => {
 		const across = Math.abs(x - W / 2 + 0.5) / (W / 2) / half;
 		const a = Math.max(0, 1 - across * across) * Math.pow(1 - along, 1.3) * Math.min(1, along * 6);
 		const o = (y * W + x) * 4;
-		img.data[o] = 255; img.data[o + 1] = 242; img.data[o + 2] = 205; img.data[o + 3] = Math.round(a * 230);
+		img.data[o] = 255; img.data[o + 1] = 255; img.data[o + 2] = 255; img.data[o + 3] = Math.round(a * 230);
 	}
 	g.putImageData(img, 0, 0);
 	return new THREE.CanvasTexture(c);
 })();
-const beamMat = new THREE.MeshBasicMaterial({ map: beamTex, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+// The beam takes each car's headlight colour from the garage (warm halogen by default).
 const beamGeo = new THREE.PlaneBufferGeometry(4.2, 11);
 beamGeo.rotateX(-Math.PI / 2);
 beamGeo.translate(0, 0.06, 6.6);
+function makeBeam(model){
+	const col = model.userData.lights || "#fff2cd";
+	const m = new THREE.MeshBasicMaterial({ map: beamTex, color: col === "rainbow" ? 0xffffff : col, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+	const beam = new THREE.Mesh(beamGeo, m);
+	beam.visible = false;
+	model.add(beam);
+	model.userData.beamMat = m;
+	(model.userData.owned || (model.userData.owned = [])).push(m);
+	return beam;
+}
 function addHeadlights(race){
-	for(const c of race.cars){
-		const beam = new THREE.Mesh(beamGeo, beamMat);
-		beam.visible = false;
-		c.model.add(beam);
-		c.beam = beam;
-	}
+	for(const c of race.cars) c.beam = makeBeam(c.model);
+}
+// In the garage's Headlights tab, the showcase car shows its beam.
+function showcaseBeam(on){
+	S.beamPreview = on;
+	if(!S.showcase) return;
+	if(!S.showcase.userData.beam) S.showcase.userData.beam = makeBeam(S.showcase);
+	S.showcase.userData.beam.visible = on;
+	S.showcase.userData.beamMat.opacity = on ? 0.9 : 0;
 }
 // Time of day, weather and everything that follows from them, once a frame.
 function updateSky(r, raceMs, dt){
@@ -679,8 +698,11 @@ function updateSky(r, raceMs, dt){
 	const a = S.atmos.at(raceMs);
 	S.world.setAtmosphere(a);
 	const look = S.world.look;
-	beamMat.opacity = Math.min(0.75, look.lights * 0.8);
-	for(const c of r.cars) if(c.beam) c.beam.visible = beamMat.opacity > 0.02 && c.model.visible;
+	const beamOpacity = Math.min(0.75, look.lights * 0.8);
+	for(const c of r.cars) if(c.beam){
+		c.beam.material.opacity = beamOpacity;
+		c.beam.visible = beamOpacity > 0.02 && c.model.visible;
+	}
 	audio.setRain(S.paused ? 0 : look.rain);
 	// Under a roof (the tunnel, under the bridge): the sound closes in. Eased so it doesn't click.
 	const covered = S.world.coverAt ? S.world.coverAt(camera.position.x, camera.position.y, camera.position.z) : 0;
@@ -755,6 +777,7 @@ function onRaceEvent(type, d){
 					saveGhostToAccount("best-" + key, r.lastLap);
 				}
 				if(isRecord && TRACKS.every(t => store.getBest(trackKey(t, false)) != null)) garageNote(garage.afterSolo(["allTracks"]), true);
+				if(r.rival && r.rival.ms && d.ms < r.rival.ms) garageNote(garage.afterSolo(["beatGhost"]), true);
 				const wk = weeklyChallenge();
 				if(trackKey(S.ctx.def, S.ctx.reverse) === trackKey(wk.def, wk.reverse)){
 					const wkKey = "weekly:" + wk.id, prev = store.getBest(wkKey);
@@ -797,6 +820,8 @@ function onRaceEvent(type, d){
 			break;
 		case "finish":
 			if(S.world && (d.position === 1 || d.car.me)) S.world.cheer(0.9);
+			// What the sky was doing as you crossed the line (for the night and rain garage goals).
+			if(d.car.me && S.world && S.world.look) S.finishSky = { at: r.startAt, night: S.world.look.night > 0.5, rain: S.world.look.rain > 0.3 };
 			if(d.car.me){
 				const pos = d.position || (r.standings().findIndex(s => s.car === d.car) + 1);
 				hud.banner(pos === 1 ? "Winner" : "Finished P" + pos, fmtTime(d.ms), "finish", 4000);
@@ -981,7 +1006,12 @@ function showResults(results, online, opts = {}){
 	// Solo results tick off solo goals in the garage (once per race).
 	if(!quali && !online && S.soloFlagsKey !== key && me && S.ctx && S.ctx.mode !== "trial" && results.length > 1){
 		const flags = [];
-		if(me.status === "finished" || (me.pos === 1 && S.ctx.mode === "elim")) flags.push("race");
+		if(me.status === "finished" || (me.pos === 1 && S.ctx.mode === "elim")){
+			flags.push("race");
+			const sky = S.finishSky && S.race && S.finishSky.at === S.race.startAt ? S.finishSky : null;
+			if(sky && sky.night) flags.push("night");
+			if(sky && sky.rain) flags.push("rain");
+		}
 		const lvl = S.setup.level;
 		if(me.pos === 1 && me.status !== "dnf"){ if(lvl === "medium" || lvl === "hard") flags.push("winRacer"); if(lvl === "hard") flags.push("winAce"); }
 		S.soloFlagsKey = key;
@@ -996,6 +1026,8 @@ function pause(){
 	const online = S.ctx.source === "online";
 	$("pauseNote").hidden = !online;
 	$("restartBtn").hidden = online;
+	$("ownGhostBtn").hidden = !S.race.rival;
+	$("ownGhostBtn").firstElementChild.textContent = S.race.hideOwnGhost ? "Show my ghost" : "Hide my ghost";
 	$("quitBtn").firstElementChild.textContent = online ? "Leave room" : "Quit to menu";
 	if(!online){ S.paused = true; S.pauseStart = performance.now(); audio.stopEngine(); }
 	audio.duckMusic(true);
@@ -1010,6 +1042,18 @@ $("pauseBtn").addEventListener("click", pause);
 $("resumeBtn").addEventListener("click", resume);
 $("restartBtn").addEventListener("click", () => { closeModal("pause"); S.paused = false; (S.ctx && S.ctx.restart || startSolo)(); });
 $("pauseSettings").addEventListener("click", () => openModal("settings"));
+// Racing someone else's ghost: show or hide your own (remembered for next time).
+function toggleOwnGhost(){
+	const r = S.race;
+	if(!r || !r.rival) return;
+	r.hideOwnGhost = !r.hideOwnGhost;
+	S.settings.hideMyGhost = r.hideOwnGhost;
+	saveSettings();
+	setupOwnGhost(r.hideOwnGhost ? "0" : "1");
+	$("ownGhostBtn").firstElementChild.textContent = r.hideOwnGhost ? "Show my ghost" : "Hide my ghost";
+	hud.toast(r.hideOwnGhost ? "Your ghost hidden" : "Your ghost shown", 1400);
+}
+$("ownGhostBtn").addEventListener("click", () => { audio.sfx.click(); toggleOwnGhost(); });
 $("quitBtn").addEventListener("click", () => {
 	closeModal("pause");
 	if(S.ctx && S.ctx.source === "online") leaveRoom();
@@ -1029,7 +1073,14 @@ addEventListener("keydown", e => {
 	if(e.repeat) return;
 	if((k === "Escape" || k === "KeyP") && S.race && !S.frozen){ $("pause").hidden ? pause() : resume(); }
 	else if(k === "Escape"){ document.querySelectorAll(".modal").forEach(m => { if(m.id !== "pause") m.hidden = true; }); }
+	// Chat in an online race: Enter (or T) opens the box; steering lets go while you type.
+	if((k === "Enter" || k === "NumpadEnter" || k === "KeyT") && chatMode() === "race" && $("pause").hidden && chat.openInput()){
+		e.preventDefault();
+		S.input.left = S.input.right = S.input.back = false;
+		return;
+	}
 	if(k === "KeyR" && S.race && !S.paused) S.race.requestRescue();
+	if(k === "KeyG" && S.race && S.race.rival && !S.frozen) toggleOwnGhost();
 	if((S.replay || spectating()) && (k === "ArrowLeft" || k === "ArrowRight")){ cycleFocus(k === "ArrowLeft" ? -1 : 1); return; }
 	if((S.replay || spectating()) && k === "KeyC"){ const sh = director().cycleShot(); $("tvShot").textContent = "Camera: " + SHOT_NAMES[sh]; return; }
 	if(S.replay && k === "Escape"){ endReplay(); return; }
@@ -1402,10 +1453,19 @@ function engineMix(r, focus, dt){
 }
 
 const rp_t = () => S.replay ? S.replay.t : 0;
+// Where the room chat shows: its lobby panel, a feed in the race, or a dock on the results.
+function chatMode(){
+	if(!S.net || !S.net.code) return "off";
+	if(S.screen === "lobby") return "lobby";
+	if(S.screen === "results") return "results";
+	if(S.race && S.ctx && S.ctx.source === "online" && S.screen === "race") return "race";
+	return "off";
+}
 function frame(now){
 	requestAnimationFrame(frame);
 	const dt = Math.min(0.1, (now - last) / 1000);
 	last = now;
+	chat.tick(chatMode());
 	const r = S.race;
 	let focus = null;
 	if(S.replay && r){
@@ -1549,6 +1609,7 @@ function enterLobby(){
 	S.resultsShown = null;
 	S.room = null;
 	$("roomCode").textContent = S.net.code;
+	chat.attach(S.net);
 	showScreen("lobby");
 	camMode = "overview";
 	S.net.watchRoom(room => onRoom(room));
@@ -1571,6 +1632,7 @@ function enterLobby(){
 
 async function leaveRoom(msg){
 	endRace();
+	chat.detach();
 	if(S.net){ try { await S.net.leave(); } catch {} }
 	S.room = null;
 	S.raceId = null;
@@ -1641,8 +1703,8 @@ const lobbySettingsControls = {
 let lobbyGridKey = null;
 function lookTitle(p){
 	if(p.bot || !p.look || !p.look.title || p.look.title === "rookie") return "";
-	const t = { botslayer: "Bot Slayer", racer: "Racer", winner: "Race Winner", podium: "Podium Hunter", veteran: "Veteran", record: "Record Holder", weekly: "Weekly Winner", serial: "Serial Winner", champion: "Champion", legend: "Legend" }[p.look.title];
-	return t ? `<span class="ptitle">${t}</span>` : "";
+	const t = lookItem("title", p.look.title);
+	return t ? `<span class="ptitle">${escapeHtml(t.name)}</span>` : "";
 }
 // How my car's updates reach this driver: straight to them, or through Firebase.
 function netTag(p){
@@ -1666,6 +1728,16 @@ function renderLobby(room){
 		li.innerHTML = `<i class="chip" style="background:hsl(${p.hue},100%,55%)"></i>
 			<span class="pname">${garage && garage.crown === p.id ? CROWN_SVG : ""}${escapeHtml(cleanName(p.name, p.id))}${p.id === net.uid ? " (you)" : ""}<span class="pbody">${(BODIES.find(b => b.id === p.body) || BODIES[0]).name}${p.look && p.look.number != null ? " · #" + p.look.number : ""}</span>${lookTitle(p)}</span>
 			<span>${tags}${netTag(p)}</span>`;
+		if(!p.bot && p.id !== net.uid){
+			const muted = chat.isMuted(p.id);
+			const m = document.createElement("button");
+			m.className = "mute-btn" + (muted ? " on" : "");
+			m.textContent = muted ? "Muted" : "Mute";
+			m.title = muted ? "Show their chat messages again" : "Hide their chat messages";
+			m.setAttribute("aria-pressed", String(muted));
+			m.addEventListener("click", () => { audio.sfx.click(); chat.setMuted(p.id, !muted); });
+			li.appendChild(m);
+		}
 		const x = document.createElement("button");
 		x.className = "x-btn";
 		x.setAttribute("aria-label", "Remove " + p.name);
@@ -2217,9 +2289,16 @@ async function recordStats(){
 
 // ---------- Garage and admin ----------
 const garage = initGarage({
-	S, connect, onlineAvailable, acct, escapeHtml, audio, showScreen, placeShowcase,
+	S, connect, onlineAvailable, acct, escapeHtml, audio, showScreen, placeShowcase, showBeams: showcaseBeam,
 	saveProfile: () => { saveProfile(); updateShowcaseTag(); },
 	setCam: m => { camMode = m; }
+});
+const chat = initChat({
+	S, escapeHtml, audio, mobile,
+	isGuest: () => acct.info.kind === "guest" || (acct.info.kind === "hwb" && !acct.info.verified),
+	myName: driverName,
+	myHue: () => S.profile.hue,
+	onMuteChange: () => { if(S.screen === "lobby" && S.room) renderLobby(S.room); }
 });
 function garageNote(res, toast){
 	if(!res) return;

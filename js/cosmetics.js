@@ -50,16 +50,35 @@ export const BVS_COLOURS = { main: "#1f4fbf", second: "#f4f6fa", accent: "#f4f6f
 
 export const LIVERIES = [
 	{ id: "factory", name: "Factory", pattern: "solid", unlock: [{ free: true }] },
+	{ id: "blackout", name: "Blackout", pattern: "gloss", main: "#0b0c0f", second: "#15171b", accent: "#2a2e36", unlock: [{ free: true }] },
+	{ id: "matte",   name: "Matte Black", pattern: "solid", main: "#1b1c20", second: "#0d0e11", accent: "#34373e", unlock: [{ level: 2 }, { solo: "race" }] },
+	{ id: "bee",     name: "Bumblebee", pattern: "twin", main: "#ffcc12", second: "#15171b", accent: "#15171b", unlock: [{ level: 3 }] },
+	{ id: "monster", name: "Monster", pattern: "monster", glow: true, main: "#0c0d0f", second: "#0c0d0f", accent: "#7dff1a", unlock: [{ level: 4 }, { solo: "winRacer" }] },
 	{ id: "stripe",  name: "Racing Stripe", pattern: "stripe", accent: "#f4f6fa", unlock: [{ level: 2 }, { solo: "race" }] },
 	{ id: "twotone", name: "Two-Tone", pattern: "split", second: "#15181f", unlock: [{ level: 4 }, { solo: "winRacer" }] },
+	{ id: "polka",   name: "Polka Dots", pattern: "polka", accent: "#f4f6fa", unlock: [{ level: 5 }] },
 	{ id: "twin",    name: "Twin Stripes", pattern: "twin", accent: "#f4f6fa", unlock: [{ level: 6 }] },
+	{ id: "retro",   name: "Retro", pattern: "stripe", main: "#8cc8ea", second: "#8cc8ea", accent: "#ff7a1a", unlock: [{ level: 6 }] },
+	{ id: "zebra",   name: "Zebra", pattern: "zebra", main: "#f4f6fa", second: "#15171b", accent: "#15171b", unlock: [{ level: 7 }] },
 	{ id: "check",   name: "Chequered", pattern: "check", unlock: [{ level: 8 }] },
+	{ id: "candy",   name: "Candy Cane", pattern: "candy", main: "#ff5fa8", second: "#f4f6fa", accent: "#f4f6fa", unlock: [{ level: 8 }] },
+	{ id: "camo",    name: "Camo", pattern: "camo", main: "#4b5a2c", second: "#2c3319", accent: "#8a7a4a", unlock: [{ level: 9 }] },
+	{ id: "sunset",  name: "Sunset", pattern: "sunset", main: "#ff9a2e", second: "#7b2cbf", accent: "#ff4f8b", unlock: [{ level: 10 }, { solo: "night" }] },
+	{ id: "tiger",   name: "Tiger", pattern: "tiger", main: "#ff8a12", second: "#15171b", accent: "#15171b", unlock: [{ level: 11 }] },
 	{ id: "fade",    name: "Fade", pattern: "fade", second: "#0d0f14", unlock: [{ level: 11 }] },
+	{ id: "arctic",  name: "Arctic Camo", pattern: "camo", main: "#e9eef3", second: "#9aa6b2", accent: "#c7d0d9", unlock: [{ solo: "rain" }, { level: 12 }] },
+	{ id: "hazard",  name: "Hazard", pattern: "hazard", main: "#ffcc12", second: "#15171b", accent: "#15171b", unlock: [{ level: 13 }] },
 	{ id: "carbon",  name: "Carbon", pattern: "carbon", unlock: [{ level: 14 }, { solo: "allTracks" }] },
+	{ id: "galaxy",  name: "Galaxy", pattern: "galaxy", glow: true, main: "#1a0f3a", second: "#0b0820", accent: "#b98cff", unlock: [{ level: 16 }, { solo: "beatGhost" }] },
+	{ id: "pixel",   name: "Pixel Camo", pattern: "pixel", unlock: [{ level: 17 }] },
 	{ id: "neon",    name: "Neon Edge", pattern: "neon", unlock: [{ level: 18 }] },
+	{ id: "midnight",name: "Midnight Gold", pattern: "twin", main: "#0d1530", second: "#0d1530", accent: "#d4af37", unlock: [{ level: 19 }] },
+	{ id: "synth",   name: "Synthwave", pattern: "synth", glow: true, main: "#1c0b33", second: "#ff3fa4", accent: "#35e0ff", unlock: [{ level: 22 }] },
 	{ id: "bvs",     name: "BVS", pattern: "team", ...BVS_COLOURS, unlock: [{ account: true }] },
 	...TEAMS.map(t => ({ id: t.id, name: t.name, pattern: "team", main: t.main, second: t.second, accent: t.accent, team: true, unlock: [{ level: t.level }] })),
+	{ id: "lightning", name: "Lightning", pattern: "lightning", main: "#122a6b", second: "#0b1a45", accent: "#ffe03a", unlock: [{ wins: 3 }] },
 	{ id: "flames",  name: "Flames", pattern: "flames", unlock: [{ wins: 10 }] },
+	{ id: "lava",    name: "Lava", pattern: "lava", glow: true, main: "#140b08", second: "#140b08", accent: "#ff5a12", unlock: [{ wins: 15 }] },
 	{ id: "record",  name: "Record Breaker", pattern: "record", main: "#6d2bd9", second: "#a95cff", accent: "#f4f6fa", unlock: [{ records: 3 }] },
 	{ id: "chrome",  name: "Chrome", pattern: "chrome", unlock: [{ titles: 1 }] },
 	{ id: "gold",    name: "Gold Rush", pattern: "gold", unlock: [{ wins: 25 }] }
@@ -72,6 +91,11 @@ export const GLOWS = [
 	{ id: "lime",    name: "Lime", color: "#9dff2e", unlock: [{ level: 13 }] },
 	{ id: "orange",  name: "Orange", color: "#ff8a1f", unlock: [{ level: 17 }] },
 	{ id: "white",   name: "Ice", color: "#e8f4ff", unlock: [{ level: 21 }] },
+	{ id: "red",     name: "Red", color: "#ff2e3e", unlock: [{ level: 3 }] },
+	{ id: "purple",  name: "Purple", color: "#9a4bff", unlock: [{ level: 7 }] },
+	{ id: "toxic",   name: "Toxic", color: "#39ff6a", unlock: [{ solo: "winRacer" }, { level: 11 }] },
+	{ id: "gold",    name: "Gold", color: "#ffc233", unlock: [{ wins: 10 }] },
+	{ id: "police",  name: "Blues and Twos", color: "police", unlock: [{ solo: "night" }, { level: 23 }] },
 	{ id: "car",     name: "Car colour", color: "hue", unlock: [{ podiums: 10 }] },
 	{ id: "rainbow", name: "Rainbow", color: "rainbow", unlock: [{ weeklyWins: 1 }] }
 ];
@@ -82,6 +106,10 @@ export const SMOKES = [
 	{ id: "red",     name: "Red", color: "#ff4a4a", unlock: [{ level: 12 }] },
 	{ id: "yellow",  name: "Yellow", color: "#ffd84a", unlock: [{ level: 16 }] },
 	{ id: "purple",  name: "Purple", color: "#b86bff", unlock: [{ level: 20 }] },
+	{ id: "black",   name: "Black", color: "#1c1d21", unlock: [{ level: 4 }, { solo: "winRacer" }] },
+	{ id: "green",   name: "Green", color: "#56e05a", unlock: [{ level: 9 }] },
+	{ id: "pink",    name: "Pink", color: "#ff7ac8", unlock: [{ level: 14 }] },
+	{ id: "orange",  name: "Orange", color: "#ff9a3a", unlock: [{ level: 18 }] },
 	{ id: "car",     name: "Car colour", color: "hue", unlock: [{ level: 24 }] },
 	{ id: "rainbow", name: "Rainbow", color: "rainbow", unlock: [{ level: 27 }] }
 ];
@@ -97,28 +125,52 @@ export const TITLES = [
 	{ id: "weekly",   name: "Weekly Winner", unlock: [{ weeklyWins: 1 }] },
 	{ id: "serial",   name: "Serial Winner", unlock: [{ wins: 25 }] },
 	{ id: "champion", name: "Champion", unlock: [{ titles: 1 }] },
-	{ id: "legend",   name: "Legend", unlock: [{ level: 30 }] }
+	{ id: "legend",   name: "Legend", unlock: [{ level: 30 }] },
+	{ id: "monster",  name: "Monster", unlock: [{ level: 4 }, { solo: "winRacer" }] },
+	{ id: "night",    name: "Night Rider", unlock: [{ solo: "night" }] },
+	{ id: "rain",     name: "Rain Master", unlock: [{ solo: "rain" }] },
+	{ id: "ghost",    name: "Ghostbuster", unlock: [{ solo: "beatGhost" }] },
+	{ id: "tourist",  name: "Globetrotter", unlock: [{ solo: "allTracks" }] },
+	{ id: "demon",    name: "Speed Demon", unlock: [{ records: 5 }] }
+];
+
+// Headlight colour: the lamps on the car and the beam on the road at night.
+export const LIGHTS = [
+	{ id: "warm",    name: "Halogen", color: "#fff2cd", unlock: [{ free: true }] },
+	{ id: "xenon",   name: "Xenon", color: "#e4eeff", unlock: [{ free: true }] },
+	{ id: "yellow",  name: "Rally Yellow", color: "#ffd23a", unlock: [{ level: 2 }, { solo: "race" }] },
+	{ id: "ice",     name: "Ice Blue", color: "#8fd0ff", unlock: [{ level: 4 }] },
+	{ id: "green",   name: "Green", color: "#7dff4a", unlock: [{ level: 6 }] },
+	{ id: "pink",    name: "Pink", color: "#ff78d2", unlock: [{ level: 8 }] },
+	{ id: "purple",  name: "Purple", color: "#b27aff", unlock: [{ level: 10 }, { solo: "night" }] },
+	{ id: "red",     name: "Red", color: "#ff4a5a", unlock: [{ level: 12 }] },
+	{ id: "car",     name: "Car colour", color: "hue", unlock: [{ level: 15 }, { podiums: 5 }] },
+	{ id: "rainbow", name: "Rainbow", color: "rainbow", unlock: [{ level: 22 }, { weeklyWins: 1 }] }
 ];
 
 export const CATEGORIES = [
 	{ id: "livery", name: "Paint", items: LIVERIES },
 	{ id: "number", name: "Number", items: null },
 	{ id: "glow",   name: "Underglow", items: GLOWS },
+	{ id: "lights", name: "Headlights", items: LIGHTS },
 	{ id: "smoke",  name: "Tyre smoke", items: SMOKES },
 	{ id: "title",  name: "Title", items: TITLES }
 ];
 
-export const DEFAULT_LOOK = { livery: "factory", number: null, glow: "none", smoke: "white", title: "rookie" };
+export const DEFAULT_LOOK = { livery: "factory", number: null, glow: "none", smoke: "white", lights: "warm", title: "rookie" };
 
 export const SOLO_GOALS = {
 	race: "Finish a race against bots",
 	winRacer: "Beat Racer bots",
 	winAce: "Beat Ace bots",
-	allTracks: "Set a time trial lap on every track"
+	allTracks: "Set a time trial lap on every track",
+	night: "Finish a race against bots at night",
+	rain: "Finish a race against bots in the rain",
+	beatGhost: "Beat someone else's ghost in time trial"
 };
 
 const byId = list => Object.fromEntries(list.map(i => [i.id, i]));
-const INDEX = { livery: byId(LIVERIES), glow: byId(GLOWS), smoke: byId(SMOKES), title: byId(TITLES) };
+const INDEX = { livery: byId(LIVERIES), glow: byId(GLOWS), smoke: byId(SMOKES), lights: byId(LIGHTS), title: byId(TITLES) };
 export function item(cat, id){ return INDEX[cat] && INDEX[cat][id]; }
 
 // Everything the unlock checks need. `stats` from Firebase, `extra` = { records, weeklyWins, account, solo }.
@@ -177,7 +229,7 @@ export function unlockedIds(P){
 // The crown holder is the only one who may wear #1.
 export function cleanLook(look, P, isCrown){
 	const l = Object.assign({}, DEFAULT_LOOK, look);
-	for(const cat of ["livery", "glow", "smoke", "title"]){
+	for(const cat of ["livery", "glow", "smoke", "lights", "title"]){
 		const it = item(cat, l[cat]);
 		if(!it || !isUnlocked(it, P)) l[cat] = DEFAULT_LOOK[cat];
 	}
@@ -188,6 +240,7 @@ export function cleanLook(look, P, isCrown){
 
 // Random looks for bots: mostly team colours, some patterns.
 export function botLook(rand = Math.random){
-	const pool = ["factory", "stripe", "twin", "check", "fade", "twotone", ...TEAMS.map(t => t.id), ...TEAMS.map(t => t.id)];
-	return { livery: pool[Math.floor(rand() * pool.length)], number: 2 + Math.floor(rand() * 98), glow: "none", smoke: "white", title: "rookie" };
+	const pool = ["factory", "stripe", "twin", "check", "fade", "twotone", "blackout", "monster", "retro", "tiger", "camo", "hazard", ...TEAMS.map(t => t.id), ...TEAMS.map(t => t.id)];
+	const lights = ["warm", "warm", "xenon", "xenon", "yellow", "ice"];
+	return { livery: pool[Math.floor(rand() * pool.length)], number: 2 + Math.floor(rand() * 98), glow: "none", smoke: "white", lights: lights[Math.floor(rand() * lights.length)], title: "rookie" };
 }

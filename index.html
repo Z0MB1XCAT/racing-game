@@ -66,7 +66,7 @@
 						</div>
 						<button class="garage-btn" id="btnGarage">
 							<span class="gb-level"><small>Level</small><b id="titleLevel">1</b></span>
-							<span class="gb-text"><b>Garage</b><small>Paint, numbers, underglow and titles</small></span>
+							<span class="gb-text"><b>Garage</b><small>Paint, numbers, underglow, headlights and titles</small></span>
 							<span class="rb-arrow">&rarr;</span>
 						</button>
 						<div class="field">
@@ -218,6 +218,14 @@
 							<button data-v="record" aria-checked="false">Track record</button>
 						</div>
 					</div>
+					<div class="opt-row" data-for="trial">
+						<span class="opt-label">My ghost</span>
+						<div class="seg" id="setupOwnGhost" role="radiogroup" aria-label="Show my own ghost when racing someone else's" title="When you race someone else's ghost">
+							<button data-v="1" aria-checked="true">Show</button>
+							<button data-v="0" aria-checked="false">Hide</button>
+						</div>
+					</div>
+					<p class="opt-help" data-for="trial">When you race someone else's ghost, your own can stay on track or be hidden. Press <kbd>G</kbd> in the race to switch.</p>
 					<div data-for="trial">
 						<div class="eyebrow" style="margin-bottom:6px">Lap records</div>
 						<ol class="board" id="setupBoard"></ol>
@@ -279,6 +287,17 @@
 						</div>
 						<button class="back-btn" id="addBot">+ Add bot</button>
 					</div>
+					<section class="chat-box" id="lobbyChat" aria-labelledby="lobbyChatTitle">
+						<div class="opt-row"><span class="opt-label" id="lobbyChatTitle">Chat</span><span class="eyebrow chat-note" id="lobbyChatNote"></span></div>
+						<ol class="chat-log" id="lobbyChatLog" aria-live="polite"></ol>
+						<p class="opt-help" id="lobbyChatOff" hidden>Chat is switched off in Settings.</p>
+						<div class="chat-quick" id="lobbyChatQuick" aria-label="Quick messages"></div>
+						<form class="chat-form" id="lobbyChatForm" autocomplete="off">
+							<input class="text-input chat-input" id="lobbyChatInput" maxlength="120" placeholder="Say something nice" aria-label="Chat message" spellcheck="true">
+							<button class="chat-send" id="lobbyChatSend" type="submit">Send</button>
+						</form>
+						<p class="chat-err" id="lobbyChatErr" role="status" hidden></p>
+					</section>
 				</div>
 				<div class="panel kerbed stack">
 					<div class="opt-row"><span class="opt-label" id="lobbyTrackLabel">Track</span><span class="eyebrow" id="lobbyTrackName"></span></div>
@@ -368,6 +387,7 @@
 						<button data-v="livery" aria-checked="true">Paint</button>
 						<button data-v="number" aria-checked="false">Number</button>
 						<button data-v="glow" aria-checked="false">Underglow</button>
+						<button data-v="lights" aria-checked="false">Headlights</button>
 						<button data-v="smoke" aria-checked="false">Tyre smoke</button>
 						<button data-v="title" aria-checked="false">Title</button>
 					</div>
@@ -396,6 +416,7 @@
 					<button data-v="laps" aria-checked="false">Lap records</button>
 					<button data-v="weekly" aria-checked="false">Weekly</button>
 					<button data-v="rooms" aria-checked="false">Rooms</button>
+					<button data-v="chat" aria-checked="false">Chat</button>
 					<button data-v="settings" aria-checked="false">Lap limits &amp; bans</button>
 				</div>
 			</header>
@@ -602,6 +623,21 @@
 		<button class="touch-zone right" id="touchRight" aria-label="Steer right"></button>
 	</div>
 
+	<!-- Room chat during races (a short feed) and on the results screen -->
+	<aside class="chat-float" id="chatFloat" aria-label="Room chat" hidden>
+		<button class="chat-toggle" id="chatFloatToggle" aria-expanded="false" aria-controls="chatFloatLog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" fill="currentColor"/></svg><span>Chat</span></button>
+		<div class="chat-panel">
+			<ol class="chat-log" id="chatFloatLog" aria-live="polite"></ol>
+			<div class="chat-quick" id="chatFloatQuick" aria-label="Quick messages"></div>
+			<form class="chat-form" id="chatFloatForm" autocomplete="off" hidden>
+				<input class="text-input chat-input" id="chatFloatInput" maxlength="120" placeholder="Message, then Enter" aria-label="Chat message">
+				<button class="chat-send" type="submit">Send</button>
+			</form>
+			<p class="chat-err" id="chatFloatErr" role="status" hidden></p>
+			<p class="chat-hint" id="chatFloatHint"><kbd>Enter</kbd> to chat</p>
+		</div>
+	</aside>
+
 	<!-- Pause -->
 	<div class="modal" id="pause" hidden>
 		<div class="panel kerbed">
@@ -609,6 +645,7 @@
 			<p id="pauseNote" hidden>The race keeps going for everyone else while this menu is open.</p>
 			<button class="go-btn" id="resumeBtn"><span>Resume</span></button>
 			<button class="go-btn ghost" id="restartBtn"><span>Restart race</span></button>
+			<button class="go-btn ghost" id="ownGhostBtn" hidden><span>Hide my ghost</span></button>
 			<button class="go-btn ghost" id="pauseSettings"><span>Settings</span></button>
 			<button class="go-btn ghost" id="quitBtn"><span>Quit to menu</span></button>
 		</div>
@@ -633,6 +670,8 @@
 				<div class="seg" id="setMirror" role="radiogroup" aria-label="Rear-view mirror"><button data-v="1">On</button><button data-v="0">Off</button></div></div>
 			<div class="opt-row"><span class="opt-label">Camera shake</span>
 				<div class="seg" id="setShake" role="radiogroup" aria-label="Camera shake"><button data-v="1">On</button><button data-v="0">Off</button></div></div>
+			<div class="opt-row"><span class="opt-label">Room chat</span>
+				<div class="seg" id="setChat" role="radiogroup" aria-label="Room chat"><button data-v="1">On</button><button data-v="0">Off</button></div></div>
 			<div class="opt-row"><span class="opt-label">Phone steering</span>
 				<div class="seg" id="setTouch" role="radiogroup" aria-label="Phone steering"><button data-v="tilt">Tilt</button><button data-v="touch">Tap sides</button></div></div>
 			<button class="go-btn" data-close><span>Done</span></button>

@@ -1,6 +1,7 @@
 // Admin page, only for the ACCOUNTS.admin BVS account (the database rules enforce it too).
 // Rename players, reset stats, ban/unban, remove lap and weekly records, close rooms,
-// and publish the fastest-believable lap time for every track.
+// read room chat and reports (and mute people from chat), and publish the
+// fastest-believable lap time for every track.
 const $ = id => document.getElementById(id);
 
 export function initAdmin(ctx){
@@ -121,6 +122,29 @@ export function initAdmin(ctx){
 				]);
 			});
 			box.appendChild(table(["Code", "Phase", "Who", "Made", ""], rows));
+		}
+
+		if(A.tab === "chat"){
+			const [rooms, reports, mutes] = await Promise.all([net.liveRooms(), net.chatReports(), net.chatBans()]);
+			const when = t => t ? new Date(t).toLocaleString() : "";
+			const who = (n, uid) => `${esc(n)}<br><small class="dim">${esc(uid)}</small>`;
+			const muteBtn = uid => btn(mutes[uid] ? "Unmute chat" : "Mute in chat", "danger", async () => { await net.setChatBan(uid, !mutes[uid]); await render(); msg(mutes[uid] ? "They can chat again." : "Muted: they can't send chat messages any more."); });
+			const heading = text => { const h = document.createElement("h3"); h.className = "opt-label"; h.style.margin = "14px 0 6px"; h.textContent = text; box.appendChild(h); };
+			heading("Reported messages");
+			box.appendChild(table(["Said by", "Message", "Room", "Reported by", ""], Object.entries(reports).sort((a, b) => (b[1].t || 0) - (a[1].t || 0)).map(([id, r]) => tr([
+				who(r.n, r.u), esc(r.m), `${esc(r.room)}<br><small class="dim">${when(r.t)}</small>`, `<small class="dim">${esc(r.by)}</small>`,
+				actions(muteBtn(r.u), btn("Dismiss", "", async () => { await net.removeReport(id); render(); }))
+			]))));
+			heading("Chat in live rooms (exactly as typed, before anyone's filter)");
+			const lines = [];
+			for(const [code, r] of Object.entries(rooms)) for(const [key, m] of Object.entries(r.chat || {})) lines.push({ code, key, m });
+			lines.sort((a, b) => (b.m.t || 0) - (a.m.t || 0));
+			box.appendChild(table(["Room", "Driver", "Message", ""], lines.slice(0, 150).map(({ code, key, m }) => tr([
+				`<b>${esc(code)}</b><br><small class="dim">${when(m.t)}</small>`, who(m.n, m.u) + (m.g ? ' <span class="tag">Guest</span>' : ""), esc(m.m),
+				actions(muteBtn(m.u), btn("Delete", "danger", async () => { await net.removeChat(key, code); render(); }))
+			]))));
+			heading("Muted from chat");
+			box.appendChild(table(["Player", ""], Object.keys(mutes).map(id => tr([esc(id), actions(btn("Unmute chat", "", async () => { await net.setChatBan(id, false); render(); }))]))));
 		}
 
 		if(A.tab === "settings"){
