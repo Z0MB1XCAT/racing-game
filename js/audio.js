@@ -4,11 +4,14 @@
 // Mix: master volume → [music, effects, engines] → gentle compressor → speakers.
 import { createMusic } from "./music.js";
 
-let ctx = null, master = null, buses = null, noise = null, music = null;
+let ctx = null, master = null, buses = null, noise = null, music = null, probe = null;
 let volume = 0.7, levels = { music: 0.5, sfx: 0.8, engine: 0.8 }, wantSong = null;
+// A number that's safe to hand to Web Audio (a NaN or infinity there throws, or silences
+// everything after it for good).
+const fin = (x, d = 0) => Number.isFinite(x) ? x : d;
 
 export function unlock(){
-	if(ctx){ if(ctx.state === "suspended") ctx.resume(); return; }
+	if(ctx){ if(ctx.state !== "running" && ctx.state !== "closed") ctx.resume().catch(() => {}); return; }
 	const AC = window.AudioContext || window.webkitAudioContext;
 	if(!AC) return;
 	ctx = new AC();
@@ -17,21 +20,57 @@ export function unlock(){
 	master = ctx.createGain();
 	master.gain.value = volume;
 	master.connect(comp); comp.connect(ctx.destination);
+	// Listens to the final mix so the watchdog can tell if the sound has broken.
+	probe = ctx.createAnalyser(); probe.fftSize = 256;
+	comp.connect(probe);
+	// If the browser pauses the sound (another app took the speakers, the laptop slept,
+	// headphones were unplugged), start it again.
+	ctx.onstatechange = () => { if(ctx && ctx.state !== "running" && ctx.state !== "closed" && document.visibilityState === "visible") ctx.resume().catch(() => {}); };
 	buses = {};
 	for(const k of ["music", "sfx", "engine"]){ buses[k] = ctx.createGain(); buses[k].gain.value = levels[k]; buses[k].connect(master); }
 	noise = noiseBuffer(2);
 	music = createMusic(ctx, buses.music, noise);
 	loadEngineModel();
 	if(wantSong) music.play(wantSong);
+	startWatchdog();
 }
 
+// ---------- Keeping the sound alive ----------
+// Once a second: resume the sound if the browser paused it, and if anything has broken the mix
+// (the audio context closed, or a bad value got into it), rebuild all the sound from scratch.
+let watchdog = null, probeBuf = null;
+function startWatchdog(){
+	if(watchdog) return;
+	watchdog = setInterval(() => {
+		if(!ctx || ctx.state === "closed") return;
+		if(ctx.state === "closed"){ rebuild(); return; }
+		if(ctx.state !== "running"){ if(document.visibilityState === "visible") ctx.resume().catch(() => {}); return; }
+		if(!probeBuf) probeBuf = new Float32Array(probe.fftSize);
+		probe.getFloatTimeDomainData(probeBuf);
+		for(let i = 0; i < probeBuf.length; i++) if(!Number.isFinite(probeBuf[i])){ rebuild(); return; }
+	}, 1000);
+	document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible" && ctx && ctx.state !== "running" && ctx.state !== "closed") ctx.resume().catch(() => {}); });
+}
+function rebuild(){
+	console.warn("Sound broke; rebuilding it");
+	const old = ctx, engines = enginesOn;
+	try { if(music) music.dispose(); } catch {}
+	voices = new Map(); road = null; rainNodes = null; modelReady = null; probeBuf = null;
+	ctx = null; master = null; buses = null; music = null; probe = null;
+	try { old.onstatechange = null; old.close().catch(() => {}); } catch {}
+	unlock();
+	if(engines) startEngine();
+}
+// For checks: the audio context's state.
+export function soundState(){ return ctx ? ctx.state : "none"; }
+
 export function setVolume(v){
-	volume = v;
+	volume = v = fin(v, volume);
 	if(master) master.gain.setTargetAtTime(v, ctx.currentTime, 0.05);
 }
 // kind: "music" | "sfx" | "engine", v: 0..1
 export function setLevel(kind, v){
-	levels[kind] = v;
+	levels[kind] = v = fin(v, levels[kind]);
 	if(buses) buses[kind].gain.setTargetAtTime(v, ctx.currentTime, 0.05);
 	if(kind === "engine" && v <= 0) stopEngine();
 }
@@ -162,8 +201,7 @@ function synthVoice(p, dest){
 
 function killVoice(v){
 	const t = ctx.currentTime;
-	v.out.gain.cancelScheduledValues(t);
-	v.out.gain.setTargetAtTime(0, t, 0.08);
+	try { v.out.gain.cancelScheduledValues(t); v.out.gain.setTargetAtTime(0, t, 0.08); } catch {}
 	setTimeout(() => { try { v.stop(); v.out.disconnect(); } catch {} }, 500);
 }
 
@@ -213,7 +251,7 @@ export function startEngine(){
 }
 export function stopEngine(){
 	enginesOn = false;
-	if(!ctx) return;
+	if(!ctx || ctx.state === "closed") return;
 	for(const v of voices.values()) killVoice(v);
 	voices.clear();
 	if(road){
@@ -228,9 +266,12 @@ export function stopEngine(){
 // The first entry is the loudest; up to MAX_VOICES are heard.
 // focus: { speed, slip 0..1, draft 0..1 } for tyre squeal and wind.
 export function updateEngines(cars, focus, dt){
+	if(ctx && ctx.state === "closed"){ rebuild(); return; }
 	if(!ctx || !enginesOn || modelReady === null) return;
 	const t = ctx.currentTime, frame = (updateEngines.n = (updateEngines.n || 0) + 1);
-	for(const c of cars.slice(0, MAX_VOICES)){
+	for(const raw of cars.slice(0, MAX_VOICES)){
+		const c = { id: raw.id, body: raw.body, speed: Math.max(0, fin(raw.speed)), gain: Math.max(0, Math.min(1, fin(raw.gain))), pan: fin(raw.pan), pitch: fin(raw.pitch, 1), rev: raw.rev == null ? null : fin(raw.rev) };
+		try {
 		let v = voices.get(c.id);
 		if(v && v.body !== c.body){ killVoice(v); voices.delete(c.id); v = null; }
 		if(!v){
@@ -283,6 +324,8 @@ export function updateEngines(cars, focus, dt){
 			v.out.gain.setTargetAtTime(0.11 * p.vol * (0.55 + 0.45 * k) * c.gain, t, 0.04);
 		}
 		if(v.pan) v.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, c.pan || 0)), t, 0.05);
+		if(!Number.isFinite(v.rpm)) v.rpm = p.idle;
+		} catch(e){ const v = voices.get(c.id); if(v){ killVoice(v); voices.delete(c.id); } }
 	}
 	// Voices for cars that left the list fade out.
 	for(const [id, v] of voices) if(v.seen !== frame){
@@ -290,7 +333,7 @@ export function updateEngines(cars, focus, dt){
 		if(frame - v.seen > 240){ killVoice(v); voices.delete(id); }
 	}
 	if(road && focus){
-		const { speed, slip, draft } = focus;
+		const speed = Math.max(0, fin(focus.speed)), slip = Math.max(0, Math.min(1, fin(focus.slip))), draft = Math.max(0, fin(focus.draft));
 		const squeal = slip > 0.3 && speed > 0.1 ? Math.min(0.1, (slip - 0.28) * 0.22) : 0;
 		road.sq.gain.setTargetAtTime(squeal, t, 0.04);
 		const wob = Math.sin(t * 23) * 60 + Math.sin(t * 7.3) * 90;
@@ -305,7 +348,8 @@ export function updateEngines(cars, focus, dt){
 let rainNodes = null;
 // v: 0..1 how hard it's raining. Call as often as you like.
 export function setRain(v){
-	if(!ctx) return;
+	if(!ctx || ctx.state === "closed") return;
+	v = Math.max(0, Math.min(1, fin(v)));
 	if(!rainNodes){
 		if(v <= 0) return;
 		const src = noiseSrc(true);
@@ -325,7 +369,7 @@ export function setRain(v){
 }
 // A rumble of thunder after a delay (seconds).
 export function thunder(delay = 1){
-	if(!ctx) return;
+	if(!ctx || ctx.state === "closed") return;
 	const t = ctx.currentTime + delay;
 	const s = noiseSrc(true);
 	const f = ctx.createBiquadFilter(); f.type = "lowpass"; f.frequency.setValueAtTime(700, t); f.frequency.exponentialRampToValueAtTime(140, t + 3);
@@ -341,7 +385,7 @@ export function thunder(delay = 1){
 // ---------- Effects ----------
 function out(){ return buses.sfx; }
 function tone(freq, dur, type = "sine", vol = 0.2, when = 0, slide = 0, dest){
-	if(!ctx) return;
+	if(!ctx || ctx.state === "closed") return;
 	const t = ctx.currentTime + when;
 	const o = ctx.createOscillator(), g = ctx.createGain();
 	o.type = type;
@@ -354,7 +398,7 @@ function tone(freq, dur, type = "sine", vol = 0.2, when = 0, slide = 0, dest){
 	o.start(t); o.stop(t + dur + 0.05);
 }
 function burst(dur, vol, type, freq, q = 1, when = 0, dest){
-	if(!ctx) return;
+	if(!ctx || ctx.state === "closed") return;
 	const t = ctx.currentTime + when;
 	const s = noiseSrc();
 	const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
@@ -369,7 +413,7 @@ function bell(freq, vol, when = 0, len = 1.2){
 }
 // A brassy note for fanfares.
 function brass(freq, dur, vol, when = 0){
-	if(!ctx) return;
+	if(!ctx || ctx.state === "closed") return;
 	const t = ctx.currentTime + when;
 	const o = ctx.createOscillator(), o2 = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
 	o.type = "sawtooth"; o2.type = "sawtooth"; o.frequency.value = freq; o2.frequency.value = freq; o2.detune.value = 8;
@@ -382,7 +426,7 @@ function brass(freq, dur, vol, when = 0){
 }
 // Grandstand cheering: filtered noise that swells, with whistles over the top.
 function crowd(len = 2.6, vol = 0.14){
-	if(!ctx) return;
+	if(!ctx || ctx.state === "closed") return;
 	const t = ctx.currentTime;
 	const s = noiseSrc(true);
 	const f = ctx.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = 1100; f.Q.value = 0.6;
@@ -403,6 +447,7 @@ function crowd(len = 2.6, vol = 0.14){
 
 // strength ~0..0.6; near 0..1 (distance); kind "wall" or "car"
 export function thud(strength, near = 1, kind = "wall"){
+	strength = fin(strength); near = fin(near);
 	if(!ctx || strength < 0.03) return;
 	const vol = Math.min(0.55, strength * 1.5) * near;
 	if(vol < 0.02) return;
@@ -452,3 +497,5 @@ export const sfx = {
 
 // "model", "simple" (no AudioWorklet in this browser) or "loading". For checks and debugging.
 export function engineMode(){ return modelReady === null ? "loading" : modelReady ? "model" : "simple"; }
+// For the automated checks only: break the sound on purpose, to test that it recovers.
+export const _test = { close(){ if(ctx) ctx.close(); } };

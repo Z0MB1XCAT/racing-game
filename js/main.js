@@ -172,7 +172,13 @@ function stepper(name, get, set, min, max){
 
 // ---------- Profile ----------
 function applyHue(){ document.documentElement.style.setProperty("--hue", S.profile.hue); }
-function saveProfile(){ store.setProfile(S.profile); syncProfileSoon(); }
+function saveProfile(){
+	store.setProfile(S.profile); syncProfileSoon();
+	// In a lobby: everyone else sees the new car straight away.
+	if(S.net && S.room && S.screen === "lobby") S.net.updateMe({ hue: S.profile.hue, body: S.profile.body, look: S.profile.look || null }).catch(() => {});
+}
+// What everyone else in a room sees of you: name, colour, body and look (livery, number, glow, smoke).
+function myEntry(){ return { name: driverName(), hue: S.profile.hue, body: S.profile.body, look: S.profile.look || null }; }
 $("gameName").textContent = GAME_NAME;
 $("btnEditor").hidden = !EDITOR_ENABLED;
 $("nameInput").value = S.profile.name;
@@ -1520,7 +1526,7 @@ $("hostBtn").addEventListener("click", () => withBusy($("hostBtn"), async () => 
 	const net = await connect();
 	if(await net.isBanned().catch(() => false)) throw new Error("This account has been banned from online play by the admin.");
 	S.net = net;
-	await net.createRoom({ name: driverName(), hue: S.profile.hue, body: S.profile.body }, lobbyDefaults());
+	await net.createRoom(myEntry(), lobbyDefaults());
 	enterLobby();
 }));
 $("joinBtn").addEventListener("click", () => withBusy($("joinBtn"), async () => {
@@ -1530,7 +1536,7 @@ $("joinBtn").addEventListener("click", () => withBusy($("joinBtn"), async () => 
 	const net = await connect();
 	if(await net.isBanned().catch(() => false)) throw new Error("This account has been banned from online play by the admin.");
 	S.net = net;
-	await net.joinRoom(code, { name: driverName(), hue: S.profile.hue, body: S.profile.body });
+	await net.joinRoom(code, myEntry());
 	enterLobby();
 }));
 

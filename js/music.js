@@ -175,6 +175,8 @@ export function createMusic(ctx, dest, noise){
 		},
 		// 0 normal, 1 final lap: the lead plays throughout and opens up.
 		intensity(v){ heat = v; },
-		duck(on){ duckGain.gain.setTargetAtTime(on ? 0.3 : 1, ctx.currentTime, 0.15); }
+		duck(on){ duckGain.gain.setTargetAtTime(on ? 0.3 : 1, ctx.currentTime, 0.15); },
+		// Stop at once (the audio is being rebuilt).
+		dispose(){ if(song) clearInterval(song.timer); song = null; current = null; }
 	};
 }

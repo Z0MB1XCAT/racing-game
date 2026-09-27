@@ -71,7 +71,7 @@ export class Race {
 		opts.entrants.forEach((e, slot) => {
 			const data = phys.newCarData(slot, lineCount);
 			const car = {
-				id: e.id, name: e.name, hue: e.hue, body: e.body || "classic",
+				id: e.id, name: e.name, hue: e.hue, body: e.body || "classic", look: e.look || null,
 				isBot: !!e.bot, skill: e.bot || null, local: !!e.local, me: e.id === this.myId,
 				bot: e.bot && e.local ? new Bot(e.bot, this.rand, this.track.def && this.track.def.botTune) : null,
 				data, pos: new THREE.Vector3(data.x, phys.CAR_Y, data.y),
@@ -518,6 +518,8 @@ export class Race {
 	applyRemote(id, s){
 		const c = this.byId.get(id);
 		if(!c || c.local || !s) return;
+		// (An update with any missing or broken number is skipped rather than breaking the car.)
+		if(![s.x, s.y, s.u, s.v, s.d].every(Number.isFinite) || (s.s != null && !Number.isFinite(s.s))) return;
 		// The same update can arrive twice (direct and via Firebase); only take newer ones.
 		if(s.q != null){
 			if(c.lastQ != null && s.q <= c.lastQ) return;

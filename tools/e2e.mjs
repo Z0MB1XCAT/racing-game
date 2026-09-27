@@ -556,6 +556,10 @@ if(flow === "online"){
 	await guest.setViewport({ width: 1100, height: 700 });
 	await guest.waitForFunction(() => window.__game, { timeout: 60000 });
 	await wait(1500);
+	// Each player customises their car first: everyone else must see it in the race.
+	// (Things any new player has: a number, and the free livery.)
+	await host.evaluate(() => { window.__game.profile.look = { livery: "factory", number: 7, glow: "none", smoke: "white", title: "rookie" }; });
+	await guest.evaluate(() => { window.__game.profile.look = { livery: "factory", number: 42, glow: "none", smoke: "white", title: "rookie" }; });
 	await click(host, "#btnOnline"); await wait(400);
 	await click(host, "#hostBtn"); await wait(1200);
 	const code = await host.$eval("#roomCode", e => e.textContent);
@@ -588,6 +592,11 @@ if(flow === "online"){
 		return r ? { cars: r.cars.map(c => [c.name, c.local, +c.data.x.toFixed(1), +c.data.y.toFixed(1)]), phase: r.phase } : null;
 	})));
 	console.log(JSON.stringify(info));
+	const looks = await Promise.all([host, guest].map(p => p.evaluate(() => {
+		const r = window.__game.race;
+		return r ? r.cars.filter(c => !c.isBot && !c.local).map(c => c.look && c.look.livery + " #" + c.look.number) : null;
+	})));
+	console.log("other player's car: host sees", JSON.stringify(looks[0]), "| guest sees", JSON.stringify(looks[1]));
 	for(let i = 0; i < 150; i++){
 		const s = await host.evaluate(() => window.__game.screen);
 		if(s === "results") break;
