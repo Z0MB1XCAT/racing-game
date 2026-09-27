@@ -118,8 +118,10 @@ function instanced(geometry, material, list, shadow){
 	return mesh;
 }
 
-// A flat ribbon along the centreline between two lateral offsets (left = +).
+// A flat ribbon along the centreline between two lateral offsets (left = +). With colorFn, each
+// piece between samples is its own quad in one colour (crisp kerb blocks, no blending).
 function ribbon(center, from, to, y, keepFn, colorFn){
+	if(colorFn) return blockRibbon(center, from, to, y, keepFn, colorFn);
 	const n = center.n, pos = [], col = [], idx = [];
 	const c = new THREE.Color();
 	for(let i = 0; i <= n; i++){
@@ -133,6 +135,25 @@ function ribbon(center, from, to, y, keepFn, colorFn){
 			const a = i * 2;
 			idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
 		}
+	}
+	const g = new THREE.BufferGeometry();
+	g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+	g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+	g.setIndex(idx);
+	g.computeVertexNormals();
+	return g;
+}
+
+function blockRibbon(center, from, to, y, keepFn, colorFn){
+	const n = center.n, pos = [], col = [], idx = [], c = new THREE.Color();
+	const edge = (k, lat) => [center.x[k] + center.tz[k] * lat, y + (center.h ? center.h[k] + lat * center.bank[k] : 0), center.z[k] - center.tx[k] * lat];
+	for(let i = 0; i < n; i++){
+		if(keepFn && !keepFn(i)) continue;
+		const j = (i + 1) % n, base = pos.length / 3;
+		pos.push(...edge(i, from), ...edge(i, to), ...edge(j, from), ...edge(j, to));
+		c.set(colorFn(i));
+		for(let v = 0; v < 4; v++) col.push(c.r, c.g, c.b);
+		idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
 	}
 	const g = new THREE.BufferGeometry();
 	g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
@@ -388,8 +409,13 @@ export function buildWorld(track, opts = {}){
 	const outsideOfCorner = (() => {
 		if(!theme.tyreWall || !track.center) return () => false;
 		const n = track.center.n, mark = [new Uint8Array(n), new Uint8Array(n)];
+		// Only slow corners (tighter than 16 units radius somewhere), not fast sweepers.
+		const curv = track.center.curv;
 		for(const k of track.kerbs){
 			if(k.end - k.start < 6) continue;
+			let tight = 0;
+			for(let i = k.start; i <= k.end; i++) tight = Math.max(tight, Math.abs(curv[i % n]));
+			if(tight < 1 / 16) continue;
 			for(let i = k.start - 12; i <= k.end + 12; i++) mark[1 - k.side][(i + n) % n] = 1;
 		}
 		return (side, q) => q >= 0 && mark[side][q] === 1;

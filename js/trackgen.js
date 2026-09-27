@@ -246,15 +246,10 @@ export function buildCircuit(def, reverse = false){
 			for(let o = -10; o <= 10; o++){ const ww = 11 - Math.abs(o); sum += raw[(i + o + n) % n] * ww; w += ww; }
 			h[i] = sum / w;
 		}
-		// Camber only on the corners that really have it (def.camber: + leans into the corner,
-		// - away from it); which way that is comes from the way the corner turns. Level elsewhere.
+		// Camber only on the corners that really have it (def.camber: how much the road rises per
+		// unit to the left, in the race direction). Level elsewhere. Reversed, left and right swap.
 		bank = new Float32Array(n);
-		if(camberSrc) for(let i = 0; i < n; i++){
-			if(!camber[i]) continue;
-			let c = 0;
-			for(let o = -20; o <= 20; o++) c += curv[(i + o + n) % n];
-			bank[i] = -Math.sign(c) * camber[i];
-		}
+		if(camberSrc) for(let i = 0; i < n; i++) bank[i] = reverse ? -camber[i] : camber[i];
 		const frac = f => { const v = reverse ? (1 - f) % 1 : f; return Math.round(v * n) % n; };
 		features = {};
 		if(def.tunnel){ const [a, b] = def.tunnel.map(frac); features.tunnel = reverse ? [b, a] : [a, b]; }

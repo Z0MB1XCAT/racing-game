@@ -14,8 +14,9 @@ const CONF = {
 	// Monaco's data starts at Casino Square; the start line is ~140 m before Ste Devote (point 120).
 	// The town is too steep for a 25 m DEM (it has the pit straight climbing the hillside), so the
 	// heights come from the corners' real elevations instead (metres, by data point).
-	// camber: [from m, to m, degrees] along the lap from the start line (see --corners), only on
-	// corners that really have it: + leans into the corner (banked), - away from it (off-camber).
+	// camber: [from m, to m, degrees, "L" | "R"] along the lap from the start line (see --corners),
+	// only on corners that really have it: the way the corner turns, and + leans into it (banked),
+	// - away from it (off-camber).
 	// Everywhere else the road is level side to side. From track guides and onboard laps.
 	// hills: the smallest rise or dip (m) kept from the DEM; anything smaller is noise and is
 	// smoothed out, so the road runs in clean climbs and descents.
@@ -32,23 +33,23 @@ const CONF = {
 			[600, 408], [880, 392],                                      // down past the old pits to Eau Rouge
 			[1180, 428],                                                 // steeply up Raidillon
 			[2250, 466], [2480, 471],                                    // up the Kemmel straight to Les Combes
-			[2900, 454], [3150, 449],                                    // Rivage, the left after it
-			[3700, 399], [4150, 377],                                    // down through Pouhon, Fagnes
+			[2900, 454], [3150, 447],                                    // Rivage, the left after it
+			[3450, 425], [3700, 405], [4150, 385],                       // steadily down through Pouhon to Fagnes
 			[4950, 366],                                                 // Stavelot, the lowest point
 			[5600, 390], [6050, 402], [6560, 416], [6954, 419]],         // up past Blanchimont to the Bus Stop
-		camber: [[876, 924, 5], [960, 1080, 3], [1104, 1152, -3],        // Eau Rouge left, Raidillon right, off-camber crest left
-			[3600, 3972, 2],                                             // Pouhon
-			[5628, 6060, 3]] },                                          // Blanchimont
+		camber: [[950, 1090, 3, "R"],                                         // Raidillon, leaning into the right-hander
+			[3600, 3972, 2, "L"],                                             // Pouhon
+			[5628, 6060, 3, "L"]] },                                          // Blanchimont
 	monza: { file: "it-1922", length: 1350, width: 14, dem: "eudem25m", hills: 5,
-		camber: [[2172, 2304, 3], [2532, 2592, 3]] },                    // the Lesmos
+		camber: [[2172, 2304, 3, "R"], [2532, 2592, 3, "R"]] },                    // the Lesmos
 	suzuka: { file: "jp-1962", length: 1650, width: 13, dem: "srtm30m", bridge: 22, hills: 5,   // bridge lift in metres (about 6 units at game scale)
-		camber: [[408, 684, 3],                                          // Turns 1-2
-			[1464, 1584, -4],                                            // Reverse Bank (gyaku bank)
-			[3540, 3828, 3],                                             // Spoon
-			[4704, 4920, 2]] },                                          // 130R
+		camber: [[408, 684, 3, "R"],                                          // Turns 1-2
+			[1464, 1584, -4, "L"],                                            // Reverse Bank (gyaku bank)
+			[3540, 3828, 3, "L"],                                             // Spoon
+			[4704, 4920, 2, "L"]] },                                          // 130R
 	// Jeddah is flat (the 30 m DEM mostly picks up buildings); Turn 13 is banked at 12 degrees.
 	jeddah: { file: "sa-2021", length: 1900, width: 13, dem: "srtm30m", flatten: 0,
-		camber: [[2292, 2556, 12]] }
+		camber: [[2292, 2556, 12, "L"]] }
 };
 const STEP = 5, ELEV_STEP = 25, OUT_STEP = 12;
 
@@ -321,14 +322,15 @@ for(const [id, conf] of Object.entries(CONF)){
 	// (Again after the bridge, so its ramps join the hills either side without a dip.)
 	if(cross && conf.hills) h = cleanHills(h, conf.hills);
 	if(conf.flatten !== undefined){ const mean = h.reduce((a, b) => a + b, 0) / h.length; h = h.map(v => mean + (v - mean) * conf.flatten); }
-	// Camber, per output point: tan of the angle (+ = into the corner), eased in and out over ~60 m.
+	// Camber, per output point: how much the road rises per metre to the left (so a right-hander
+	// banked into the corner is +), eased in and out over ~60 m.
 	let camber = null;
 	if(conf.camber){
 		camber = new Array(M).fill(0);
-		for(const [a, b, deg] of conf.camber) for(let m = 0; m < M; m++){
+		for(const [a, b, deg, dir] of conf.camber) for(let m = 0; m < M; m++){
 			const s = m * OUT_STEP, ramp = 60;
 			const w = Math.max(0, Math.min(1, (s - a + ramp) / ramp, (b + ramp - s) / ramp));
-			if(w > 0) camber[m] += Math.tan(deg * Math.PI / 180) * (0.5 - 0.5 * Math.cos(Math.PI * w));
+			if(w > 0) camber[m] += (dir === "R" ? 1 : -1) * Math.tan(deg * Math.PI / 180) * (0.5 - 0.5 * Math.cos(Math.PI * w));
 		}
 	}
 	const min = Math.min(...h);
