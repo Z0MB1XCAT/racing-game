@@ -4,8 +4,13 @@
   "type": "module",
   "description": "Fork of jchabin/cars with new tracks, UI and modes. GPL-3.0.",
   "scripts": {
+    "setup": "node tools/setup.mjs",
     "serve": "node serve.mjs",
-    "test": "node tools/physics-equivalence.mjs && node tools/track-sim.mjs"
+    "test": "node tools/physics-equivalence.mjs && node tools/track-sim.mjs",
+    "check": "node tools/physics-equivalence.mjs && node tools/terrain-check.mjs && node tools/track-sim.mjs"
+  },
+  "devDependencies": {
+    "puppeteer": "^24.39.0"
   },
   "license": "GPL-3.0"
 }
