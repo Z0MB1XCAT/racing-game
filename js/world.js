@@ -5,6 +5,7 @@ import { START_Z, seededRandom } from "./trackgen.js";
 import { buildScenery, canvasTexture } from "./scenery.js";
 import { naturalHour } from "./atmosphere.js";
 import { buildTerrain, buildTunnel, buildBridge, buildSkirts, TUNNEL_WALL } from "./terrain.js";
+import { placeGeo } from "./placegeo.js";
 
 const THREE = globalThis.THREE;
 
@@ -20,9 +21,10 @@ export const THEMES = {
 		mountains: "hills", mountainColor: 0x7c9a68, fog: [0xd2eaff, 500, 1700], grandstand: 3, standColor: 0xc8102e },
 	suzuka: { sky: [0x5aa7ff, 0xe4f2ff], ground: 0x5a9d43, stripes: true, wall: "bluewhite", road: 0x3f4249, trees: "sakura", treeDensity: 0.9,
 		mountains: "hills", mountainColor: 0x5b8757, fog: [0xe4f2ff, 450, 1600], grandstand: 2, standColor: 0x2f63c9, ferris: true },
-	jeddah: { night: true, sky: [0x03040c, 0x1c2250], ground: 0x1f2129, wall: "concrete", road: 0x2d3038, trees: "palm", treeDensity: 0.25,
+	jeddah: { night: true, sky: [0x03040c, 0x1c2250], ground: 0x3a3a3e, wall: "concrete", road: 0x3a3d45, trees: "palm", treeDensity: 0.25, cityFill: true,
 		buildings: { density: 0.7, night: true, palette: [0x2a2f3d, 0x343a4a, 0x22262f, 0x3a3346] },
-		sea: { dir: [-1, 0.08], color: 0x0a1830 }, lights: true, mountains: "none", fog: [0x121634, 280, 1300], sun: 0.18, amb: 0.4, grandstand: 2, standColor: 0x0e7c86, fans: false },
+		runoff: [0x2f6fe0, 0xe0409a, 0x8f4de0, 0xd8342f], footbridges: 5,
+		sea: { dir: [-1, 0.08], color: 0x0a1830 }, lights: true, mountains: "none", fog: [0x121634, 320, 1500], sun: 0.32, amb: 0.72, grandstand: 2, standColor: 0x0e7c86, fans: false },
 	daytona: { sky: [0x4aa6ff, 0xdcf0ff], ground: 0x68a94c, stripes: true, wall: 0xf1f3f6, road: 0x3a3d44, trees: "palm", treeDensity: 0.15,
 		lake: true, grandstand: 4, standColor: 0x2f63c9, mountains: "none", fog: [0xdcf0ff, 500, 1700] },
 	dusk: { sky: [0x241a45, 0xff8a4c], ground: 0x86684a, wall: "tyres", road: 0x4e4540, trees: "none", mountains: "hills", mountainColor: 0x5a3f4a,
@@ -316,7 +318,15 @@ export function buildWorld(track, opts = {}){
 		}
 		harbour = { quay, inside, side, box };
 	}
-	const isWater = harbour ? (x, z) => (isSea && isSea(x, z)) || harbour.inside(x, z) : isSea;
+	let isWater = harbour ? (x, z) => (isSea && isSea(x, z)) || harbour.inside(x, z) : isSea;
+	// Real surroundings (js/places.js): the real coastline, lagoons and marina. Never right next
+	// to the road (the map's coastline and the game's road don't line up to the metre).
+	const geo = track.center ? placeGeo(track) : null;
+	if(geo){
+		const c = track.center, clear = c.hw + 10;
+		const byRoad = (x, z) => { let near = false; c.hash.near(x, z, clear, j => { if(!near && Math.hypot(c.x[j] - x, c.z[j] - z) < clear) near = true; }); return near; };
+		isWater = (x, z) => !byRoad(x, z) && geo.isWater(x, z);
+	}
 
 	// Elevated circuits get rolling ground built from the road's own heights.
 	let terrain = null;
@@ -449,6 +459,29 @@ export function buildWorld(track, opts = {}){
 	const wallMesh = new THREE.Mesh(keep(track.elevated ? wallStrips(track, wallItems, wallH, heightAt) : mergedBoxes(wallItems)), keep(new THREE.MeshLambertMaterial({ vertexColors: true })));
 	wallMesh.castShadow = wallMesh.receiveShadow = shadows;
 	group.add(wallMesh);
+	// Painted run-off outside the slow corners (theme.runoff colours): a band beyond the barrier,
+	// left out wherever it would reach another piece of road.
+	if(theme.runoff && track.center){
+		const c = track.center, n = c.n, curv = c.curv, cols = theme.runoff;
+		let k = 0;
+		for(const kb of track.kerbs){
+			if(kb.end - kb.start < 6) continue;
+			let tight = 0;
+			for(let i = kb.start; i <= kb.end; i++) tight = Math.max(tight, Math.abs(curv[i % n]));
+			if(tight < 1 / 16) continue;
+			const out = kb.side === 0 ? -1 : 1, color = cols[k++ % cols.length];
+			const a = out > 0 ? c.hw + 0.35 : -c.hw - 7, b2 = out > 0 ? c.hw + 7 : -c.hw - 0.35;
+			const inRange = i => i >= kb.start - 8 && i <= kb.end + 8;
+			const clearAt = i => {
+				const lat = out * (c.hw + 7), x = c.x[i] + c.tz[i] * lat, z = c.z[i] - c.tx[i] * lat;
+				let ok = true;
+				c.hash.near(x, z, c.hw + 1, j => { if(ok && Math.min(Math.abs(j - i), n - Math.abs(j - i)) > 30 && Math.hypot(c.x[j] - x, c.z[j] - z) < c.hw + 1) ok = false; });
+				return ok;
+			};
+			group.add(new THREE.Mesh(keep(ribbon(c, a, b2, 0.015, i => inRange(i) && track.keep[kb.side === 0 ? 1 : 0][i] && clearAt(i), () => color)),
+				keep(new THREE.MeshLambertMaterial({ vertexColors: true, emissive: theme.night ? 0x111111 : 0, side: THREE.DoubleSide }))));
+		}
+	}
 	// Catch fencing on top of the barriers (Monaco): posts, two rails and see-through mesh.
 	if(theme.catchFence && track.center && track.elevated){
 		const t = track.features && track.features.tunnel, n = track.center.n;
@@ -476,7 +509,7 @@ export function buildWorld(track, opts = {}){
 
 	// Trees, grandstands, pits, billboards, buildings (see scenery.js).
 	const scenery = track.scenery || [];
-	const extras = buildScenery(track, theme, { group, keep, shadows, quality, rand, groundAt, harbour });
+	const extras = buildScenery(track, theme, { group, keep, shadows, quality, rand, groundAt, harbour, geo, isWater });
 	const occluders = extras.occluders;
 	updaters.push(...extras.updaters);
 	if(theme.trees === "classic"){
@@ -513,6 +546,16 @@ export function buildWorld(track, opts = {}){
 		deck.castShadow = deck.receiveShadow = shadows;
 		group.add(deck);
 		for(const o of br.occluders) occluders.add(o);
+	}
+
+	// Real water (the sea, lagoons, the marina) across the whole ground patch: the ground only
+	// dips below it where the map says there's water.
+	if(geo && terrain){
+		const pt = terrain.patch, wg = keep(new THREE.PlaneBufferGeometry(pt.x1 - pt.x0, pt.z1 - pt.z0));
+		wg.rotateX(-Math.PI / 2);
+		wg.translate((pt.x0 + pt.x1) / 2, terrain.base + 0.02, (pt.z0 + pt.z1) / 2);
+		const sea = theme.sea || { color: 0x1f6fb0 };
+		group.add(new THREE.Mesh(wg, keep(new THREE.MeshLambertMaterial({ color: sea.color, emissive: theme.night ? 0x061634 : 0x0a2a4a }))));
 	}
 
 	// The harbour's water, with a stone quay wall down to it.

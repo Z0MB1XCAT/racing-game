@@ -393,7 +393,7 @@ export function buildCircuit(def, reverse = false){
 		walls, lines, lineIdx, wallSegs,
 		center: { x: xs, z: zs, tx, tz, curv, n, len: n * STEP, step: STEP, hw, hash, h, bank },
 		elevated: !!h, features,
-		hash, kerbs, sides, keep, toMap, fromMap,
+		hash, kerbs, sides, keep, toMap, fromMap, mapScale: scale,
 		bounds: { minX, maxX, minZ, maxZ },
 		oob: far + 40,
 		mountainDist: far + 120,

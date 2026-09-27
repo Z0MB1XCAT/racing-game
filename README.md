@@ -26,6 +26,12 @@ original did).
   white stair tower, sea fence on the way in); catch fencing along the barriers; taller buildings;
   and the harbour with moored yachts beside the track from the tunnel exit to La Rascasse. Inside, the
   tunnel has tiled walls, #MonacoGP banners and rows of ceiling lamps.
+  Jeddah is built from real map data: the real buildings around the circuit (Diamond Tower,
+  Sail Tower, the malls and hotels), the Red Sea coastline, the lagoon and the marina with its
+  piers and yachts, parks and palms, the streets with their lamps, Al-Rahma "floating" mosque,
+  and the lit-up city behind; plus the bright painted run-offs and footbridges over the track.
+  In the Monaco tunnel and under the Suzuka bridge there's no rain, you hear it on the roof, and
+  the engines echo.
   Spa's hills come from real corner altitudes joined by steady climbs and descents: level
   through La Source, down to Eau Rouge, steeply up Raidillon, on up Kemmel to Les Combes, down
   through Pouhon to Stavelot and back up past Blanchimont. Red and yellow kerbs and tyre walls,
@@ -358,6 +364,7 @@ The last two also need puppeteer installed.
 - `node tools/physics-equivalence.mjs` checks that the physics matches the original.
 - `node tools/track-sim.mjs` drives bots round every track and reports lap times, stuck cars and escapes.
 - `node tools/draft-test.mjs daytona` compares slipstream on and off (lap times, gaps, lead changes).
+- `node tools/build-places.mjs` rebuilds `js/places.js` (real surroundings) from `data/osm/`.
 - `node tools/build-circuits.mjs` rebuilds `js/circuits.js` from `data/circuits/` (real layouts and elevation).
 - `node tools/build-circuits.mjs --corners` also lists each circuit's corners by distance from the start line (for placing camber).
 - `node tools/spot-shots.mjs <trackId> [rev] [tunnel|bridge|over|bridgeside|high|low|top|0.25|s700 ...]` screenshots chosen places round a track.
@@ -377,5 +384,9 @@ The last two also need puppeteer installed.
 - F1 circuit centrelines: [bacinger/f1-circuits](https://github.com/bacinger/f1-circuits) (MIT, see
   `data/circuits/`). Elevation: [Open Topo Data](https://www.opentopodata.org/) (EU-DEM, SRTM). Monaco's
   heights are from its corners' known elevations, as the town is too steep for the elevation data.
+- Jeddah's surroundings (buildings, coastline, lagoon, marina piers, parks, streets, mosques):
+  © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, ODbL (see `data/osm/`).
+  A few towers OpenStreetMap doesn't have were placed from satellite imagery, with heights
+  estimated from their shadows.
 - Licensed under **GPL-3.0**, the same as the original (see [LICENSE](LICENSE)). If you share
   your version, keep it open source and keep this credit.

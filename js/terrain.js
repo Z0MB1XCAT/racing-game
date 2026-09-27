@@ -92,7 +92,7 @@ export function buildTerrain(track, opts = {}){
 		const a = heights[k], b2 = heights[k + 1], c2 = heights[k + W], d = heights[k + W + 1];
 		return (a * (1 - tx) + b2 * tx) * (1 - tz) + (c2 * (1 - tx) + d * tx) * tz;
 	}
-	return { geometry: geo, groundAt, base };
+	return { geometry: geo, groundAt, base, patch: { x0, z0, x1: x0 + nx * cell, z1: z0 + nz * cell } };
 }
 
 // Vertical strip along the road between two lateral offsets (left = +), from the road

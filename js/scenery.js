@@ -7,6 +7,7 @@
 // director can pick shots that can actually see the cars.
 
 import { TUNNEL_WALL } from "./terrain.js";
+import { inPoly } from "./placegeo.js";
 const THREE = globalThis.THREE;
 
 export function canvasTexture(w, h, draw){
@@ -78,6 +79,32 @@ class Builder {
 		const col = n % AD_COLS, row = Math.floor(n / AD_COLS) % AD_ROWS;
 		const u0 = col / AD_COLS, u1 = (col + 1) / AD_COLS, v1 = 1 - row / AD_ROWS, v0 = 1 - (row + 1) / AD_ROWS;
 		this.poly([P(-w / 2, y0, 0.01), P(w / 2, y0, 0.01), P(w / 2, y0 + h, 0.01), P(-w / 2, y0 + h, 0.01)], 0xffffff, ADS, [u0, v0, u1, v0, u1, v1, u0, v1]);
+	}
+	// A building from its outline (world x, z points), from y0 up h, windows on the walls.
+	prism(pts, y0, h, color, win, top){
+		let A = 0;
+		for(let i = 0, j = pts.length - 1; i < pts.length; j = i++) A += pts[j][0] * pts[i][1] - pts[i][0] * pts[j][1];
+		const p = A > 0 ? pts.slice().reverse() : pts, y1 = y0 + h;
+		let u = 0;
+		for(let i = 0; i < p.length; i++){
+			const a = p[i], b = p[(i + 1) % p.length], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+			const q = [[a[0], y0, a[1]], [b[0], y0, b[1]], [b[0], y1, b[1]], [a[0], y1, a[1]]];
+			if(win){ const [cw, ch] = win; this.poly(q, color, WIN, [u / cw, 0, (u + len) / cw, 0, (u + len) / cw, h / ch, u / cw, h / ch]); }
+			else this.poly(q, color);
+			u += len;
+		}
+		this.flat(p, y1, top ?? color);
+	}
+	// A flat area (world x, z outline) at height y, facing up.
+	flat(pts, y, color){
+		const tris = THREE.ShapeUtils.triangulateShape(pts.map(([x, z]) => new THREE.Vector2(x, z)), []);
+		for(const [a, b, c] of tris){
+			const A = pts[a], Bp = pts[b], Cp = pts[c];
+			// Upward normal: (b - a) x (c - a) must point +y.
+			const ny = (Cp[0] - A[0]) * (Bp[1] - A[1]) - (Bp[0] - A[0]) * (Cp[1] - A[1]);
+			const tri = [[A[0], y, A[1]], [Bp[0], y, Bp[1]], [Cp[0], y, Cp[1]]];
+			this.poly(ny >= 0 ? tri : [tri[0], tri[2], tri[1]], color);
+		}
 	}
 	get empty(){ return !this.pos.length; }
 	build(){
@@ -584,7 +611,9 @@ export function buildScenery(track, theme, ctx){
 	const spots = (track.scenery || []).slice().sort((a, b) => a.off - b.off);
 	const used = new Set();
 	const bdef = theme.buildings;
-	if(bdef){
+	const extraTrees = [];
+	if(ctx.geo) buildRealCity(ctx.geo, { track, theme, B, G, sp, place, c, hw, n, rand, group, keep, shadows, extraTrees, isWater: ctx.isWater, low, updaters });
+	else if(bdef){
 		for(const s of spots){
 			if(s.off > 46 || s.r > bdef.density) continue;
 			const tall = bdef.night ? 22 + s.r2 * 70 : bdef.tall ? bdef.tall[0] + s.r2 * bdef.tall[1] : 9 + s.r2 * 18;
@@ -678,6 +707,7 @@ export function buildScenery(track, theme, ctx){
 			sp.take(s.x, s.z, crownR * 0.6, "trees");
 			tl.push({ x: s.x, y: G(s.x, s.z), z: s.z, s: scale, ry: s.r2 * 6, r: crownR, k: s.r });
 		}
+		tl.push(...extraTrees);
 		buildTrees(kind, tl, theme, { group, keep, shadows, rand, occ: { add: o => { const g = G(o.x, o.z); o.y0 += g; o.y1 += g; occ.add(o); } } });
 	}
 
@@ -689,6 +719,208 @@ export function buildScenery(track, theme, ctx){
 }
 
 // Low-poly trees with a little colour variety.
+// ---------- The real city around a circuit (js/places.js, from OpenStreetMap) ----------
+// Buildings from their real outlines and heights, lit windows and rooftop lights after dark,
+// the streets with their lamps, parks and palms, the beach, piers with moored yachts, the
+// landmark mosques, and footbridges over the track. Anything that would touch the road, or
+// something already placed, is left out.
+function buildRealCity(geo, { track, theme, B, G, sp, place, c, hw, n, rand, group, keep, shadows, extraTrees, isWater, low, updaters }){
+	const { P, S } = geo, W = geo.ring;
+	const glow = new Builder();                       // things that shine at night (plain colours)
+	glow.ground = G;
+	const clearOf = (pts, m) => pts.every(([x, z]) => sp.edge(x, z, m + 1) >= m);
+	const centre = pts => [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
+	// Road running through an outline (a big building the road passes, or crosses)?
+	const roadInside = pts => {
+		const [cx, cz] = centre(pts), r = Math.max(...pts.map(([x, z]) => Math.hypot(x - cx, z - cz)));
+		let hit = false;
+		c.hash.near(cx, cz, r + 1, j => { if(!hit && inPoly(pts, c.x[j], c.z[j])) hit = true; });
+		return hit;
+	};
+	const PALE = [0xe4ddd0, 0xd8cfbf, 0xefe9de, 0xcdc3b1, 0xdcd6cc, 0xc9c1b4], GLASS = [0x7d93a8, 0x5f7a92, 0x8aa2b3, 0x4f6b82];
+	const CROWN = [0x38d9ff, 0xff4fd8, 0xffd23a, 0x5cff9a, 0xffffff];
+
+	// Buildings.
+	let bi = 0;
+	for(const b of P.buildings){
+		const pts = W(b.p);
+		if(pts.length < 3 || !clearOf(pts, 2.5) || roadInside(pts)) continue;
+		const [cx, cz] = centre(pts);
+		const rad = Math.max(...pts.map(([x, z]) => Math.hypot(x - cx, z - cz)));
+		const id = "real" + bi++;
+		if(!sp.free(cx, cz, rad * 0.7, id)) continue;
+		const h = b.h * S, g = G(cx, cz), y0 = g - 2;
+		const tower = b.k === "tower", stand = b.k === "stand";
+		const col = stand ? (theme.standColor ?? 0x0e7c86) : tower ? GLASS[bi % GLASS.length] : PALE[bi % PALE.length];
+		B.prism(pts, y0, h + 2, col, stand ? null : [tower ? 1.3 : 1.6, tower ? 1.05 : 1.1], tower ? 0x2a3440 : 0xb8b0a2);
+		place({ x: cx, z: cz, ry: 0, hw: rad * 0.8, hd: rad * 0.8, y0: -2, y1: h });
+		sp.take(cx, cz, rad * 0.8, id);
+		// Rooftop light strips on the taller buildings (Jeddah's skyline is lit up at night).
+		if(h > 9){
+			const cc = CROWN[bi % CROWN.length];
+			for(let i = 0; i < pts.length; i++){
+				const a = pts[i], d = pts[(i + 1) % pts.length], len = Math.hypot(d[0] - a[0], d[1] - a[1]);
+				if(len < 0.3) continue;
+				glow.box({ x: (a[0] + d[0]) / 2, z: (a[1] + d[1]) / 2, y: g + h - 0.35 - g, w: len, d: 0.12, h: 0.25, ry: Math.atan2(-(d[1] - a[1]), d[0] - a[0]), color: cc, skip: ["top"] });
+				// Towers: vertical light lines up the corners too.
+				if(tower) glow.box({ x: a[0], z: a[1], y: g - g, w: 0.18, d: 0.18, h, color: cc });
+			}
+		}
+	}
+
+	// The rest of the city: where the map has no buildings (the villa districts, mostly), fill the
+	// land well back from the track with low blocks, lit up after dark.
+	if(theme.cityFill){
+		const b = track.bounds, step = low ? 15 : 11;
+		for(let x = b.minX - 220; x <= b.maxX + 220; x += step) for(let z = b.minZ - 220; z <= b.maxZ + 220; z += step){
+			const px = x + (rand() - 0.5) * step * 0.5, pz = z + (rand() - 0.5) * step * 0.5;
+			if(rand() < 0.3 || sp.edge(px, pz, 52) < 50 || (isWater && isWater(px, pz))) continue;
+			const wv = 4.5 + rand() * 5, dv = 4.5 + rand() * 5, r = Math.hypot(wv, dv) / 2;
+			if(!sp.free(px, pz, r, "fill")) continue;
+			const h = (7 + rand() * 12 + (rand() < 0.08 ? 20 + rand() * 30 : 0)) * S;
+			B.box({ x: px, z: pz, w: wv, d: dv, h, ry: 0.05 * (rand() - 0.5), color: PALE[Math.floor(rand() * PALE.length)], win: [1.6, 1.1], top: 0xb8b0a2 });
+			sp.take(px, pz, r, "fill");
+		}
+	}
+
+	// Streets: asphalt with pavements, and lamp posts along them.
+	const lamps = [];
+	for(const r of P.roads){
+		const pts = W(r.p), wv = r.w * S;
+		for(let i = 0; i < pts.length - 1; i++){
+			const [ax, az] = pts[i], [bx, bz] = pts[i + 1], len = Math.hypot(bx - ax, bz - az);
+			if(len < 0.2) continue;
+			const mx = (ax + bx) / 2, mz = (az + bz) / 2;
+			// Leave out anything near the circuit (its own roads are part of the track), or in the water.
+			if(sp.edge(mx, mz, wv + 6) < wv / 2 + 4 || sp.edge(ax, az, wv + 6) < wv / 2 + 3 || sp.edge(bx, bz, wv + 6) < wv / 2 + 3) continue;
+			if(isWater && (isWater(mx, mz))) continue;
+			const ux = (bx - ax) / len, uz = (bz - az) / len, nx = -uz * wv / 2, nz = ux * wv / 2;
+			const y = G(mx, mz) + 0.05;
+			B.flat([[ax + nx, az + nz], [bx + nx, bz + nz], [bx - nx, bz - nz], [ax - nx, az - nz]], y, 0x2a2c31);
+			for(let d = 4; d < len; d += 11){
+				for(const sd of [1, -1]){
+					const x = ax + ux * d + nx * sd * 1.15, z = az + uz * d + nz * sd * 1.15;
+					if(sp.edge(x, z, 4) > 2.5) lamps.push({ x, z, y: G(x, z) });
+				}
+			}
+		}
+	}
+	if(lamps.length){
+		const unit = new THREE.BoxBufferGeometry(1, 1, 1);
+		const pole = new THREE.InstancedMesh(unit, new THREE.MeshLambertMaterial({ color: 0x5b6068 }), lamps.length);
+		const head = new THREE.InstancedMesh(unit, new THREE.MeshBasicMaterial({ color: 0xffc46b }), lamps.length);
+		const m = new THREE.Matrix4();
+		lamps.forEach((l, i) => {
+			m.makeScale(0.12, 3.2, 0.12); m.setPosition(l.x, l.y + 1.6, l.z); pole.setMatrixAt(i, m);
+			m.makeScale(0.5, 0.18, 0.5); m.setPosition(l.x, l.y + 3.25, l.z); head.setMatrixAt(i, m);
+		});
+		pole.frustumCulled = head.frustumCulled = false;
+		keep(unit); keep(pole.material); keep(head.material);
+		group.add(pole, head);
+	}
+
+	// Parks and lawns, with palms; the beach.
+	for(const pk of P.parks){
+		const pts = W(pk);
+		if(pts.length < 3 || roadInside(pts)) continue;
+		const [cx, cz] = centre(pts);
+		const y = G(cx, cz) + 0.04;
+		if(!clearOf(pts, 0.8)) continue;
+		B.flat(pts, y, 0x2f6b34);
+		const xs = pts.map(p => p[0]), zs = pts.map(p => p[1]);
+		const step = low ? 9 : 6;
+		for(let x = Math.min(...xs); x <= Math.max(...xs); x += step) for(let z = Math.min(...zs); z <= Math.max(...zs); z += step){
+			const px = x + (rand() - 0.5) * step * 0.8, pz = z + (rand() - 0.5) * step * 0.8;
+			if(!inPoly(pts, px, pz) || sp.edge(px, pz, 6) < 4.5 || !sp.free(px, pz, 1.4, "trees")) continue;
+			sp.take(px, pz, 1.4, "trees");
+			const sc = 0.7 + rand() * 0.5;
+			extraTrees.push({ x: px, y: G(px, pz), z: pz, s: sc, ry: rand() * 6, r: 3.2 * sc, k: rand() });
+		}
+	}
+	for(const sd of P.sand){ const pts = W(sd); if(pts.length >= 3 && clearOf(pts, 0.5) && !roadInside(pts)) B.flat(pts, G(...centre(pts)) + 0.03, 0xd8c79f); }
+
+	// Piers into the marina, with yachts moored alongside.
+	const seaY = G(1e7, 1e7) + 0.02;
+	const yachts = [];
+	for(const pr of P.piers){
+		const pts = W(pr.p);
+		if(pts.length < 2) continue;
+		if(pr.a){ if(clearOf(pts, 1)) B.prism(pts, seaY - 1, 1.6, 0xcfc8ba, null, 0xbdb5a5); continue; }
+		for(let i = 0; i < pts.length - 1; i++){
+			const [ax, az] = pts[i], [bx, bz] = pts[i + 1], len = Math.hypot(bx - ax, bz - az);
+			if(len < 0.3) continue;
+			const ux = (bx - ax) / len, uz = (bz - az) / len, wv = 3 * S / 2;
+			B.prism([[ax - uz * wv, az + ux * wv], [bx - uz * wv, bz + ux * wv], [bx + uz * wv, bz - ux * wv], [ax + uz * wv, az - ux * wv]], seaY - 1, 1.6, 0xcfc8ba, null, 0xbdb5a5);
+			for(let d = 2; d < len - 1; d += 2.6) for(const sd of [1, -1]){
+				const L = 3.5 + rand() * 4, off = wv + 0.4 + L / 2;
+				const x = ax + ux * d - uz * sd * off, z = az + uz * d + ux * sd * off;
+				if(rand() < 0.3 || !isWater || !isWater(x, z) || sp.edge(x, z, 6) < 4) continue;
+				yachts.push({ x, z, L, ry: Math.atan2(-uz * sd, ux * sd) + Math.PI / 2 });
+			}
+		}
+	}
+	for(const y of yachts){
+		const w = y.L * 0.3;
+		B.box({ x: y.x, z: y.z, y: seaY - G(y.x, y.z) - 0.15, w, d: y.L, h: 0.7, ry: y.ry, color: 0xf6f7f9, bottom: true });
+		B.box({ x: y.x, z: y.z, y: seaY - G(y.x, y.z) + 0.55, w: w * 0.7, d: y.L * 0.45, h: 0.55, ry: y.ry, color: 0xe3e8ee, top: 0x2c3440 });
+		glow.box({ x: y.x, z: y.z, y: seaY - G(y.x, y.z) + 0.75, w: w * 0.72, d: y.L * 0.3, h: 0.12, ry: y.ry, color: 0xfff1c9 });
+	}
+
+	// The landmark mosques: white, with a dome and a minaret lit green.
+	for(const mq of P.mosques){
+		const big = /rahma/i.test(mq.n), [x, z] = geo.toWorld(...mq.at);
+		const sz = (big ? 28 : 20) * S, hh = (big ? 12 : 9) * S;
+		if(sp.edge(x, z, sz + 4) < sz / 2 + 2) continue;
+		const g = isWater && isWater(x, z) ? seaY : G(x, z);
+		B.box({ x, z, y: g - G(x, z) - (big ? 1 : 0), w: sz, d: sz, h: hh + (big ? 1 : 0), color: 0xf4f1ea });
+		const dome = new THREE.Mesh(keep(new THREE.SphereBufferGeometry(sz * 0.32, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2)), keep(new THREE.MeshLambertMaterial({ color: 0xf8f6f0, emissive: 0x2a2a2a })));
+		dome.position.set(x, g + hh, z); group.add(dome);
+		const mh = (big ? 40 : 30) * S, mxp = x + sz * 0.42, mzp = z + sz * 0.42;
+		B.box({ x: mxp, z: mzp, y: g - G(mxp, mzp), w: 1.1, d: 1.1, h: mh, color: 0xf4f1ea });
+		glow.box({ x: mxp, z: mzp, y: g - G(mxp, mzp) + mh * 0.72, w: 1.25, d: 1.25, h: 0.35, color: 0x3cff8a });
+		glow.box({ x: mxp, z: mzp, y: g - G(mxp, mzp) + mh, w: 0.5, d: 0.5, h: 1.6, color: 0x3cff8a });
+		sp.take(x, z, sz * 0.75, "mosque");
+		place({ x, z, ry: 0, hw: sz / 2, hd: sz / 2, y0: 0, y1: hh + sz * 0.32 });
+	}
+
+	// Footbridges over the track (theme.footbridges), on straights, lit along their sides.
+	const want = theme.footbridges || 0;
+	for(let k = 0; k < want; k++){
+		for(let tries = 0; tries < 60; tries++){
+			const i = Math.floor(((k + 0.5) / want + tries * 0.004) * n) % n;
+			if(Math.min(i, n - i) < 60 || sp.bend(i, 8) > 1 / 120) continue;
+			const L = sp.at(i, 1, hw + 3), Rr = sp.at(i, -1, hw + 3);
+			if(!sp.boxClear(L.x, L.z, L.ry, 2.2, 2.2, 0.8) || !sp.boxClear(Rr.x, Rr.z, Rr.ry, 2.2, 2.2, 0.8)) continue;
+			let ok = true;
+			for(let o = -hw - 3; o <= hw + 3 && ok; o += 1.5){
+				const p = sp.at(i, 1, o);
+				c.hash.near(p.x, p.z, 3, j => { if(Math.min(Math.abs(j - i), n - Math.abs(j - i)) > 20 && Math.hypot(c.x[j] - p.x, c.z[j] - p.z) < 3) ok = false; });
+			}
+			if(!ok || !sp.free(L.x, L.z, 2, "footbridge") || !sp.free(Rr.x, Rr.z, 2, "footbridge")) continue;
+			const hgt = (c.h ? c.h[i] : 0) + 6.6, mid = sp.at(i, 1, 0), span = (hw + 4.5) * 2;
+			for(const p of [L, Rr]){
+				B.box({ x: p.x, z: p.z, w: 2.4, d: 2.4, h: hgt - G(p.x, p.z) + 0.4, ry: p.ry, color: 0xe9ecf1 });
+				sp.take(p.x, p.z, 1.8, "footbridge");
+				place({ x: p.x, z: p.z, ry: p.ry, hw: 1.2, hd: 1.2, y0: 0, y1: hgt + 1 });
+			}
+			B.box({ x: mid.x, z: mid.z, y: hgt - G(mid.x, mid.z), w: 2.6, d: span, h: 0.6, ry: mid.ry, color: 0xf2f4f7, bottom: true });
+			for(const side of [-1, 1]){
+				const [bx, bz] = mid.local(side * 1.25, 0);
+				B.box({ x: bx, z: bz, y: hgt + 0.6 - G(bx, bz), w: 0.12, d: span, h: 1.2, ry: mid.ry, color: 0xdfe4ea });
+				glow.box({ x: bx, z: bz, y: hgt - 0.05 - G(bx, bz), w: 0.14, d: span, h: 0.14, ry: mid.ry, color: k % 2 ? 0x38d9ff : 0xff4fd8 });
+			}
+			place({ x: mid.x, z: mid.z, ry: mid.ry, hw: 1.3, hd: span / 2, y0: hgt - 0.2, y1: hgt + 1.9 });
+			break;
+		}
+	}
+
+	if(!glow.empty){
+		const g = new THREE.Mesh(keep(glow.build()), [keep(new THREE.MeshBasicMaterial({ vertexColors: true })), keep(new THREE.MeshBasicMaterial({ vertexColors: true })), keep(new THREE.MeshBasicMaterial({ vertexColors: true }))]);
+		g.frustumCulled = false;
+		group.add(g);
+	}
+}
+
 function buildTrees(kind, list, theme, { group, keep, shadows, rand, occ }){
 	if(!list.length) return;
 	const trunkMat = keep(new THREE.MeshLambertMaterial({ color: 0x6b4a2f }));
