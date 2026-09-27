@@ -52,7 +52,7 @@ export const TRACKS = [
 		botTune: { look: 6, over: 1.2, gain: 6, hairpin: 0.25, analog: true }
 	},
 	{
-		id: "monaco", key: "monaco-v3", name: "Monaco", place: "Monte Carlo", kind: "gp", flag: "MC",
+		id: "monaco", key: "monaco-v3", layoutName: "GP", name: "Monaco", place: "Monte Carlo", kind: "gp", flag: "MC",
 		blurb: "Up the hill to the Casino, down through the hairpin and the tunnel. Barriers everywhere.",
 		realLength: "3.337 km", length: 1800, width: 10, laps: 3, theme: "monaco",
 		// The Grand Hotel hairpin and the chicane after the tunnel keep their real tightness
@@ -64,14 +64,14 @@ export const TRACKS = [
 		pts: CIRCUITS.monaco.pts, elev: CIRCUITS.monaco.elev, camber: CIRCUITS.monaco.camber, tunnel: CIRCUITS.monaco.tunnel
 	},
 	{
-		id: "spa", key: "spa-v2", name: "Spa-Francorchamps", place: "Belgium", kind: "gp", flag: "BE",
+		id: "spa", key: "spa-v2", layoutName: "GP", name: "Spa-Francorchamps", place: "Belgium", kind: "gp", flag: "BE",
 		blurb: "Down to Eau Rouge, up Raidillon, the Kemmel straight and a long run through the forest.",
 		realLength: "7.004 km", length: 1700, width: 14, laps: 2, theme: "spa",
 		// The real circuit (js/circuits.js): centreline, elevation.
 		pts: CIRCUITS.spa.pts, elev: CIRCUITS.spa.elev, camber: CIRCUITS.spa.camber
 	},
 	{
-		id: "monza", key: "monza-v3", name: "Monza", place: "Italy", kind: "gp", flag: "IT",
+		id: "monza", key: "monza-v3", layoutName: "GP", name: "Monza", place: "Italy", kind: "gp", flag: "IT",
 		blurb: "The Temple of Speed. Long straights, chicanes and the Parabolica.",
 		realLength: "5.793 km", length: 2000, width: 12, laps: 2, theme: "monza",
 		// The Rettifilo and Roggia chicanes keep their real tightness (metres from the start line).
@@ -80,21 +80,21 @@ export const TRACKS = [
 		pts: CIRCUITS.monza.pts, elev: CIRCUITS.monza.elev, camber: CIRCUITS.monza.camber
 	},
 	{
-		id: "suzuka", key: "suzuka-v2", name: "Suzuka", place: "Japan", kind: "gp", flag: "JP",
+		id: "suzuka", key: "suzuka-v2", layoutName: "GP", name: "Suzuka", place: "Japan", kind: "gp", flag: "JP",
 		blurb: "The only figure-of-eight on the calendar: the back straight crosses the Degner run on a bridge.",
 		realLength: "5.807 km", length: 1650, width: 13, laps: 2, theme: "suzuka",
 		// The real circuit (js/circuits.js): centreline, elevation, the crossover bridge.
 		pts: CIRCUITS.suzuka.pts, elev: CIRCUITS.suzuka.elev, camber: CIRCUITS.suzuka.camber, bridge: CIRCUITS.suzuka.bridge
 	},
 	{
-		id: "jeddah", key: "jeddah-v2", name: "Jeddah", place: "Saudi Arabia", kind: "gp", flag: "SA",
+		id: "jeddah", key: "jeddah-v2", layoutName: "GP", name: "Jeddah", place: "Saudi Arabia", kind: "gp", flag: "SA",
 		blurb: "A night race on the seafront. Fast, blind and lined with walls.",
 		realLength: "6.174 km", length: 1900, width: 13, laps: 2, theme: "jeddah",
 		// The real circuit (js/circuits.js): centreline, elevation.
 		pts: CIRCUITS.jeddah.pts, elev: CIRCUITS.jeddah.elev, camber: CIRCUITS.jeddah.camber
 	},
 	{
-		id: "daytona", key: "daytona-v2", name: "Daytona", place: "Florida, USA", kind: "oval", flag: "US",
+		id: "daytona", key: "daytona-v2", layoutName: "Oval", name: "Daytona", place: "Florida, USA", kind: "oval", flag: "US",
 		blurb: "2.5-mile tri-oval, banked at 31 degrees in the turns. Stay in the pack and time your move.",
 		realLength: "4.023 km", length: 1000, width: 18, laps: 4, theme: "daytona",
 		// The real oval from OpenStreetMap (js/circuits.js), flat ground, and its banking:
@@ -120,6 +120,57 @@ export const TRACKS = [
 	}
 ];
 
+// Other layouts of the same venues. Each is a track of its own (its own key, records and lap limits),
+// built like the main one from js/circuits.js (routed through OpenStreetMap, see
+// tools/route-layouts.mjs). The track pickers show each venue once, with a Layout switch.
+// layoutOf: the venue's main track (its theme and real surroundings are shared).
+const layout = (id, venue, o) => Object.assign({ id, key: id, layoutOf: venue, kind: "gp",
+	length: CIRCUITS[id].length, pts: CIRCUITS[id].pts, elev: CIRCUITS[id].elev, camber: CIRCUITS[id].camber, bridge: CIRCUITS[id].bridge }, o);
+export const LAYOUTS = [
+	layout("monaco-fe", "monaco", { name: "Monaco Formula E", layoutName: "Formula E", place: "Monte Carlo", flag: "MC",
+		blurb: "Formula E's Monaco (2015-2019): Sainte-Devote, along the harbour to a hairpin, then Tabac, the pool and La Rascasse.",
+		realLength: "1.765 km", width: 10, laps: 5, theme: "monaco",
+		// The harbour beside the lap from the hairpin round Tabac and the pool (on the left).
+		harbour: [0.22, 0.62] }),
+	layout("spa-moto", "spa", { name: "Spa-Francorchamps Moto", layoutName: "Moto", place: "Belgium", flag: "BE",
+		blurb: "The motorcycle layout: the full lap, with the old, faster Bus Stop at the end.",
+		realLength: "6.985 km", width: 14, laps: 2, theme: "spa" }),
+	layout("monza-oval", "monza", { name: "Monza Oval", layoutName: "Oval", place: "Italy", flag: "IT",
+		blurb: "The 1955 high-speed ring on its own: two steep bankings joined by the main straight and the back straight.",
+		realLength: "4.250 km", width: 12, laps: 3, theme: "monza" }),
+	layout("monza-combined", "monza", { name: "Monza Road + Oval", layoutName: "Road + Oval", place: "Italy", flag: "IT",
+		blurb: "The 10 km lap of 1955-61: the road course with no chicanes, then round the bankings. The main straight twice, side by side.",
+		realLength: "10.000 km", width: 12, laps: 1, theme: "monza" }),
+	layout("suzuka-moto", "suzuka", { name: "Suzuka Moto", layoutName: "Moto", place: "Japan", flag: "JP",
+		blurb: "The full figure-of-eight with the motorcycle line through the final chicane.",
+		realLength: "5.821 km", width: 13, laps: 2, theme: "suzuka" }),
+	layout("suzuka-east", "suzuka", { name: "Suzuka East", layoutName: "East", place: "Japan", flag: "JP",
+		blurb: "The first half: Turns 1 and 2, the Esses and Dunlop, then a link straight back to the pits.",
+		realLength: "2.243 km", width: 13, laps: 4, theme: "suzuka" }),
+	layout("suzuka-west", "suzuka", { name: "Suzuka West", layoutName: "West", place: "Japan", flag: "JP",
+		blurb: "The second half: Degner, the hairpin, Spoon, 130R and the chicane, still over the crossover bridge.",
+		realLength: "3.466 km", width: 12, laps: 3, theme: "suzuka" }),
+	layout("suzuka-south", "suzuka", { name: "Suzuka South", layoutName: "South", place: "Japan", flag: "JP",
+		blurb: "The little South Course beside the paddock: tight, twisty and short.",
+		realLength: "1.264 km", width: 12, laps: 6, theme: "suzuka" }),
+	layout("jeddah-fe", "jeddah", { name: "Jeddah Formula E", layoutName: "Formula E", place: "Saudi Arabia", flag: "SA",
+		blurb: "Formula E's night race on the southern half of the Corniche, with chicanes on both long runs.",
+		realLength: "3.001 km", width: 13, laps: 4, theme: "jeddah" }),
+	layout("daytona-road", "daytona", { name: "Daytona Road Course", layoutName: "Road course", place: "Florida, USA", flag: "US", kind: "oval",
+		blurb: "The Rolex 24 lap: the tri-oval, the infield, the Bus Stop chicane on the backstretch and the banking in Turns 3 and 4.",
+		realLength: "5.729 km", width: 13, laps: 2, theme: "daytona" })
+];
+
 export function trackById(id){
-	return TRACKS.find(t => t.id === id);
+	return TRACKS.find(t => t.id === id) || LAYOUTS.find(t => t.id === id);
+}
+// The main track of a track's venue (itself, for a main track or a track with no other layouts).
+export function venueOf(id){
+	const d = trackById(id);
+	return (d && d.layoutOf) || id;
+}
+// Every layout of a track's venue, the main one first.
+export function layoutsOf(id){
+	const v = venueOf(id), main = trackById(v);
+	return main ? [main, ...LAYOUTS.filter(l => l.layoutOf === v)] : [];
 }

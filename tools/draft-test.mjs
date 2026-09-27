@@ -3,7 +3,8 @@
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 globalThis.THREE = require(new URL("./three.min.cjs", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
-const { TRACKS } = await import("../js/tracks.js");
+const { TRACKS: MAIN, LAYOUTS } = await import("../js/tracks.js");
+const TRACKS = [...MAIN, ...LAYOUTS];   // (every layout of every venue)
 const { buildTrack } = await import("../js/trackgen.js");
 const { makeTracker, raceProgress } = await import("../js/progress.js");
 const { race } = await import("./sim-core.mjs");

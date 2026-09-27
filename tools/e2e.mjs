@@ -28,7 +28,7 @@ if(flow === "solo"){
 	const page = await open(base);
 	await page.click("#btnBots");
 	await wait(600);
-	await page.click(`#setupTracks [data-id="${trackId}"]`);
+	await page.evaluate(async id => { const { venueOf } = await import("/js/tracks.js"); document.querySelector(`#setupTracks [data-id="${venueOf(id)}"]`).click(); if(venueOf(id) !== id) document.querySelector(`#setupLayout [data-v="${id}"]`).click(); }, trackId);   // (a layout: its venue, then the Layout switch)
 	await wait(900);
 	await shot(page, "setup");
 	// fewer laps so the test is quick
@@ -63,10 +63,10 @@ if(flow === "solo"){
 if(flow === "tour"){
 	// Time trial on every track, screenshot shortly after the start.
 	const page = await open(base, 1280, 720);
-	const ids = await page.evaluate(async () => (await import("/js/tracks.js")).TRACKS.map(t => t.id));
+	const ids = await page.evaluate(async () => { const m = await import("/js/tracks.js"); return [...m.TRACKS, ...m.LAYOUTS].map(t => t.id); });
 	for(const id of (trackId === "all" || trackId === "monza" ? ids : trackId.split(","))){
 		await click(page, "#btnTrial"); await wait(400);
-		await click(page, `#setupTracks [data-id="${id}"]`); await wait(700);
+		await page.evaluate(async id => { const { venueOf } = await import("/js/tracks.js"); document.querySelector(`#setupTracks [data-id="${venueOf(id)}"]`).click(); if(venueOf(id) !== id) document.querySelector(`#setupLayout [data-v="${id}"]`).click(); }, id);   // (a layout: its venue, then the Layout switch) await wait(700);
 		await click(page, "#setupGo");
 		await page.evaluate(async () => {
 			const { Bot } = await import("/js/bots.js");
@@ -390,7 +390,7 @@ if(flow === "ghost"){
 	const waitLaps = async n => { for(let i = 0; i < 150 && await lapsDone() < n; i++) await wait(1000); };
 	// Pretend there's an all-time best ghost that is hard to beat, then check it stays.
 	await page.click("#btnTrial"); await wait(500);
-	await page.click(`#setupTracks [data-id="${trackId}"]`); await wait(800);
+	await page.evaluate(async id => { const { venueOf } = await import("/js/tracks.js"); document.querySelector(`#setupTracks [data-id="${venueOf(id)}"]`).click(); if(venueOf(id) !== id) document.querySelector(`#setupLayout [data-v="${id}"]`).click(); }, trackId);   // (a layout: its venue, then the Layout switch) await wait(800);
 	await page.click("#setupGo"); await wait(1500);
 	await botDrive();
 	await waitLaps(1);

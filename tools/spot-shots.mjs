@@ -18,7 +18,7 @@ p.on("pageerror", e => errors.push(e.message));
 await p.setViewport({ width: 1440, height: 900 });
 await p.goto("http://localhost:3000/", { waitUntil: "networkidle0" });
 await p.click("#btnBots"); await new Promise(r => setTimeout(r, 400));
-await p.click(`#setupTracks [data-id="${id}"]`); await new Promise(r => setTimeout(r, 800));
+await p.evaluate(async id => { const { venueOf } = await import("/js/tracks.js"); document.querySelector(`#setupTracks [data-id="${venueOf(id)}"]`).click(); if(venueOf(id) !== id) document.querySelector(`#setupLayout [data-v="${id}"]`).click(); }, id);   // (a layout: its venue, then the Layout switch) await new Promise(r => setTimeout(r, 800));
 if(rev){ await p.click('#setupDir [data-v="1"]'); await new Promise(r => setTimeout(r, 400)); }
 await p.evaluate(rain => { window.__game.setup.bots = 5; if(rain) window.__game.setup.weather = "rain"; }, rain);
 await p.click("#setupGo");

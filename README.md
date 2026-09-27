@@ -9,7 +9,7 @@ original did).
 
 ## What's in it
 
-- **9 tracks**: the original Classic track, Monaco, Spa-Francorchamps, Monza, Suzuka, Jeddah
+- **9 tracks, 19 layouts**: the original Classic track, Monaco, Spa-Francorchamps, Monza, Suzuka, Jeddah
   (at night), Daytona (tri-oval), Crossroads (a figure-8 with a flat crossing) and Glacier Pass
   (snowy switchbacks). Every track except Classic can also be raced in reverse.
 - **The five F1 tracks are the real circuits**: built from their real centrelines and real
@@ -59,6 +59,30 @@ original did).
   circuit run side by side are eased apart to fit barriers between them. These tracks have new lap
   record boards (Monza and Daytona got fresh ones again when they moved to the real map data). (The weekly challenge that was running when they arrived, Jeddah reversed in
   week 2026-W39, finishes on the old layout.)
+- **Track layouts**: the real circuits' other layouts, picked with the Layout switch under a
+  track (in solo setup, the online lobby, championships and the leaderboards). 19 in all:
+  - **Monaco**: GP, and **Formula E** (2015-2019): sharp right after Sainte-Devote, along Avenue
+    J.F. Kennedy (its own carriageway each way) and round a squared-off hairpin into the Nouvelle
+    Chicane, then Tabac, the pool and La Rascasse, beside the harbour.
+  - **Spa-Francorchamps**: GP, and **Moto** (the full lap with the old, faster Bus Stop).
+  - **Monza**: GP, the **Oval** (the 1955 high-speed ring on its own, with its two bankings), and
+    **Road + Oval**, the 10 km lap of 1955-61: the road course with no chicanes (the Roggia and
+    Ascari smoothed out, the old straight past the Rettifilo), then round the bankings, down the
+    main straight twice side by side and under the north banking at the Serraglio on a bridge.
+  - **Suzuka**: GP, **Moto** (the bike line through the final chicane), **East** (Turns 1-2, the
+    Esses and Dunlop, then the link back to the pits), **West** (Degner, the hairpin, Spoon, 130R
+    and the chicane, over the crossover bridge, back to Degner by the link road) and **South** (the
+    separate 1.3 km course beside the paddock).
+  - **Jeddah**: GP, and **Formula E** (the southern half of the Corniche with a hairpin across to
+    the return road, and chicanes on both long runs; Turns 8 and 10-11 are temporary chicanes that
+    aren't mapped, so they're added where the real ones go).
+  - **Daytona**: Oval, and the **Road course** (the Rolex 24 lap: the tri-oval, the infield, the
+    Bus Stop on the backstretch and the banking in Turns 3 and 4, at the oval's real banking).
+  Each layout is traced from OpenStreetMap along the real roads, shares its circuit's scenery and
+  surroundings, takes its heights and camber from the main layout wherever they share the road,
+  and has its own lap records. (There's no "Jeddah Half" layout: it doesn't exist. Monaco's GP
+  and "full" layouts are the same one. Monza's bankings have no published height survey, so their
+  rise, about 6 m, is an estimate.) The weekly challenge picks from the main layouts only.
 - **Modes**: Race, Elimination (last car is out every lap), Championship (2 to 6 rounds, F1
   points, the leader starts at the back of the next round's grid) and Time trial against a ghost
   of your fastest lap ever. A slower lap never replaces the ghost. A **delta bar** at the top shows
@@ -413,6 +437,7 @@ The last two also need puppeteer installed.
 - `node tools/track-sim.mjs` drives bots round every track and reports lap times, stuck cars and escapes.
 - `node tools/draft-test.mjs daytona` compares slipstream on and off (lap times, gaps, lead changes).
 - `node tools/build-places.mjs` rebuilds `js/places.js` (real surroundings) from `data/osm/`.
+- `node tools/route-layouts.mjs [layout ...]` traces the other layouts (Monaco Formula E, Monza Oval, Suzuka East...) through the OpenStreetMap roads in `data/osm/*-roads.json` into `data/circuits/<layout>.geojson`.
 - `node tools/build-circuits.mjs` rebuilds `js/circuits.js` from `data/circuits/` (real layouts and elevation).
 - `node tools/build-circuits.mjs --corners` also lists each circuit's corners by distance from the start line (for placing camber).
 - `node tools/spot-shots.mjs <trackId> [rev] [tunnel|bridge|over|bridgeside|high|low|top|0.25|s700 ...]` screenshots chosen places round a track.
@@ -433,7 +458,8 @@ The last two also need puppeteer installed.
   `data/circuits/`). Elevation: [Open Topo Data](https://www.opentopodata.org/) (EU-DEM, SRTM). Monaco's
   heights are from its corners' known elevations, as the town is too steep for the elevation data.
 - Jeddah's surroundings (buildings, coastline, lagoon, marina piers, parks, streets, mosques), the
-  Monza and Daytona circuit outlines, and Daytona's surroundings (Lake Lloyd, the grandstand, the
+  Monza and Daytona circuit outlines, every other track layout (traced along the mapped roads and
+  raceways), and Daytona's surroundings (Lake Lloyd, the grandstand, the
   infield buildings): © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, ODbL
   (see `data/osm/` and `data/circuits/`).
   A few towers OpenStreetMap doesn't have were placed from satellite imagery, with heights

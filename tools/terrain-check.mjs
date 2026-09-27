@@ -4,7 +4,8 @@
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 globalThis.THREE = require("./three.min.cjs");
-const { TRACKS } = await import("../js/tracks.js");
+const { TRACKS: MAIN, LAYOUTS } = await import("../js/tracks.js");
+const TRACKS = [...MAIN, ...LAYOUTS];   // (every layout of every venue)
 const { buildTrack } = await import("../js/trackgen.js");
 const { buildTerrain } = await import("../js/terrain.js");
 let bad = 0;
