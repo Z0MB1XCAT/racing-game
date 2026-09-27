@@ -351,7 +351,10 @@ export function buildScenery(track, theme, ctx){
 
 	// Which side has more room for the pits? The other side gets the main grandstand.
 	const roomOn = s => { let k = 0; for(let i = s0; i <= s1; i += 7){ const f = sp.at(i, s, hw + 11.5); if(sp.boxClear(f.x, f.z, f.ry, 7, 10, 1)) k++; } return k; };
-	const pitSide = roomOn(-1) >= roomOn(1) ? -1 : 1;
+	// On an oval the pits are in the infield, as at the real speedways.
+	let turning = 0;
+	for(let i = 0; i < n; i++) turning += c.curv[i];
+	const pitSide = track.def && track.def.kind === "oval" ? (turning > 0 ? 1 : -1) : roomOn(-1) >= roomOn(1) ? -1 : 1;
 
 	// --- Pit building: garages with team stripes, glass hospitality floor above, pit lane in front.
 	const TEAM = [0xff8000, 0xdc0000, 0x1e41ff, 0x00d2be, 0x006f62, 0x0090ff, 0x005aff, 0x6692ff, 0xb6babd, 0x52e252, 0x2a2e38];
@@ -391,38 +394,71 @@ export function buildScenery(track, theme, ctx){
 
 	// --- Grandstands: stepped seating facing the track, a roof, and fans in the seats.
 	const ROWS = 7, ROW_D = 1.3, ROW_H = 0.72, SEG = 8;
-	function stand(from, to, s, group){
+	// opts.rows: how many rows of seats. opts.level: build the seating up from the ground level at
+	// its front (for a stand on a slope, like the embankment behind a banked oval).
+	function stand(from, to, s, group, opts = {}){
+		const rows = opts.rows || ROWS;
 		let made = 0;
 		for(let i = from; i <= to; i += SEG){
 			const f = sp.at(i, s, hw + 3.2);
-			const depth = ROWS * ROW_D + 0.6;
+			const depth = rows * ROW_D + 0.6;
 			const [cx, cz] = f.local(0, -depth / 2);
 			if(!sp.boxClear(cx, cz, f.ry, SEG, depth, 1.2) || !sp.free(cx, cz, SEG * 0.7, group)) continue;
-			for(let r = 0; r < ROWS; r++){
+			// Heights below are above the ground where each piece stands, or (level) above the front.
+			const g0 = opts.level ? G(f.x, f.z) : null;
+			const up = (x, z, y) => g0 == null ? y : g0 + y - G(x, z);
+			for(let r = 0; r < rows; r++){
 				const [rx, rz] = f.local(0, -(r + 0.5) * ROW_D);
 				const top = 0.5 + (r + 1) * ROW_H;
-				B.box({ x: rx, z: rz, w: SEG + 0.02, d: ROW_D, h: top, ry: f.ry, color: r % 2 ? 0x9aa1ab : 0x8d939e, top: standColor, skip: ["back"] });
+				B.box({ x: rx, z: rz, w: SEG + 0.02, d: ROW_D, h: up(rx, rz, top), ry: f.ry, color: r % 2 ? 0x9aa1ab : 0x8d939e, top: standColor, skip: ["back"] });
 				for(let k = 0; k < 11; k++){
 					if(rand() > fill) continue;
 					const [qx, qz] = f.local(-SEG / 2 + 0.4 + k * (SEG - 0.8) / 10 + (rand() - 0.5) * 0.15, -(r + 0.5) * ROW_D - 0.1);
-					people.push({ x: qx, y: top + G(qx, qz), z: qz, ry: f.ry + (rand() - 0.5) * 0.5 });
+					people.push({ x: qx, y: up(qx, qz, top) + G(qx, qz), z: qz, ry: f.ry + (rand() - 0.5) * 0.5 });
 				}
 			}
-			const backZ = -ROWS * ROW_D - 0.2, topY = 0.5 + ROWS * ROW_H;
+			const backZ = -rows * ROW_D - 0.2, topY = 0.5 + rows * ROW_H;
 			const [bx, bz] = f.local(0, backZ);
-			B.box({ x: bx, z: bz, w: SEG + 0.02, d: 0.4, h: topY + 3.4, ry: f.ry, color: 0xb9c0c9 });
+			B.box({ x: bx, z: bz, w: SEG + 0.02, d: 0.4, h: up(bx, bz, topY + 3.4), ry: f.ry, color: 0xb9c0c9 });
 			const [rx, rz] = f.local(0, -depth / 2 - 0.2);
-			B.box({ x: rx, z: rz, y: topY + 3.2, w: SEG + 0.3, d: depth + 0.8, h: 0.35, ry: f.ry, color: 0xe9edf2, top: 0xf4f6fa, bottom: true });
+			B.box({ x: rx, z: rz, y: up(rx, rz, topY + 3.2), w: SEG + 0.3, d: depth + 0.8, h: 0.35, ry: f.ry, color: 0xe9edf2, top: 0xf4f6fa, bottom: true });
 			// Front wall with the stand colour.
 			const [wx, wz] = f.local(0, 0.1);
-			B.box({ x: wx, z: wz, w: SEG + 0.02, d: 0.2, h: 1.1, ry: f.ry, color: standColor });
-			place({ x: cx, z: cz, ry: f.ry, hw: SEG / 2, hd: depth / 2, y0: 0, y1: topY + 3.6 });
+			B.box({ x: wx, z: wz, w: SEG + 0.02, d: 0.2, h: up(wx, wz, 1.1), ry: f.ry, color: standColor });
+			place({ x: cx, z: cz, ry: f.ry, hw: SEG / 2, hd: depth / 2, y0: 0, y1: topY + 3.6 + (g0 == null ? 0 : g0 - G(cx, cz)) });
 			sp.take(cx, cz, SEG * 0.7, group);
 			made++;
 		}
 		return made;
 	}
-	const mainStand = stand(Math.max(s0 + 6, -40), Math.min(s1 - 6, 56), -pitSide, "main");
+	// Real grandstands from the map (js/places.js, e.g. Daytona's frontstretch): stepped seating with
+	// fans along exactly the stretch of track the real stand's outline covers, as tall as the real one.
+	let realStands = 0;
+	if(ctx.geo){
+		const geo = ctx.geo;
+		for(const b of geo.P.buildings){
+			if(b.k !== "stand") continue;
+			const pts = geo.ring(b.p);
+			for(const side of [1, -1]){
+				const cov = new Uint8Array(n);
+				let count = 0, any = -1;
+				// (The game's road is wider than the real one, so look across a band beside it.)
+				for(let i = 0; i < n; i++) for(let off = hw + 1; off <= hw + 30; off += 3){
+					const f = sp.at(i, side, off);
+					if(inPoly(pts, f.x, f.z)){ cov[i] = 1; count++; any = i; break; }
+				}
+				if(count < 40) continue;
+				// The covered stretch can run across the start line: walk out both ways from inside it.
+				let from = any, to = any;
+				while(cov[sp.wrap(from - 1)] && any - from < n) from--;
+				while(cov[sp.wrap(to + 1)] && to - from < n) to++;
+				const rows = Math.max(ROWS, Math.min(24, Math.round(b.h * geo.S / ROW_H)));
+				realStands += stand(from, to, side, "realstand", { rows, level: true });
+			}
+		}
+		if(realStands) geo.standsBuilt = true;
+	}
+	const mainStand = realStands ? realStands : stand(Math.max(s0 + 6, -40), Math.min(s1 - 6, 56), -pitSide, "main");
 	// Corner stands on the outside of the tightest corners.
 	const corners = [];
 	for(let i = 0; i < n; i += 3){
@@ -751,6 +787,7 @@ function buildRealCity(geo, { track, theme, B, G, sp, place, c, hw, n, rand, gro
 		if(!sp.free(cx, cz, rad * 0.7, id)) continue;
 		const h = b.h * S, g = G(cx, cz), y0 = g - 2;
 		const tower = b.k === "tower", stand = b.k === "stand";
+		if(stand && geo.standsBuilt) continue;          // (built as real seating along the track instead)
 		const col = stand ? (theme.standColor ?? 0x0e7c86) : tower ? GLASS[bi % GLASS.length] : PALE[bi % PALE.length];
 		B.prism(pts, y0, h + 2, col, stand ? null : [tower ? 1.3 : 1.6, tower ? 1.05 : 1.1], tower ? 0x2a3440 : 0xb8b0a2);
 		place({ x: cx, z: cz, ry: 0, hw: rad * 0.8, hd: rad * 0.8, y0: -2, y1: h });

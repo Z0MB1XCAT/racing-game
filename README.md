@@ -35,11 +35,25 @@ original did).
   Spa's hills come from real corner altitudes joined by steady climbs and descents: level
   through La Source, down to Eau Rouge, steeply up Raidillon, on up Kemmel to Les Combes, down
   through Pouhon to Stavelot and back up past Blanchimont. Red and yellow kerbs and tyre walls,
-  and catch fencing. Hills, camber, the tunnel and the
+  and catch fencing.
+  Monza is the real Grand Prix circuit (not the old high-speed oval) traced from OpenStreetMap,
+  which maps every chicane, at a larger scale with a narrower road like Monaco: the Rettifilo is a
+  real right-left chicane, then the Curva Grande, the Roggia chicane, both Lesmos (leaning into the
+  right), the run under the old banking to the Ascari left-right-left, the back straight and the
+  Parabolica. Two laps to a race by default.
+- **Daytona is the real 2.5-mile tri-oval** (not the road course), from OpenStreetMap, with its
+  banking: **31 degrees in all four turns, 18 through the tri-oval** (the whole frontstretch) and
+  **3 on the backstretch**, easing from one to the next the way the real transitions do. The track
+  sits on flat ground: the inside edge is level with the infield and the banking climbs to the
+  outside wall, where there's a tall catch fence, with an embankment behind it. The start/finish
+  line is at the apex of the tri-oval. Around it, from the real map: the huge frontstretch
+  grandstand (its real outline and height, packed with fans), the pits and garages in the infield,
+  and Lake Lloyd running along the backstretch.
+  Hills, camber, banking, the tunnel and the
   bridge are looks only: the handling is the same flat physics as always. Corners are still opened
   up where the original car (which can't brake) needs room, and a few spots where two parts of a
   circuit run side by side are eased apart to fit barriers between them. These tracks have new lap
-  record boards. (The weekly challenge that was running when they arrived, Jeddah reversed in
+  record boards (Monza and Daytona got fresh ones again when they moved to the real map data). (The weekly challenge that was running when they arrived, Jeddah reversed in
   week 2026-W39, finishes on the old layout.)
 - **Modes**: Race, Elimination (last car is out every lap), Championship (2 to 6 rounds, F1
   points, the leader starts at the back of the next round's grid) and Time trial against a ghost
@@ -414,8 +428,10 @@ The last two also need puppeteer installed.
 - F1 circuit centrelines: [bacinger/f1-circuits](https://github.com/bacinger/f1-circuits) (MIT, see
   `data/circuits/`). Elevation: [Open Topo Data](https://www.opentopodata.org/) (EU-DEM, SRTM). Monaco's
   heights are from its corners' known elevations, as the town is too steep for the elevation data.
-- Jeddah's surroundings (buildings, coastline, lagoon, marina piers, parks, streets, mosques):
-  © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, ODbL (see `data/osm/`).
+- Jeddah's surroundings (buildings, coastline, lagoon, marina piers, parks, streets, mosques), the
+  Monza and Daytona circuit outlines, and Daytona's surroundings (Lake Lloyd, the grandstand, the
+  infield buildings): © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, ODbL
+  (see `data/osm/` and `data/circuits/`).
   A few towers OpenStreetMap doesn't have were placed from satellite imagery, with heights
   estimated from their shadows.
 - Licensed under **GPL-3.0**, the same as the original (see [LICENSE](LICENSE)). If you share
