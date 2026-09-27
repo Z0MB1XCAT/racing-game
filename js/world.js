@@ -14,6 +14,7 @@ export const THEMES = {
 		buildings: { density: 0.9, tall: [12, 30], palette: [0xf2d7b6, 0xf0c9a8, 0xe8e0cf, 0xf5e6c8, 0xd9b99b, 0xf4efe6, 0xe9c9c0] },
 		catchFence: true, sea: { dir: [0.9, -0.45], color: 0x1f6fb0 }, mountains: "hills", mountainColor: 0x7f956a, fog: [0xd6ebff, 500, 1600], grandstand: 2, standColor: 0xd8342f, fans: false },
 	spa: { sky: [0x7f90a6, 0xcbd4dd], ground: 0x3f7b34, stripes: true, wall: 0xa9b1ba, road: 0x3c4047, trees: "pine", treeDensity: 1.3,
+		kerb: [0xd8342f, 0xf2c230], tyreWall: [0xd8342f, 0xf2c230], catchFence: true,
 		mountains: "hills", mountainColor: 0x3d663a, fog: [0xbcc6d0, 320, 1300], grandstand: 2, standColor: 0xf4c542, sun: 0.55, amb: 0.6 },
 	monza: { sky: [0x4a9eff, 0xd2eaff], ground: 0x5ea94a, stripes: true, wall: 0xb9c1c9, road: 0x41444b, trees: "round", treeDensity: 1.0,
 		mountains: "hills", mountainColor: 0x7c9a68, fog: [0xd2eaff, 500, 1700], grandstand: 3, standColor: 0xc8102e },
@@ -337,7 +338,8 @@ export function buildWorld(track, opts = {}){
 		for(const k of track.kerbs){
 			if(k.end - k.start < 6) continue;
 			const inRange = i => i >= k.start - 3 && i <= k.end + 3;
-			const colorFn = i => (Math.floor(i / 2.5) % 2 ? 0xe23b3b : 0xf4f6fa);
+			const [ka, kb] = theme.kerb || [0xe23b3b, 0xf4f6fa];
+			const colorFn = i => (Math.floor(i / 2.5) % 2 ? ka : kb);
 			const [a, bb] = k.side === 0 ? [hw + 0.2, hw - 1.4] : [-hw + 1.4, -hw - 0.2];
 			const mesh = new THREE.Mesh(keep(ribbon(c, a, bb, 0.045, i => inRange(i) && track.keep[k.side][i], colorFn)), kerbMat);
 			group.add(mesh);
@@ -381,7 +383,19 @@ export function buildWorld(track, opts = {}){
 	const wallH = theme.wallH || 1.2;
 	const style = theme.wall;
 	const pairs = { redwhite: [0xd8342f, 0xf2f2f2], bluewhite: [0x2f63c9, 0xf2f2f2], tyres: [0x1d1e22, 0xe9e9e9], concrete: [0xc9ccd2, 0xc9ccd2] };
-	for(const [x1, z1, x2, z2, , i1, i2] of track.wallSegs){
+	// Tyre walls (theme.tyreWall colours) on the outside of corners: wall pieces on the side
+	// opposite a kerb, near it.
+	const outsideOfCorner = (() => {
+		if(!theme.tyreWall || !track.center) return () => false;
+		const n = track.center.n, mark = [new Uint8Array(n), new Uint8Array(n)];
+		for(const k of track.kerbs){
+			if(k.end - k.start < 6) continue;
+			for(let i = k.start - 12; i <= k.end + 12; i++) mark[1 - k.side][(i + n) % n] = 1;
+		}
+		return (side, q) => q >= 0 && mark[side][q] === 1;
+	})();
+	let tyre = 0;
+	for(const [x1, z1, x2, z2, wside, i1, i2] of track.wallSegs){
 		const len = Math.hypot(x2 - x1, z2 - z1);
 		// The road sample a point part way along the segment belongs to (for its height).
 		const n = track.center ? track.center.n : 1, span = i1 === undefined ? 0 : ((i2 - i1) % n + n) % n;
@@ -392,7 +406,8 @@ export function buildWorld(track, opts = {}){
 			const pieces = Math.max(1, Math.round(len / 3));
 			for(let p = 0; p < pieces; p++){
 				const t = (p + 0.5) / pieces;
-				wallItems.push({ x: x1 + (x2 - x1) * t, y: wallH / 2, z: z1 + (z2 - z1) * t, w: len / pieces + 0.04, h: wallH, d: 0.3, ry, color: style, seg: sampleAt(t) });
+				const q = sampleAt(t), tw = outsideOfCorner(wside, q);
+				wallItems.push({ x: x1 + (x2 - x1) * t, y: wallH / 2, z: z1 + (z2 - z1) * t, w: len / pieces + 0.04, h: wallH, d: tw ? 0.9 : 0.3, ry, color: tw ? theme.tyreWall[tyre++ % 2] : style, seg: q });
 			}
 		}else if(typeof style === "number"){
 			wallItems.push({ x: (x1 + x2) / 2, y: wallH / 2, z: (z1 + z2) / 2, w: len + 0.3, h: wallH, d: 0.3, ry, color: style });

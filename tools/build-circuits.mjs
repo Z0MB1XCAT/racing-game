@@ -25,7 +25,17 @@ const CONF = {
 	monaco: { file: "mc-1929", length: 1800, width: 10, hairpin: [1195, 90, 24], startPoint: 120, dem: "eudem25m", tunnel: [640, 1080], hills: 1,
 		profile: { 0: 45, 10: 36, 20: 25, 30: 17, 40: 8, 50: 5, 58: 3, 70: 2, 85: 1, 100: 2, 110: 3, 120: 6, 130: 11, 140: 27, 150: 41 } },
 	// (Monaco is level side to side all round: Casino's off-camber read as a drop.)
-	spa: { file: "be-1925", length: 1700, width: 14, dem: "eudem25m", hills: 5,
+	// heights: [metres from the start line, height m] at the corners, from real altitudes; joined by
+	// steady climbs and descents (used instead of the DEM, which adds dips and humps that aren't there).
+	spa: { file: "be-1925", length: 1700, width: 14, dem: "eudem25m",
+		heights: [[0, 419], [150, 419], [330, 417],                      // level through La Source
+			[600, 408], [880, 392],                                      // down past the old pits to Eau Rouge
+			[1180, 428],                                                 // steeply up Raidillon
+			[2250, 466], [2480, 471],                                    // up the Kemmel straight to Les Combes
+			[2900, 454], [3150, 449],                                    // Rivage, the left after it
+			[3700, 399], [4150, 377],                                    // down through Pouhon, Fagnes
+			[4950, 366],                                                 // Stavelot, the lowest point
+			[5600, 390], [6050, 402], [6560, 416], [6954, 419]],         // up past Blanchimont to the Bus Stop
 		camber: [[876, 924, 5], [960, 1080, 3], [1104, 1152, -3],        // Eau Rouge left, Raidillon right, off-camber crest left
 			[3600, 3972, 2],                                             // Pouhon
 			[5628, 6060, 3]] },                                          // Blanchimont
@@ -41,6 +51,24 @@ const CONF = {
 		camber: [[2292, 2556, 12]] }
 };
 const STEP = 5, ELEV_STEP = 25, OUT_STEP = 12;
+
+// Height at distance s from a list of [distance, height] points: monotone cubic (Fritsch-Carlson),
+// so it never overshoots between points (no dips or humps that aren't in the list).
+function profileAt(P, s){
+	const n = P.length, d = [], m = [];
+	for(let i = 0; i < n - 1; i++) d.push((P[i + 1][1] - P[i][1]) / (P[i + 1][0] - P[i][0]));
+	for(let i = 0; i < n; i++){
+		if(i === 0 || i === n - 1){ m.push(0); continue; }
+		if(d[i - 1] * d[i] <= 0){ m.push(0); continue; }
+		const h0 = P[i][0] - P[i - 1][0], h1 = P[i + 1][0] - P[i][0], w1 = 2 * h1 + h0, w2 = h1 + 2 * h0;
+		m.push((w1 + w2) / (w1 / d[i - 1] + w2 / d[i]));
+	}
+	let k = 0;
+	while(k < n - 2 && s > P[k + 1][0]) k++;
+	const h = P[k + 1][0] - P[k][0], t = Math.max(0, Math.min(1, (s - P[k][0]) / h));
+	const t2 = t * t, t3 = t2 * t;
+	return (2 * t3 - 3 * t2 + 1) * P[k][1] + (t3 - 2 * t2 + t) * h * m[k] + (-2 * t3 + 3 * t2) * P[k + 1][1] + (t3 - t2) * h * m[k + 1];
+}
 
 // A loop of heights with every rise and dip smaller than `min` removed: find the turning points
 // that matter, then between each pair make the road climb (or descend) steadily, following the
@@ -271,6 +299,7 @@ for(const [id, conf] of Object.entries(CONF)){
 	// Keep only real hills: drop any rise or dip smaller than conf.hills, then make each climb and
 	// descent run one way only (no ripples), and ease it.
 	if(conf.hills) h = cleanHills(h, conf.hills);
+	if(conf.heights) h = Array.from({ length: M }, (_, m) => profileAt(conf.heights, m * OUT_STEP));
 	// Monaco tunnel: the DEM reads the hillside above it; the road runs level-ish underneath.
 	let tunnel = null;
 	if(conf.tunnel){

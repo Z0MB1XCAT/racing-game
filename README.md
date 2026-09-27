@@ -24,7 +24,12 @@ original did).
   Hotel hairpin is a real hairpin (parallel legs, tight tip) and the Nouvelle Chicane a real
   chicane; the tunnel runs under the Fairmont hotel (red Monte-Carlo banner over the mouth, the
   white stair tower, sea fence on the way in); catch fencing along the barriers; taller buildings;
-  and the harbour with moored yachts beside the track from the tunnel exit to La Rascasse. Hills, camber, the tunnel and the
+  and the harbour with moored yachts beside the track from the tunnel exit to La Rascasse. Inside, the
+  tunnel has tiled walls, #MonacoGP banners and rows of ceiling lamps.
+  Spa's hills come from real corner altitudes joined by steady climbs and descents: level
+  through La Source, down to Eau Rouge, steeply up Raidillon, on up Kemmel to Les Combes, down
+  through Pouhon to Stavelot and back up past Blanchimont. Red and yellow kerbs and tyre walls,
+  and catch fencing. Hills, camber, the tunnel and the
   bridge are looks only: the handling is the same flat physics as always. Corners are still opened
   up where the original car (which can't brake) needs room, and a few spots where two parts of a
   circuit run side by side are eased apart to fit barriers between them. These tracks have new lap

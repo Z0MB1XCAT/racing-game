@@ -6,6 +6,7 @@
 // Anything big enough to block a TV camera is recorded as an occluder, so the replay
 // director can pick shots that can actually see the cars.
 
+import { TUNNEL_WALL } from "./terrain.js";
 const THREE = globalThis.THREE;
 
 export function canvasTexture(w, h, draw){
@@ -193,9 +194,9 @@ const ADS_TEXT = [
 	["TURBO COLA", "#c8102e", "#fff"], ["NITRO TYRES", "#f4c542", "#111"], ["SLIPSTREAM", "#2580db", "#fff"], ["PIT LANE PIZZA", "#f48342", "#1b0e04"],
 	["POLE POSITION", "#fff", "#111"], ["BOX BOX", "#a95cff", "#fff"], ["CHEQUERED", "#111", "#fff"], ["KERB APPEAL", "#e23b3b", "#fff"],
 	["LAP ONE FUEL", "#0e7c86", "#fff"], ["PODIUM", "#f4f6fa", "#c8102e"], ["GRID GARAGE", "#2a2f3d", "#7ad7ff"], ["DRIFT KING", "#ff5ea8", "#fff"],
-	["MONTE-CARLO", "#c8102e", "#fff"]
+	["MONTE-CARLO", "#c8102e", "#fff"], ["#MONACOGP", "#16233f", "#f4f6fa"]
 ];
-const AD_MONTE_CARLO = 16;
+const AD_MONTE_CARLO = 16, AD_MONACO_GP = 17;
 function adsTexture(){
 	return canvasTexture(1024, 576, (g, W, H) => {
 		const bw = W / AD_COLS, bh = H / AD_ROWS;
@@ -274,6 +275,15 @@ export function buildScenery(track, theme, ctx){
 	const G = ctx.groundAt || (() => 0);
 	const B = new Builder();
 	if(ctx.groundAt) B.ground = G;
+	// Nothing inside a tunnel (between the barriers and its walls).
+	const tn = track.features && track.features.tunnel;
+	if(tn && c.h){
+		const len = (tn[1] - tn[0] + n) % n;
+		for(let k = -2; k <= len + 2; k += 2){
+			const q = (tn[0] + k + n) % n;
+			for(const side of [1, -1]) sp.take(c.x[q] + c.tz[q] * side * (hw + 1.2), c.z[q] - c.tx[q] * side * (hw + 1.2), 2.2, "tunnel");
+		}
+	}
 	// Keep everything out of the harbour: mark its water as taken, and moor yachts along the quay.
 	const hb = ctx.harbour;
 	if(hb){
@@ -488,7 +498,7 @@ export function buildScenery(track, theme, ctx){
 	// the first half of the tunnel, reaching back inland on a podium, with the red Monte-Carlo
 	// banner over the entrance, a white curved stair tower beside it and a fence along the sea
 	// on the way in; lower seafront buildings cover the rest of the tunnel.
-	const tun = track.features && track.features.tunnel;
+	const tun = track.features && track.features.tunnel, TW = TUNNEL_WALL;
 	if(tun && c.h){
 		const [a, b] = tun, to = b >= a ? b : b + n, len = to - a, sm = i => ((i % n) + n) % n;
 		const H = i => c.h[sm(i)];
@@ -499,7 +509,7 @@ export function buildScenery(track, theme, ctx){
 		const reach = (i, want) => {
 			for(let ext = want; ext > 0; ext -= 2){
 				let ok = true;
-				for(let o = hw + 1.4; o <= hw + 1.4 + ext && ok; o += 2) for(const dz of [-4, 0, 4]){
+				for(let o = hw + TW + 0.7; o <= hw + TW + 0.7 + ext && ok; o += 2) for(const dz of [-4, 0, 4]){
 					const j = sm(i + dz), px = c.x[j] + c.tz[j] * land * o, pz = c.z[j] - c.tx[j] * land * o;
 					c.hash.near(px, pz, hw + 3, k => { if(Math.min(Math.abs(k - j), n - Math.abs(k - j)) > 40 && Math.hypot(c.x[k] - px, c.z[k] - pz) < hw + 3) ok = false; });
 				}
@@ -509,7 +519,7 @@ export function buildScenery(track, theme, ctx){
 		};
 		const block = (i, floors, d, color, want, id) => {
 			const s = sm(i), ry = Math.atan2(c.tx[s], c.tz[s]), ext = reach(s, want);
-			const W = (hw + 1.4) * 2 + ext, off = land * ext / 2;
+			const W = (hw + TW + 0.7) * 2 + ext, off = land * ext / 2;
 			const x = c.x[s] + c.tz[s] * off, z = c.z[s] - c.tx[s] * off;
 			const base = H(s) + 7.4, top = base + floors * 3;
 			B.box({ x, z, y: base - G(x, z), w: W, d, h: floors * 3, ry, color, win: [2.4, 3], top: 0xcfc4b2 });
@@ -517,7 +527,7 @@ export function buildScenery(track, theme, ctx){
 			sp.take(x, z, Math.max(W, d) / 2, id);
 			// The podium under the inland part, down to the ground.
 			if(ext > 1){
-				const px = c.x[s] + c.tz[s] * land * (hw + 1.4 + ext / 2), pz = c.z[s] - c.tx[s] * land * (hw + 1.4 + ext / 2);
+				const px = c.x[s] + c.tz[s] * land * (hw + TW + 0.7 + ext / 2), pz = c.z[s] - c.tx[s] * land * (hw + TW + 0.7 + ext / 2);
 				B.box({ x: px, z: pz, w: ext, d, h: Math.max(1, base - G(px, pz)), ry, color: 0xb9ab94, win: [3.2, 3.6] });
 			}
 			// Balconies along the sea side.
@@ -526,13 +536,30 @@ export function buildScenery(track, theme, ctx){
 				B.box({ x: bx, z: bz, y: base + f * 3 - 0.1 - G(bx, bz), w: 0.7, d, h: 0.22, ry, color: 0xf4f6fa });
 			}
 		};
+		// Banners on the barriers inside the tunnel, laid on each barrier segment's own face.
+		for(const [x1, z1, x2, z2, , i1, i2] of track.wallSegs){
+			if(i1 === undefined) continue;
+			const inT = q => ((q - a + n) % n) >= 1 && ((q - a + n) % n) <= len - 1;
+			if(!inT(i1) && !inT(i2) && !(((i2 - i1 + n) % n) > len)) continue;
+			const L = Math.hypot(x2 - x1, z2 - z1), ux = (x2 - x1) / L, uz = (z2 - z1) / L;
+			for(let d = 3.5; d < L - 3; d += 7){
+				const t = d / L, q = sm(Math.round(i1 + ((i2 - i1 + n) % n) * t));
+				if(!inT(q)) continue;
+				let px = x1 + (x2 - x1) * t, pz = z1 + (z2 - z1) * t;
+				// Face the road: the side of the barrier the centreline is on.
+				let nx = -uz, nz = ux;
+				if((c.x[q] - px) * nx + (c.z[q] - pz) * nz < 0){ nx = -nx; nz = -nz; }
+				px += nx * 0.17; pz += nz * 0.17;
+				B.board({ x: px, z: pz, y: H(q) + 0.12 - G(px, pz), w: Math.min(6.6, L - 0.4), h: 0.95, ry: Math.atan2(nx, nz) }, AD_MONACO_GP);
+			}
+		}
 		const hotelTo = a + Math.round(len * 0.55);
 		for(let i = a + 4; i <= hotelTo; i += 7) block(i, i < a + 30 ? 6 : 7, 8, 0xe9dcc4, 14, "hotel");
 		for(let i = hotelTo + 7; i <= to - 4; i += 7) block(i, 2, 8, 0xd8cdb8, 8, "seafront");
 		// Front of the hotel over the mouth, and the banner.
 		const s0 = sm(a), ry0 = Math.atan2(c.tx[s0], c.tz[s0]), face = Math.atan2(-c.tx[s0], -c.tz[s0]);
 		const mx = c.x[s0] - c.tx[s0] * 0.6, mz = c.z[s0] - c.tz[s0] * 0.6;
-		B.box({ x: mx, z: mz, y: H(s0) + 5.8 - G(mx, mz), w: (hw + 1.4) * 2, d: 1.2, h: 1.7, ry: ry0, color: 0x6b675f });
+		B.box({ x: mx, z: mz, y: H(s0) + 5.8 - G(mx, mz), w: (hw + TW + 0.7) * 2, d: 1.2, h: 1.7, ry: ry0, color: 0x6b675f });
 		const fx = c.x[s0] - c.tx[s0] * 1.25, fz = c.z[s0] - c.tz[s0] * 1.25;
 		B.board({ x: fx, z: fz, y: H(s0) + 5.85 - G(fx, fz), w: hw * 2 + 0.8, h: 1.5, ry: face }, AD_MONTE_CARLO);
 		// The white curved stair tower on the land side, rising towards the hotel.

@@ -129,39 +129,81 @@ function roofStrip(c, from, to, left, right, lift){
 	return g;
 }
 
-// The Monaco tunnel: walls outside the barriers, a roof, strip lights, and the hotel above.
-// Returns meshes to add and occluder boxes (so TV cameras don't try to look through it).
+// The Monaco tunnel: tiled walls outside the barriers (far enough out that the barriers, which
+// may cut a little inside the curve, never poke through), a dark roof with two rows of lamps,
+// and the building mass above. Returns meshes to add and occluder boxes (so TV cameras don't try
+// to look through it).
+export const TUNNEL_WALL = 2.1;                    // tunnel wall, this far outside the road edge
+function tileTexture(){
+	const cv = document.createElement("canvas"); cv.width = cv.height = 128;
+	const g = cv.getContext("2d");
+	g.fillStyle = "#6d6258"; g.fillRect(0, 0, 128, 128);
+	for(let y = 0; y < 4; y++) for(let x = 0; x < 4; x++){
+		const l = 170 + ((x * 7 + y * 13) % 5) * 7;
+		g.fillStyle = `rgb(${l + 28},${l + 10},${l - 18})`;
+		g.fillRect(x * 32 + 1.5, y * 32 + 1.5, 29, 29);
+	}
+	const tex = new THREE.CanvasTexture(cv);
+	tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+	return tex;
+}
+// Vertical wall along the road at lateral offset lat, from just below the road to `height` above
+// it, with texture coordinates in world units (u along, v up).
+function tunnelWall(c, from, to, lat, height){
+	const pos = [], uv = [], idx = [];
+	let u = 0;
+	for(let i = from; i <= to; i++){
+		const s = i % c.n, nx = c.tz[s], nz = -c.tx[s];
+		if(i > from){ const p = (i - 1) % c.n; u += Math.hypot(c.x[s] + nx * lat - c.x[p] - c.tz[p] * lat, c.z[s] + nz * lat - c.z[p] + c.tx[p] * lat); }
+		const y = c.h[s];
+		pos.push(c.x[s] + nx * lat, y - 0.5, c.z[s] + nz * lat, c.x[s] + nx * lat, y + height, c.z[s] + nz * lat);
+		uv.push(u / 3.2, -0.5 / 3.2, u / 3.2, height / 3.2);
+		if(i < to){ const k = (i - from) * 2; idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3); }
+	}
+	const g = new THREE.BufferGeometry();
+	g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+	g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+	g.setIndex(idx);
+	g.computeVertexNormals();
+	return g;
+}
 export function buildTunnel(track, [a, b], keep){
-	const c = track.center, hw = c.hw, n = c.n;
+	const c = track.center, hw = c.hw, n = c.n, W = hw + TUNNEL_WALL;
 	const to = b >= a ? b : b + n;
 	const meshes = [], occ = [];
-	const wallMat = keep(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
-	for(const lat of [hw + 0.7, -hw - 0.7]) meshes.push(new THREE.Mesh(keep(sideStrip(c, a, to, lat, 6.2, 0x8f8a82)), wallMat));
-	const roof = new THREE.Mesh(keep(roofStrip(c, a, to, hw + 1.4, -hw - 1.4, 6)), keep(new THREE.MeshLambertMaterial({ color: 0x5d5a55, side: THREE.DoubleSide })));
+	const tiles = keep(tileTexture());
+	// Tiled walls, lit warm by the tunnel lamps (so they glow rather than sit in shadow).
+	const tileMat = keep(new THREE.MeshLambertMaterial({ map: tiles, emissive: 0x6b4a26, emissiveMap: tiles, emissiveIntensity: 0.55, side: THREE.DoubleSide }));
+	for(const lat of [W, -W]) meshes.push(new THREE.Mesh(keep(tunnelWall(c, a, to, lat, 6.2)), tileMat));
+	const roof = new THREE.Mesh(keep(roofStrip(c, a, to, W + 0.1, -W - 0.1, 6)), keep(new THREE.MeshLambertMaterial({ color: 0x4a4540, emissive: 0x1a140e, side: THREE.DoubleSide })));
 	roof.castShadow = true;
 	meshes.push(roof);
 	// Upper deck on top, so it looks like a building rather than a lid.
-	const top = new THREE.Mesh(keep(roofStrip(c, a, to, hw + 1.4, -hw - 1.4, 7.4)), keep(new THREE.MeshLambertMaterial({ color: 0xd9cbb2, side: THREE.DoubleSide })));
+	const top = new THREE.Mesh(keep(roofStrip(c, a, to, W + 0.7, -W - 0.7, 7.4)), keep(new THREE.MeshLambertMaterial({ color: 0xd9cbb2, side: THREE.DoubleSide })));
 	meshes.push(top);
-	for(const lat of [hw + 1.4, -hw - 1.4]) meshes.push(new THREE.Mesh(keep(sideStrip(c, a, to, lat, 7.4, 0xe7dcc6)), wallMat));
-	// Lights along the roof.
+	const outerMat = keep(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+	for(const lat of [W + 0.7, -W - 0.7]) meshes.push(new THREE.Mesh(keep(sideStrip(c, a, to, lat, 7.4, 0xe7dcc6)), outerMat));
+	// Two rows of lamps in the ceiling, white and amber, and occluders for the TV director.
 	const lights = [];
-	for(let i = a; i <= to; i += 5){
-		const s = i % n;
-		lights.push(new THREE.Vector3(c.x[s], c.h[s] + 5.9, c.z[s]));
-		occ.push({ x: c.x[s], z: c.z[s], ry: Math.atan2(c.tx[s], c.tz[s]), hw: hw + 1.6, hd: 3, y0: c.h[s] + 5.3, y1: c.h[s] + 7.6 });
-		for(const lat of [hw + 0.8, -hw - 0.8]) occ.push({ x: c.x[s] + c.tz[s] * lat, z: c.z[s] - c.tx[s] * lat, ry: Math.atan2(c.tx[s], c.tz[s]), hw: 0.4, hd: 3, y0: c.h[s] - 0.5, y1: c.h[s] + 6.2 });
+	for(let i = a + 2; i <= to; i += 4){
+		const s = i % n, nx = c.tz[s], nz = -c.tx[s], ry = Math.atan2(c.tx[s], c.tz[s]);
+		for(const lat of [hw * 0.45, -hw * 0.45]) lights.push({ x: c.x[s] + nx * lat, y: c.h[s] + 5.93, z: c.z[s] + nz * lat, ry, warm: ((i - a) / 4 + (lat > 0 ? 1 : 0)) % 3 === 0 });
+		if((i - a) % 8 === 2){
+			occ.push({ x: c.x[s], z: c.z[s], ry, hw: W + 0.8, hd: 3, y0: c.h[s] + 5.3, y1: c.h[s] + 7.6 });
+			for(const lat of [W, -W]) occ.push({ x: c.x[s] + nx * lat, z: c.z[s] + nz * lat, ry, hw: 0.4, hd: 3, y0: c.h[s] - 0.5, y1: c.h[s] + 6.2 });
+		}
 	}
-	const lamp = new THREE.InstancedMesh(keep(new THREE.BoxBufferGeometry(0.5, 0.12, 2.4)), keep(new THREE.MeshBasicMaterial({ color: 0xffe2a0 })), lights.length);
-	const m = new THREE.Matrix4();
-	lights.forEach((p, i) => { m.makeTranslation(p.x, p.y, p.z); lamp.setMatrixAt(i, m); });
+	const lamp = new THREE.InstancedMesh(keep(new THREE.BoxBufferGeometry(1.1, 0.1, 0.7)), keep(new THREE.MeshBasicMaterial({ color: 0xffffff })), lights.length);
+	const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), one = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3(), col = new THREE.Color();
+	lights.forEach((l, i) => {
+		e.set(0, l.ry, 0); q.setFromEuler(e); p.set(l.x, l.y, l.z); m.compose(p, q, one); lamp.setMatrixAt(i, m);
+		lamp.setColorAt(i, col.set(l.warm ? 0xffb347 : 0xf4f8ff));
+	});
 	lamp.frustumCulled = false;
 	meshes.push(lamp);
 	return { meshes, occluders: occ };
 }
 
-// Where one road passes over another (Suzuka): a deck under the upper road and pillars
-// beside the lower one. `groundAt` is the terrain.
 export function buildBridge(track, [lowAt, upAt], groundAt, keep){
 	const c = track.center, hw = c.hw, n = c.n;
 	const items = [], occ = [];
