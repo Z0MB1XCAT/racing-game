@@ -43,9 +43,13 @@ original did).
   Parabolica. Two laps to a race by default.
 - **Daytona is the real 2.5-mile tri-oval** (not the road course), from OpenStreetMap, with its
   banking: **31 degrees in all four turns, 18 through the tri-oval** (the whole frontstretch) and
-  **3 on the backstretch**, easing from one to the next the way the real transitions do. The track
+  **3 on the backstretch**, easing from one to the next the way the real transitions do. The real
+  banked surface is 40 ft wide, so in the turns the outside edge is 20.6 ft (6.3 m) above the
+  inside; the game's road is about three times wider than the real one next to the cars, so the
+  banking rises exactly that real height (in car lengths) across it, at a gentler angle. The track
   sits on flat ground: the inside edge is level with the infield and the banking climbs to the
-  outside wall, where there's a tall catch fence, with an embankment behind it. The start/finish
+  outside wall, where there's a tall catch fence, with an embankment behind it. The start line,
+  gantry, grid and floodlights all follow the banking. The start/finish
   line is at the apex of the tri-oval. Around it, from the real map: the huge frontstretch
   grandstand (its real outline and height, packed with fans), the pits and garages in the infield,
   and Lake Lloyd running along the backstretch.

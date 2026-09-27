@@ -14,7 +14,11 @@ const DIR = new URL("../data/circuits/", import.meta.url);
 // Rettifilo, Roggia and Ascari chicanes keep their real shape. The Lesmos lean into the right.
 const MONZA_LENGTH = 2000, MONZA_WIDTH = 12, MONZA_CAMBER = [[2172, 2316, 3, "R"], [2532, 2604, 3, "R"]];
 // Daytona, metres from the start line: tri-oval 18, Turns 1-2 31, backstretch 3, Turns 3-4 31.
-const DAYTONA_LENGTH = 1000, DAYTONA_WIDTH = 18;
+// The real banked surface is 40 ft (12.2 m) wide, so at 31 degrees the outside edge is 20.6 ft
+// (6.3 m) above the inside. The game's road is about three times wider than the real one next to
+// the cars (a car is 2 units, about 4.5 m), so the banking is set to rise exactly as high as the
+// real one, in car lengths, across the whole road: the real height, at a gentler angle.
+const DAYTONA_LENGTH = 1000, DAYTONA_WIDTH = 18, BANK_SURFACE_M = 12.19, METRES_PER_UNIT = 2.25;
 const DAYTONA_BANK = [[0, 18], [420, 18], [640, 31], [1400, 31], [1580, 3], [2380, 3], [2560, 31], [3280, 31], [3500, 18]];
 const CONF = {
 	// Monaco's data starts at Casino Square; the start line is ~140 m before Ste Devote (point 120).
@@ -55,7 +59,7 @@ const CONF = {
 	// frontstretch), 3 on the backstretch. Real transitions are long, so they ease over bankRamp m.
 	// The data starts at Turn 3; point 116 is the start/finish line, at the apex of the tri-oval.
 	daytona: { file: "daytona-osm", startPoint: 116, length: DAYTONA_LENGTH, width: DAYTONA_WIDTH, flat: true,
-		bank: DAYTONA_BANK },
+		bank: DAYTONA_BANK, bankRise: { surface: BANK_SURFACE_M, perUnit: METRES_PER_UNIT } },
 	suzuka: { file: "jp-1962", length: 1650, width: 13, dem: "srtm30m", bridge: 22, hills: 5,   // bridge lift in metres (about 6 units at game scale)
 		camber: [[408, 684, 3, "R"],                                          // Turns 1-2
 			[1464, 1584, -4, "L"],                                            // Reverse Bank (gyaku bank)
@@ -350,7 +354,10 @@ for(const [id, conf] of Object.entries(CONF)){
 			const f = (sx - sa) / Math.max(1, sb - sa);
 			return a[1] + (b[1] - a[1]) * (0.5 - 0.5 * Math.cos(Math.PI * f));
 		};
-		camber = Array.from({ length: M }, (_, m) => -Math.tan(deg(m * OUT_STEP) * Math.PI / 180));
+		// The slope across the game's road: the real angle, or (bankRise) the real rise from the inside
+		// edge to the outside one, spread across the game's wider road.
+		const R = conf.bankRise, slope = d => R ? Math.sin(d) * R.surface / R.perUnit / conf.width : Math.tan(d);
+		camber = Array.from({ length: M }, (_, m) => -slope(deg(m * OUT_STEP) * Math.PI / 180));
 	}
 	if(conf.camber){
 		camber = new Array(M).fill(0);

@@ -379,25 +379,33 @@ export function buildWorld(track, opts = {}){
 		// Chequered start line.
 		const chk = keep(canvasTexture(16, 2, (g) => { for(let i = 0; i < 16; i++) for(let j = 0; j < 2; j++){ g.fillStyle = (i + j) % 2 ? "#111" : "#f5f5f5"; g.fillRect(i, j, 1, 1); } }));
 		chk.magFilter = THREE.NearestFilter;
-		const startLine = new THREE.Mesh(keep(new THREE.PlaneBufferGeometry(hw * 2, 1.6)), keep(new THREE.MeshLambertMaterial({ map: chk })));
-		startLine.rotation.x = -Math.PI / 2;
+		// On a banked start (Daytona's tri-oval) the line, gantry and grid slots follow the camber:
+		// the road rises by bank0 per unit to the left (+x at the line).
+		const bank0 = track.center && track.center.bank ? track.center.bank[0] : 0, tilt = Math.atan(bank0);
+		const lineGeo = keep(new THREE.PlaneBufferGeometry(hw * 2, 1.6));
+		lineGeo.rotateX(-Math.PI / 2);
+		lineGeo.rotateZ(tilt);
+		const startLine = new THREE.Mesh(lineGeo, keep(new THREE.MeshLambertMaterial({ map: chk })));
 		const h0 = heightAt(0, START_Z);
 		startLine.position.set(0, 0.05 + h0, START_Z);
 		group.add(startLine);
 		// Gantry over the line.
+		// Each post stands on its own edge of the road (they differ on a banked start), up to a level beam.
+		const eL = hw * bank0, eR = -hw * bank0, beamY = 7.2 + Math.max(eL, eR, 0);
+		const post = (x, e) => ({ x, y: (e - 1 + beamY) / 2, z: START_Z, w: 0.5, h: beamY - e + 1, d: 0.5, color: 0x2a2e38 });
 		const gantry = mergedBoxes([
-			{ x: hw + 1.6, y: 3.5, z: START_Z, w: 0.5, h: 7, d: 0.5, color: 0x2a2e38 },
-			{ x: -hw - 1.6, y: 3.5, z: START_Z, w: 0.5, h: 7, d: 0.5, color: 0x2a2e38 },
-			{ x: 0, y: 7.2, z: START_Z, w: hw * 2 + 3.7, h: 1.2, d: 0.6, color: 0x1a1d25 }
+			post(hw + 1.6, eL),
+			post(-hw - 1.6, eR),
+			{ x: 0, y: beamY, z: START_Z, w: hw * 2 + 3.7, h: 1.2, d: 0.6, color: 0x1a1d25 }
 		]);
 		const gm = new THREE.Mesh(keep(gantry), keep(new THREE.MeshLambertMaterial({ vertexColors: true })));
 		gm.position.y = h0;
 		group.add(gm);
 		const banner = new THREE.Mesh(keep(new THREE.PlaneBufferGeometry(hw * 2 + 3, 1)), keep(new THREE.MeshBasicMaterial({ map: chk, side: THREE.DoubleSide })));
-		banner.position.set(0, 7.2 + h0, START_Z - 0.32);
+		banner.position.set(0, beamY + h0, START_Z - 0.32);
 		group.add(banner);
 		// Grid slots.
-		const slots = GRID.slice(0, 10).map(g => ({ x: g.x, y: 0.05 + heightAt(g.x, g.y + 1.25), z: g.y + 1.25, sx: 1.4, sy: 1, sz: 0.14 }));
+		const slots = GRID.slice(0, 10).map(g => ({ x: g.x, y: 0.05 + heightAt(g.x, g.y + 1.25), z: g.y + 1.25, sx: 1.4, sy: 1, sz: 0.14, rz: tilt }));
 		group.add(instanced(keep(new THREE.BoxBufferGeometry(1, 0.02, 1)), lineMat, slots));
 	}else if(!track.center){
 		// Original-style start line and checkpoint.
@@ -645,12 +653,14 @@ export function buildWorld(track, opts = {}){
 			const off = hw + 3;
 			const x = c.x[i] + nx * off, z = c.z[i] + nz * off;
 			if(!track.keep[side > 0 ? 0 : 1][i] || !roomFor(x, z, 0.8)) continue;
-			const gy = Math.max(groundAt(x, z), c.h ? c.h[i] - 1 : 0), py = c.h ? c.h[i] : 0;
+			// Heights from the edge of the road beside the pole (they differ across a banked road).
+			const bank = c.bank ? c.bank[i] : 0, edgeY = c.h ? c.h[i] + side * hw * bank : 0;
+			const gy = Math.max(groundAt(x, z), c.h ? edgeY - 1 : 0), py = edgeY;
 			poles.push({ x, y: gy + 5 + (py - gy) / 2, z, sx: 0.3, sy: 10 + (py - gy), sz: 0.3 });
 			heads.push({ x: x - nx * 1.2, y: py + 10, z: z - nz * 1.2, sx: 1.4, sy: 0.4, sz: 1.4 });
 			// The pool of light lies on the road, tilted with its camber (so it doesn't clip into it).
-			const lat = -side * (hw * 0.7 + 3) + side * off, bank = c.bank ? c.bank[i] : 0;
-			pools.push({ x: x - nx * (hw * 0.7 + 3), y: py + lat * bank + 0.07, z: z - nz * (hw * 0.7 + 3), rx: -Math.PI / 2 + Math.atan(bank), ry: Math.atan2(-c.tz[i], c.tx[i]), s: hw * 1.6 });
+			const lat = -side * (hw * 0.7 + 3) + side * off, cy = c.h ? c.h[i] : 0;
+			pools.push({ x: x - nx * (hw * 0.7 + 3), y: cy + lat * bank + 0.07, z: z - nz * (hw * 0.7 + 3), rx: -Math.PI / 2 + Math.atan(bank), ry: Math.atan2(-c.tz[i], c.tx[i]), s: hw * 1.6 });
 		}
 		const unit = keep(new THREE.BoxBufferGeometry(1, 1, 1));
 		group.add(instanced(unit, keep(new THREE.MeshLambertMaterial({ color: 0x3a3f4a })), poles));
