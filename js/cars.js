@@ -57,22 +57,28 @@ function numberTexture(num, ink){
 	});
 }
 
-// Pattern textures for the main paint (cached by pattern + colours).
-const texCache = new Map();
-function patternTexture(pattern, main, second, accent){
+// Small repeatable random numbers, so a pattern looks the same on every screen.
+function seeded(seed){
+	return () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+// Darker or lighter version of a CSS colour.
+function shade(css, l){ const c = new THREE.Color(css); const h = {}; c.getHSL(h); return "#" + c.setHSL(h.h, h.s, Math.max(0, Math.min(1, h.l + l))).getHexString(); }
+
+// The drawing behind each patterned paint (cached by pattern + colours). Also used for the garage swatches.
+const canvasCache = new Map();
+export function patternCanvas(pattern, main, second, accent){
 	const key = [pattern, main, second, accent].join("|");
-	if(texCache.has(key)) return texCache.get(key);
-	let t = null;
+	if(canvasCache.has(key)) return canvasCache.get(key);
+	let c = null;
+	const draw = (w, h, fn) => { c = document.createElement("canvas"); c.width = w; c.height = h; fn(c.getContext("2d"), w, h); };
 	if(pattern === "check"){
-		t = canvasTex(64, 64, g => { for(let i = 0; i < 8; i++) for(let j = 0; j < 8; j++){ g.fillStyle = (i + j) % 2 ? "#f4f6fa" : main; g.fillRect(i * 8, j * 8, 8, 8); } });
-		t.magFilter = THREE.NearestFilter;
+		draw(64, 64, g => { for(let i = 0; i < 8; i++) for(let j = 0; j < 8; j++){ g.fillStyle = (i + j) % 2 ? "#f4f6fa" : main; g.fillRect(i * 8, j * 8, 8, 8); } });
 	}else if(pattern === "fade"){
-		t = canvasTex(8, 128, (g, w, h) => { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, main); gr.addColorStop(0.45, main); gr.addColorStop(1, second); g.fillStyle = gr; g.fillRect(0, 0, w, h); });
+		draw(8, 128, (g, w, h) => { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, main); gr.addColorStop(0.45, main); gr.addColorStop(1, second); g.fillStyle = gr; g.fillRect(0, 0, w, h); });
 	}else if(pattern === "carbon"){
-		t = canvasTex(32, 32, g => { g.fillStyle = "#1a1c20"; g.fillRect(0, 0, 32, 32); for(let i = 0; i < 8; i++) for(let j = 0; j < 8; j++){ g.fillStyle = (i + j) % 2 ? "#26292f" : "#141619"; g.fillRect(i * 4, j * 4, 4, 2); g.fillRect(i * 4 + ((i + j) % 2) * 2, j * 4 + 2, 2, 2); } });
-		t.magFilter = THREE.NearestFilter;
+		draw(32, 32, g => { g.fillStyle = "#1a1c20"; g.fillRect(0, 0, 32, 32); for(let i = 0; i < 8; i++) for(let j = 0; j < 8; j++){ g.fillStyle = (i + j) % 2 ? "#26292f" : "#141619"; g.fillRect(i * 4, j * 4, 4, 2); g.fillRect(i * 4 + ((i + j) % 2) * 2, j * 4 + 2, 2, 2); } });
 	}else if(pattern === "flames"){
-		t = canvasTex(128, 128, (g, w, h) => {
+		draw(128, 128, (g, w, h) => {
 			g.fillStyle = main; g.fillRect(0, 0, w, h);
 			for(const [col, s] of [["#ff5a1f", 1], ["#ffc21f", 0.62]]){
 				g.fillStyle = col; g.beginPath(); g.moveTo(0, h);
@@ -81,10 +87,131 @@ function patternTexture(pattern, main, second, accent){
 			}
 		});
 	}else if(pattern === "record"){
-		t = canvasTex(64, 64, (g, w, h) => { g.fillStyle = main; g.fillRect(0, 0, w, h); g.strokeStyle = second; g.lineWidth = 5; for(let i = -64; i < 128; i += 18){ g.beginPath(); g.moveTo(i, h); g.lineTo(i + 40, 0); g.stroke(); } });
+		draw(64, 64, (g, w, h) => { g.fillStyle = main; g.fillRect(0, 0, w, h); g.strokeStyle = second; g.lineWidth = 5; for(let i = -64; i < 128; i += 18){ g.beginPath(); g.moveTo(i, h); g.lineTo(i + 40, 0); g.stroke(); } });
+	}else if(pattern === "monster"){
+		// Three torn claw marks, with a few specks thrown off them.
+		draw(128, 128, (g, w, h) => {
+			g.fillStyle = main; g.fillRect(0, 0, w, h);
+			g.fillStyle = accent; g.shadowColor = accent; g.shadowBlur = 6;
+			for(let i = 0; i < 3; i++){
+				const x0 = 26 + i * 30, top = 8 + i * 5, bot = 120 - (i === 1 ? 0 : 10);
+				g.beginPath(); g.moveTo(x0, top);
+				g.bezierCurveTo(x0 + 16, top + 30, x0 + 4, bot - 40, x0 + 14, bot);
+				g.lineTo(x0 + 6, bot - 22);
+				g.bezierCurveTo(x0 - 6, bot - 50, x0 + 4, top + 34, x0 - 5, top + 6);
+				g.closePath(); g.fill();
+			}
+			const r = seeded(7);
+			for(let i = 0; i < 14; i++){ g.beginPath(); g.arc(20 + r() * 96, 10 + r() * 108, 0.8 + r() * 1.6, 0, Math.PI * 2); g.fill(); }
+		});
+	}else if(pattern === "polka"){
+		draw(64, 64, (g, w, h) => { g.fillStyle = main; g.fillRect(0, 0, w, h); g.fillStyle = accent; for(let y = 0; y < 5; y++) for(let x = 0; x < 5; x++){ g.beginPath(); g.arc(x * 16 + (y % 2) * 8, y * 16, 4.5, 0, Math.PI * 2); g.fill(); } });
+	}else if(pattern === "zebra" || pattern === "tiger"){
+		// Wavy bands that taper to a point, from both edges.
+		draw(128, 128, (g, w, h) => {
+			g.fillStyle = main; g.fillRect(0, 0, w, h);
+			g.fillStyle = second;
+			const r = seeded(pattern === "zebra" ? 3 : 11), n = pattern === "zebra" ? 9 : 7;
+			for(let i = 0; i < n; i++){
+				const y = (i + 0.3) * h / n + (r() - 0.5) * 6, th = pattern === "zebra" ? 6 + r() * 4 : 4 + r() * 5, from = i % 2 ? w : 0, dir = i % 2 ? -1 : 1;
+				const len = (pattern === "zebra" ? 0.75 : 0.55 + r() * 0.25) * w;
+				g.beginPath(); g.moveTo(from, y - th);
+				g.quadraticCurveTo(from + dir * len * 0.5, y - th - 8 + r() * 16, from + dir * len, y + (r() - 0.5) * 10);
+				g.quadraticCurveTo(from + dir * len * 0.5, y + th + 8 - r() * 16, from, y + th);
+				g.fill();
+			}
+		});
+	}else if(pattern === "candy" || pattern === "hazard"){
+		draw(64, 64, (g, w, h) => {
+			g.fillStyle = main; g.fillRect(0, 0, w, h);
+			g.fillStyle = second;
+			const band = pattern === "hazard" ? 11 : 8;
+			for(let i = -w; i < w * 2; i += band * 2){ g.beginPath(); g.moveTo(i, 0); g.lineTo(i + band, 0); g.lineTo(i + band + h, h); g.lineTo(i + h, h); g.fill(); }
+		});
+	}else if(pattern === "camo"){
+		draw(128, 128, (g, w, h) => {
+			g.fillStyle = main; g.fillRect(0, 0, w, h);
+			const r = seeded(main.length * 31 + 5);
+			for(const col of [second, accent, shade(second, -0.08)]){
+				g.fillStyle = col;
+				for(let i = 0; i < 9; i++){
+					const x = r() * w, y = r() * h;
+					for(let k = 0; k < 4; k++){ g.beginPath(); g.ellipse(x + (r() - 0.5) * 22, y + (r() - 0.5) * 16, 6 + r() * 10, 4 + r() * 7, r() * Math.PI, 0, Math.PI * 2); g.fill(); }
+				}
+			}
+		});
+	}else if(pattern === "sunset"){
+		draw(8, 128, (g, w, h) => { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, second); gr.addColorStop(0.5, accent); gr.addColorStop(1, main); g.fillStyle = gr; g.fillRect(0, 0, w, h); });
+	}else if(pattern === "galaxy"){
+		draw(128, 128, (g, w, h) => {
+			g.fillStyle = second; g.fillRect(0, 0, w, h);
+			const r = seeded(21);
+			for(const [col, x, y, rad] of [[main, 40, 50, 60], [accent + "88", 84, 70, 40], ["#ff5fc466", 30, 96, 34], ["#35b8ff55", 100, 24, 36]]){
+				const gr = g.createRadialGradient(x, y, 0, x, y, rad); gr.addColorStop(0, col); gr.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = gr; g.fillRect(0, 0, w, h);
+			}
+			for(let i = 0; i < 70; i++){ g.fillStyle = `rgba(255,255,255,${0.4 + r() * 0.6})`; const s = r() < 0.12 ? 2 : 1; g.fillRect(Math.floor(r() * w), Math.floor(r() * h), s, s); }
+		});
+	}else if(pattern === "pixel"){
+		draw(16, 16, (g, w, h) => {
+			const cols = [main, second, shade(main, 0.15), shade(second, -0.1)], r = seeded(4);
+			for(let y = 0; y < h; y += 2) for(let x = 0; x < w; x += 2){ g.fillStyle = cols[Math.floor(r() * cols.length)]; g.fillRect(x, y, 2, 2); }
+		});
+	}else if(pattern === "synth"){
+		draw(64, 64, (g, w, h) => {
+			g.fillStyle = main; g.fillRect(0, 0, w, h);
+			g.strokeStyle = second; g.lineWidth = 1.5; g.shadowColor = second; g.shadowBlur = 4;
+			for(let i = 0; i <= w; i += 16){ g.beginPath(); g.moveTo(i, 0); g.lineTo(i, h); g.stroke(); g.beginPath(); g.moveTo(0, i); g.lineTo(w, i); g.stroke(); }
+			g.strokeStyle = accent; g.shadowColor = accent; g.lineWidth = 2;
+			g.beginPath(); g.moveTo(0, 40); g.lineTo(w, 40); g.stroke();
+		});
+	}else if(pattern === "lightning"){
+		draw(128, 128, (g, w, h) => {
+			g.fillStyle = main; g.fillRect(0, 0, w, h);
+			g.fillStyle = accent; g.shadowColor = accent; g.shadowBlur = 5;
+			for(const [x, s] of [[24, 1], [80, 0.8]]){
+				g.beginPath(); g.moveTo(x + 16 * s, 4); g.lineTo(x - 6 * s, 62); g.lineTo(x + 10 * s, 58); g.lineTo(x - 4 * s, 124);
+				g.lineTo(x + 30 * s, 48); g.lineTo(x + 14 * s, 52); g.lineTo(x + 32 * s, 4); g.closePath(); g.fill();
+			}
+		});
+	}else if(pattern === "lava"){
+		// Glowing cracks: branching lines, blurred underneath for the glow.
+		draw(128, 128, (g, w, h) => {
+			g.fillStyle = main; g.fillRect(0, 0, w, h);
+			const r = seeded(9);
+			g.lineCap = "round"; g.lineJoin = "round";
+			const paths = [];
+			for(let i = 0; i < 9; i++){
+				let x = r() * w, y = r() * h, a = r() * Math.PI * 2;
+				const pts = [[x, y]];
+				for(let k = 0; k < 6; k++){ a += (r() - 0.5) * 1.4; x += Math.cos(a) * 12; y += Math.sin(a) * 12; pts.push([x, y]); }
+				paths.push(pts);
+			}
+			for(const [col, lw, blur] of [[accent, 5, 10], ["#ffc23a", 1.6, 0]]){
+				g.strokeStyle = col; g.lineWidth = lw; g.shadowColor = accent; g.shadowBlur = blur;
+				for(const pts of paths){ g.beginPath(); g.moveTo(...pts[0]); for(const q of pts.slice(1)) g.lineTo(...q); g.stroke(); }
+			}
+		});
 	}
+	canvasCache.set(key, c);
+	return c;
+}
+const PIXELATED = ["check", "carbon", "pixel"];
+// Pattern textures for the main paint (cached by pattern + colours).
+const texCache = new Map();
+function patternTexture(pattern, main, second, accent){
+	const key = [pattern, main, second, accent].join("|");
+	if(texCache.has(key)) return texCache.get(key);
+	const c = patternCanvas(pattern, main, second, accent);
+	const t = c ? new THREE.CanvasTexture(c) : null;
+	if(t && PIXELATED.includes(pattern)) t.magFilter = THREE.NearestFilter;
 	texCache.set(key, t);
 	return t;
+}
+
+// Headlight colour for a look: a CSS colour, or "rainbow".
+export function headlightColor(look, hue){
+	const it = item("lights", look && look.lights) || item("lights", "warm");
+	return it.color === "hue" ? `hsl(${hue}, 100%, 72%)` : it.color;
 }
 
 // Resolve a look into concrete colours and materials.
@@ -109,18 +236,25 @@ export function makeCar(body, hue, opts = {}){
 	const see = ghost ? { transparent: true, opacity: 0.35, depthWrite: false } : {};
 
 	let mainMat;
-	if(L.pattern === "gold") mainMat = own(new THREE.MeshPhongMaterial(Object.assign({ color: 0xc9a227, specular: 0xfff1b8, shininess: 90 }, see)));
+	if(L.pattern === "gloss") mainMat = own(new THREE.MeshPhongMaterial(Object.assign({ color: L.main, specular: 0x8a93a6, shininess: 90 }, see)));
+	else if(L.pattern === "gold") mainMat = own(new THREE.MeshPhongMaterial(Object.assign({ color: 0xc9a227, specular: 0xfff1b8, shininess: 90 }, see)));
 	else if(L.pattern === "chrome") mainMat = own(new THREE.MeshPhongMaterial(Object.assign({ color: 0xcfd6dd, specular: 0xffffff, shininess: 140 }, see)));
 	else{
 		const map = patternTexture(L.pattern, L.main, L.second, L.accent);
-		mainMat = own(new THREE.MeshLambertMaterial(Object.assign({ color: map ? 0xffffff : L.main, map }, see)));
+		// Some paints glow a little in the dark (claw marks, lava cracks, neon grid, stars).
+		const glows = map && L.liv.glow;
+		mainMat = own(new THREE.MeshLambertMaterial(Object.assign({ color: map ? 0xffffff : L.main, map }, glows ? { emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.45 } : {}, see)));
 	}
 	const secondMat = own(new THREE.MeshLambertMaterial(Object.assign({ color: L.second }, see)));
 	const accentMat = own(new THREE.MeshLambertMaterial(Object.assign({ color: L.accent, emissive: L.pattern === "neon" ? L.accent : 0x000000, emissiveIntensity: 0.8 }, see)));
 	const dark = ghost ? mainMat : mat("dark", () => new THREE.MeshLambertMaterial({ color: 0x1b1e26 }));
 	const tyre = ghost ? mainMat : mat("tyre", () => new THREE.MeshLambertMaterial({ color: 0x222222 }));
 	const glass = ghost ? mainMat : mat("glass", () => new THREE.MeshLambertMaterial({ color: 0x0e1622, emissive: 0x0a1830 }));
-	const head = ghost ? mainMat : mat("head", () => new THREE.MeshBasicMaterial({ color: 0xfff4c8 }));
+	// Headlight lamps: the default warm colour is the one the lamps always had.
+	const lampCol = headlightColor(look, hue);
+	const head = ghost ? mainMat : lampCol === "rainbow" ? own(new THREE.MeshBasicMaterial({ color: 0xffffff }))
+		: lampCol === "#fff2cd" ? mat("head", () => new THREE.MeshBasicMaterial({ color: 0xfff4c8 }))
+		: mat("head" + lampCol, () => new THREE.MeshBasicMaterial({ color: lampCol }));
 	const tail = ghost ? mainMat : mat("tail", () => new THREE.MeshBasicMaterial({ color: 0xff2a3a }));
 
 	const add = (geom, m, x, y, z) => {
@@ -238,7 +372,7 @@ export function makeCar(body, hue, opts = {}){
 			r.addColorStop(0, "rgba(255,255,255,1)"); r.addColorStop(0.5, "rgba(255,255,255,0.45)"); r.addColorStop(1, "rgba(255,255,255,0)");
 			gg.fillStyle = r; gg.fillRect(0, 0, 64, 64);
 		}));
-		const color = glow.color === "hue" ? `hsl(${hue}, 100%, 60%)` : glow.color === "rainbow" ? "#ffffff" : glow.color;
+		const color = glow.color === "hue" ? `hsl(${hue}, 100%, 60%)` : glow.color === "rainbow" || glow.color === "police" ? "#ffffff" : glow.color;
 		const m = own(new THREE.MeshBasicMaterial({ map: tex, color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
 		const plane = new THREE.Mesh(mat("glowGeo", () => new THREE.PlaneBufferGeometry(2.4, 3.4)), m);
 		plane.rotation.x = -Math.PI / 2;
@@ -247,7 +381,12 @@ export function makeCar(body, hue, opts = {}){
 		g.add(plane);
 		g.userData.glow = m;
 		g.userData.rainbow = glow.color === "rainbow";
+		g.userData.police = glow.color === "police";
 	}
+
+	// Headlights: the beam on the road (added in a race) takes the same colour.
+	g.userData.lights = lampCol;
+	if(lampCol === "rainbow" && !ghost) g.userData.headMat = head;
 
 	// Tyre smoke colour (used by fx.js).
 	const smoke = item("smoke", look.smoke) || item("smoke", "white");
@@ -265,9 +404,21 @@ export function animateCar(model, steer, speed, dt){
 	for(const f of model.userData.frontWheels) f.rotation.y = steer;
 	const spin = speed * 60 * dt * 2.2;
 	for(const w of model.userData.wheels) w.rotation.x += spin;
-	if(model.userData.rainbow && model.userData.glow){
-		model.userData.hueT = ((model.userData.hueT || 0) + dt * 0.25) % 1;
-		model.userData.glow.color.copy(tmpColor.setHSL(model.userData.hueT, 1, 0.6));
+	const u = model.userData;
+	if(u.rainbow && u.glow){
+		u.hueT = ((u.hueT || 0) + dt * 0.25) % 1;
+		u.glow.color.copy(tmpColor.setHSL(u.hueT, 1, 0.6));
+	}
+	// Blue and red, flashing in turn.
+	if(u.police && u.glow){
+		u.flashT = ((u.flashT || 0) + dt * 2.2) % 1;
+		u.glow.color.set(u.flashT < 0.5 ? 0x2a5bff : 0xff2433);
+	}
+	if(u.lights === "rainbow"){
+		u.lightT = ((u.lightT || 0) + dt * 0.2) % 1;
+		tmpColor.setHSL(u.lightT, 1, 0.7);
+		if(u.headMat) u.headMat.color.copy(tmpColor);
+		if(u.beamMat) u.beamMat.color.copy(tmpColor);
 	}
 }
 

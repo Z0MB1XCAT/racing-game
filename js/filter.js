@@ -16,7 +16,10 @@ const BLOCK = [
 const ALLOW = ["scunthorpe", "cockpit", "cocktail", "peacock", "hancock", "dickens", "shitake", "shiitake", "classic", "grass", "pass", "bass", "assist", "assassin",
 	"therapist", "document", "circumstance", "arsenal", "sussex", "essex", "middlesex", "hoek", "hoey", "shoe", "phoenix", "cumbria", "cucumber", "accumulate",
 	"crapaud", "spice", "spicy", "damnit", "mongoose", "mongolia", "coca", "coconut", "cocoa", "contact", "continue", "contest", "control", "contrast", "twllan",
-	"knobby", "tito", "titan", "title", "kitsune", "cocky", "coco", "hitch", "pussycat"];
+	"knobby", "tito", "titan", "title", "kitsune", "cocky", "coco", "hitch", "pussycat",
+	// Everyday words that chat is full of.
+	"content", "contain", "contract", "context", "contrary", "contrib", "contour", "continent", "scrap", "analy", "analog", "canal", "banal",
+	"despic", "conspic", "raccoon", "cocoon", "tycoon", "egypt", "among", "pakistan", "whoever", "parse", "grape", "drape", "trape", "montenegro", "cumul"];
 
 const LEET = { "0": "o", "1": "i", "!": "i", "|": "i", "3": "e", "4": "a", "@": "a", "5": "s", "$": "s", "7": "t", "+": "t", "8": "b", "9": "g", "6": "g", "2": "z", "€": "e", "£": "l" };
 
@@ -50,3 +53,59 @@ export function cleanName(name, id){
 	if(!n || isRude(n)) return fallbackName(id);
 	return n;
 }
+
+// ----- Chat -----
+// Accounts: rude words are starred out. Guests (no account) get a lot more protection:
+// anything rude is refused outright, and so is anything that looks like contact details,
+// so nobody can swap numbers, usernames or addresses with a stranger.
+const LINK = /(https?:|www\.|\b[a-z0-9-]+\s*(\.|dot)\s*(com|net|org|io|gg|uk|co|me|ly|tv|xyz|app|link|site|info|biz)\b)/i;
+const EMAIL = /[^\s@]+@[^\s@]+/;
+const DIGITS = n => new RegExp("(\\d[\\s.\\-()]*){" + n + ",}");
+const PHONE = DIGITS(7);
+const CONTACT = ["snap", "snapchat", "sc", "insta", "instagram", "ig", "tiktok", "discord", "whatsapp", "telegram", "kik", "facebook", "fb", "twitter", "youtube", "roblox", "xbox", "psn", "gamertag", "email", "gmail", "hotmail", "phone", "mobile", "address", "postcode", "addme", "dm", "dms", "meetup", "selfie", "pic", "pics"];
+const CONTACT_PHRASES = ["add me", "my number", "your number", "ur number", "where do you live", "where u live", "where you live", "how old", "your age", "ur age", "what age", "what school", "which school", "what year are you", "whats your name", "what's your name", "real name", "surname", "meet up", "meet me", "send me"];
+// Lap times (1:23.456, 83.456) are fine: they're the whole point of the game.
+const LAP_TIME = /\b\d{1,2}:\d{2}(\.\d{1,3})?\b|\b\d{1,3}\.\d{1,3}\b/g;
+
+// Words, with l33t and s p a c i n g undone: runs of single letters are joined up.
+function words(text){
+	const raw = text.split(/\s+/).filter(Boolean);
+	const out = [];
+	for(let i = 0; i < raw.length; i++){
+		if(raw[i].length === 1 && raw[i + 1] && raw[i + 1].length === 1){
+			let j = i, w = "";
+			while(j < raw.length && raw[j].length === 1) w += raw[j++];
+			out.push({ text: w, from: i, to: j });
+			i = j - 1;
+		}else out.push({ text: raw[i], from: i, to: i + 1 });
+	}
+	return { raw, out };
+}
+
+// Returns { ok, text } or { ok: false, why }. strict = a guest sending, or a guest reading.
+export function filterChat(input, strict){
+	let text = String(input || "").replace(/[\u0000-\u001f\u007f<>]/g, "").replace(/\s+/g, " ").trim();
+	const max = strict ? 60 : 120;
+	if(!text) return { ok: false, why: "" };
+	if(text.length > max) text = text.slice(0, max).trim();
+	if(LINK.test(text)) return { ok: false, why: "Links aren't allowed in chat." };
+	if(EMAIL.test(text) || (strict && text.includes("@"))) return { ok: false, why: "Email addresses and @names aren't allowed in chat." };
+	const noTimes = text.replace(LAP_TIME, " ");
+	if(PHONE.test(noTimes) || (strict && DIGITS(5).test(noTimes))) return { ok: false, why: "Long numbers aren't allowed in chat." };
+	const { raw, out } = words(text);
+	const bad = out.filter(w => isRude(w.text));
+	if(strict){
+		const flat = " " + raw.join(" ").toLowerCase().replace(/[^a-z' ]/g, "") + " ";
+		const plain = out.map(w => w.text.toLowerCase().replace(/[^a-z]/g, ""));
+		if(bad.length) return { ok: false, why: "That message has words that aren't allowed." };
+		if(plain.some(w => CONTACT.includes(w)) || CONTACT_PHRASES.some(p => flat.includes(" " + p))) return { ok: false, why: "For safety, guests can't swap contact details or personal info. Keep it to the racing." };
+		if(text.length > 8 && text.replace(/[^A-Z]/g, "").length > text.replace(/[^a-zA-Z]/g, "").length * 0.7) text = text.toLowerCase();
+		return { ok: true, text };
+	}
+	if(bad.length > 2) return { ok: false, why: "That message has words that aren't allowed." };
+	for(const w of bad) for(let i = w.from; i < w.to; i++) raw[i] = "*".repeat(Math.max(3, raw[i].length));
+	return { ok: true, text: raw.join(" ") };
+}
+
+// Ready-made messages anyone can send, guests included.
+export const QUICK_CHAT = ["GG", "Good race!", "Nice pass!", "Sorry!", "Rematch?", "Ready!", "Close one!", "Let's go!"];

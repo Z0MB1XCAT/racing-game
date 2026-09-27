@@ -4,6 +4,7 @@ import { CATEGORIES, DEFAULT_LOOK, progress, isUnlocked, requirement, unlockedId
 import { TRACKS } from "./tracks.js";
 import { weeklyChallenge } from "./weekly.js";
 import * as store from "./storage.js";
+import { patternCanvas } from "./cars.js";
 
 const $ = id => document.getElementById(id);
 
@@ -25,13 +26,24 @@ function swatch(cat, it, hue){
 			case "gold": return "linear-gradient(135deg, #7a5b12, #f5d76e 45%, #c9a227 60%, #7a5b12)";
 			case "chrome": return "linear-gradient(135deg, #8d959d, #ffffff 45%, #b9c2ca 60%, #6d757d)";
 			case "team": return `linear-gradient(90deg, ${m} 0 46%, ${a} 46% 54%, ${m} 54%), linear-gradient(0deg, ${s2} 0 30%, transparent 30%)`;
-			default: return m;
+			case "gloss": return `linear-gradient(135deg, ${m} 0 30%, #3a3f4a 48%, ${m} 62%)`;
+			case "solid": return m;
 		}
+		// Anything drawn on the car from a picture: show that same picture.
+		const c = patternCanvas(it.pattern, m, s2, a);
+		return c ? `url(${c.toDataURL()}) center / cover` : m;
+	}
+	if(cat === "lights"){
+		const col = it.color === "hue" ? `hsl(${hue},100%,72%)` : it.color;
+		const beam = col === "rainbow" ? "conic-gradient(from 180deg at 50% 100%, red, yellow, lime, cyan, blue, magenta, red)" : `radial-gradient(ellipse 60% 95% at 50% 100%, ${col} 0 18%, transparent 75%)`;
+		return `radial-gradient(circle at 30% 82%, #fff 0 5%, transparent 7%), radial-gradient(circle at 70% 82%, #fff 0 5%, transparent 7%), ${beam}, #0d1118`;
 	}
 	if(cat === "glow") return !it.color ? "repeating-linear-gradient(45deg, #1c2029 0 6px, #232834 6px 12px)"
 		: it.color === "rainbow" ? "conic-gradient(red, yellow, lime, cyan, blue, magenta, red)"
+		: it.color === "police" ? "radial-gradient(circle at 30% 50%, #2a5bff 0 22%, transparent 55%), radial-gradient(circle at 70% 50%, #ff2433 0 22%, transparent 55%), #0d1118"
 		: `radial-gradient(circle, ${it.color === "hue" ? h : it.color} 0 35%, transparent 72%), #0d1118`;
-	if(cat === "smoke") return `radial-gradient(circle, ${it.color === "hue" ? h : it.color === "rainbow" ? "#fff" : it.color} 0 45%, transparent 75%), ${it.color === "rainbow" ? "conic-gradient(red, yellow, lime, cyan, blue, magenta, red)" : "#0d1118"}`;
+	// (Black smoke goes on a light backdrop so it can be seen.)
+	if(cat === "smoke") return `radial-gradient(circle, ${it.color === "hue" ? h : it.color === "rainbow" ? "#fff" : it.color} 0 45%, transparent 75%), ${it.color === "rainbow" ? "conic-gradient(red, yellow, lime, cyan, blue, magenta, red)" : it.id === "black" ? "#8d97a8" : "#0d1118"}`;
 	return "";
 }
 
@@ -103,6 +115,7 @@ export function initGarage(ctx){
 		$("garageCrown").hidden = !isCrown();
 		$("garageNumberPanel").hidden = G.tab !== "number";
 		$("garageItems").hidden = G.tab === "number";
+		if(ctx.showBeams) ctx.showBeams(G.tab === "lights");
 		const look = Object.assign({}, DEFAULT_LOOK, ctx.S.profile.look);
 		if(G.tab === "number"){
 			$("garageNum").textContent = look.number != null ? look.number : "–";
@@ -153,6 +166,7 @@ export function initGarage(ctx){
 	tabs.forEach(b => b.addEventListener("click", () => {
 		ctx.audio.sfx.click();
 		G.tab = b.dataset.v;
+		$("garageItems").scrollTop = 0;
 		tabs.forEach(x => x.setAttribute("aria-checked", String(x === b)));
 		render();
 	}));
@@ -172,7 +186,7 @@ export function initGarage(ctx){
 		for(const key of b) if(!a.has(key)){
 			const [cat, id] = key.split(":");
 			const it = item(cat, id);
-			const label = { livery: "paint", glow: "underglow", smoke: "tyre smoke", title: "title" }[cat];
+			const label = { livery: "paint", glow: "underglow", smoke: "tyre smoke", lights: "headlights", title: "title" }[cat];
 			if(it) out.push(`${it.name} ${label}`);
 		}
 		return out;

@@ -48,7 +48,8 @@ original did).
 - **Race other people's ghosts**: every lap record and weekly best uploads its ghost. Press
   **Race ghost** next to anyone on the lap-record or weekly board, pick **Ghost: Track record** in
   time trial setup, or **Race the leader's ghost** on the weekly card. Their car shows as a named
-  ghost and the delta bar measures you against them.
+  ghost and the delta bar measures you against them. Your own ghost can stay on track too, or be
+  hidden: **My ghost: Show / Hide** in time trial setup, **G** during the lap, or the pause menu.
 - **Sectors**: each lap is split into three, shown under the lap times. Purple is the best anyone
   has done (in a race, the fastest in the session; in time trial, the best you know of, including
   the record holder's), green is your own best, yellow is slower.
@@ -85,20 +86,46 @@ original did).
     crashes and the finish (photo finishes included). It's skippable, and afterwards there's a
     **Full replay** with play, pause, speed and a timeline.
 - **Garage** (unlockable looks, no effect on speed):
-  - **What you can change:** paint, race number, underglow, tyre-smoke colour and a title.
-  - **Paint** includes stripes, chequered, carbon, flames, chrome, gold, a **BVS** livery, and a
-    colour scheme for each of the 11 teams on the 2026 F1 grid (colours only, no logos or sponsor names).
+  - **What you can change:** paint, race number, underglow, headlight colour, tyre-smoke colour and a title.
+  - **Paint** (43 of them) includes **Blackout** (gloss black, free for everyone), Matte Black,
+    **Monster** (black with glowing green claw marks), stripes, chequered, carbon, camo, arctic camo,
+    tiger, zebra, hazard, candy cane, polka dots, pixel camo, sunset, galaxy, synthwave, lightning,
+    lava, flames, chrome, gold, a **BVS** livery, and a colour scheme for each of the 11 teams on the
+    2026 F1 grid (colours only, no logos or sponsor names). Monster, lava, synthwave and galaxy glow a
+    little at night.
+  - **Headlights:** halogen, xenon, rally yellow, ice blue, green, pink, purple, red, your car colour
+    or rainbow. The lamps and the beam on the road at night both take the colour, and everyone in a
+    room sees yours. The garage shows the beam on your car while you pick.
+  - **Underglow** adds red, purple, toxic, gold and flashing **Blues and Twos**; **tyre smoke**
+    adds black, green, pink and orange; new titles include Monster, Night Rider, Rain Master,
+    Ghostbuster, Globetrotter and Speed Demon.
   - **Earning items:** your **driver level** (1–30) comes from XP in online races, plus
     achievements (wins, podiums, championships, lap records, weekly wins). A few starter items
-    unlock from solo play.
+    unlock from solo play, including new goals: finish a bot race at night, or in the rain, and
+    beat someone else's ghost in time trial.
   - **The #1 number and a crown** go to whoever topped last week's weekly challenge, until the
     next week ends.
+- **Room chat**: a chat panel in the lobby, quick messages (GG, Good race!, Rematch? ...), a small
+  feed during races (press **Enter** or **T** to type; steering lets go while you do) and a chat
+  dock on the results screen. It can be switched off in Settings.
+  - **Everyone:** rude words are starred out, links, email addresses and phone numbers are refused,
+    and you can't send faster than about one message a second. Lap times are fine.
+  - **Guests (no account) get much more protection:** messages up to 60 characters (accounts 120),
+    anything rude is refused outright, and so is anything that looks like contact details or
+    personal questions (Snapchat, Insta, "add me", "how old", "what school", @names, long numbers).
+    Guests also see everyone else's messages through that same strict filter, one message every 3
+    seconds at most. The database enforces the length, rate, links, @ and number limits too, so a
+    modified copy of the game can't get round them.
+  - **Mute and report:** mute anyone from their message or the driver list. **Report** sends the
+    message to the admin and mutes them for you.
 - **Moderation**:
   - **Name filter:** rude driver names (including l33t spellings) are refused, and anyone else's
     shows up as "Driver 1234".
   - **Admin page:** the **bvs-11018** account gets it. From there you can rename (and lock the
     name of), reset or ban any player, remove lap and weekly records, close rooms, and publish
-    **lap-time limits**, so impossible laps are refused by the database.
+    **lap-time limits**, so impossible laps are refused by the database. The **Chat** tab shows
+    reported messages and all the chat in live rooms (exactly as typed), and can delete messages and
+    **mute people from chat** without banning them. Banned players can't chat either.
 - **Host migration**: if the host leaves or their laptop dies, the driver who has been in the
   room longest takes over, including running the bots, mid-race.
 - **Slipstream**: tuck in behind a car and you get towed along, worth about 7% extra speed at
@@ -194,6 +221,8 @@ For comparison with Supabase:
 
 The rules let signed-in players read rooms. Only the host can change a room's settings,
 and each player can only write their own car. The lap records board works the same way.
+Chat messages are checked as well: only players in the room, not banned or muted, at most one
+message a second (guests one every 2.5 s), with the length, link and number limits above.
 Career stats are checked too: the database only accepts +1 race per result the host
 recorded, and a win or podium only if that result says so. That stops people typing their
 own numbers in. **If you change the rules file later, paste it in and Publish again.**
@@ -351,7 +380,8 @@ Once it's on, open **Track editor** from the menu.
 | `js/p2p.js` | Direct WebRTC links between players, with Firebase fallback |
 | `js/broadcast.js` | TV cameras, the director, highlights and the replay player |
 | `js/cosmetics.js`, `js/garage.js` | Unlockable looks, levels and the garage screen |
-| `js/filter.js`, `js/admin.js`, `js/limits.js` | Name filter, admin page, lap-time limits |
+| `js/filter.js`, `js/admin.js`, `js/limits.js` | Name and chat filters, admin page, lap-time limits |
+| `js/chat.js` | Room chat: lobby panel, race feed, results dock, mute and report |
 | `js/champ.js`, `js/weekly.js` | Championship points and the automatic weekly challenge |
 | `js/audio.js`, `js/engine-worklet.js`, `js/music.js` | Engine model for each car body, sound effects and the music sequencer |
 | `js/main.js`, `js/hud.js` | Menus, HUD, camera and input |

@@ -31,7 +31,35 @@
             ".write": "auth != null && auth.uid === $pid",
             ".validate": "newData.hasChildren(['x', 'y', 'u', 'v', 'd'])"
           }
+        },
+
+        "chat": {
+          "$msg": {
+            ".write": "auth != null && !data.exists() && root.child('rooms/' + $code + '/players/' + auth.uid).exists() && !root.child('banned/' + auth.uid).exists() && !root.child('chatBan/' + auth.uid).exists()",
+            ".validate": "newData.hasChildren(['u', 'n', 'h', 'm', 't', 'g']) && newData.child('u').val() === auth.uid && newData.child('t').val() === now && newData.parent().parent().child('chatLast/' + auth.uid).val() === now && newData.child('n').isString() && newData.child('n').val().length <= 24 && newData.child('h').isNumber() && newData.child('g').isBoolean() && (newData.child('g').val() === true || auth.provider !== 'anonymous') && newData.child('m').isString() && newData.child('m').val().length > 0 && newData.child('m').val().length <= (newData.child('g').val() === true ? 60 : 120) && !newData.child('m').val().matches(/(https?:|www[.]|[0-9][^0-9a-z]*[0-9][^0-9a-z]*[0-9][^0-9a-z]*[0-9][^0-9a-z]*[0-9][^0-9a-z]*[0-9][^0-9a-z]*[0-9][^0-9a-z]*[0-9])/i) && (newData.child('g').val() !== true || !newData.child('m').val().contains('@'))"
+          }
+        },
+
+        "chatLast": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid",
+            ".validate": "newData.val() === now && (!data.exists() || data.val() <= now - (auth.provider === 'anonymous' ? 2500 : 1000))"
+          }
         }
+      }
+    },
+
+    "chatBan": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.token.email === 'bvs-11018@bvs.invalid'"
+    },
+
+    "reports": {
+      ".read": "auth != null && auth.token.email === 'bvs-11018@bvs.invalid'",
+      ".write": "auth != null && auth.token.email === 'bvs-11018@bvs.invalid'",
+      "$id": {
+        ".write": "auth != null && !data.exists() && !root.child('banned/' + auth.uid).exists()",
+        ".validate": "auth.token.email === 'bvs-11018@bvs.invalid' || (newData.hasChildren(['by', 'u', 'n', 'm', 'room', 't']) && newData.child('by').val() === auth.uid && newData.child('t').val() === now && newData.child('u').isString() && newData.child('n').isString() && newData.child('n').val().length <= 24 && newData.child('m').isString() && newData.child('m').val().length <= 200 && newData.child('room').isString() && newData.child('room').val().length <= 8)"
       }
     },
 
