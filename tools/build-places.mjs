@@ -12,6 +12,12 @@
 //     way["highway"~"motorway|trunk|primary|secondary|tertiary|pedestrian|footway"](...);
 //     way["man_made"](...);node["amenity"="place_of_worship"](...);node["man_made"](...););out geom tags;
 //   jeddah-lagoon.json: [out:json];rel(17098729);out geom;
+//   daytona.json: [out:json];(way["natural"="water"](29.170,-81.085,29.200,-81.055);relation["natural"="water"](...);
+//     way["building"](29.176,-81.082,29.196,-81.058);way["leisure"~"stadium|track|pitch"](29.170,-81.085,29.200,-81.055);
+//     way["amenity"="parking"](29.176,-81.082,29.196,-81.058););out geom tags;
+// The circuit outlines themselves (data/circuits/monza-osm.geojson, daytona-osm.geojson) are
+// OpenStreetMap raceway ways joined into one loop:
+//   [out:json];way["highway"="raceway"](<bbox round the circuit>);out geom tags;
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 
 const SITES = {
@@ -24,7 +30,10 @@ const SITES = {
 		// Towers OpenStreetMap doesn't have: placed from satellite imagery, heights estimated from
 		// the length of their shadows (Diamond Tower, 432 m, gives the sun angle). [east, north, height, width] m.
 		towers: [[-150, 1244, 140, 34], [-111, 832, 200, 38], [-9, 487, 190, 36], [207, 18, 225, 40]]
-	}
+	},
+	// Daytona: Lake Lloyd in the infield, the frontstretch grandstand (its real outline and height),
+	// and the infield garages and buildings.
+	daytona: { circuit: "daytona-osm", osm: ["daytona.json"], reach: 320, heights: {} }
 };
 
 const r1 = v => Math.round(v * 2) / 2;

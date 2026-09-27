@@ -1,7 +1,8 @@
 # Real surroundings (OpenStreetMap)
 
 `jeddah.json` and `jeddah-lagoon.json` are OpenStreetMap data around the Jeddah Corniche Circuit,
-downloaded from the Overpass API. `node tools/build-places.mjs` turns them into `js/places.js`.
+and `daytona.json` around Daytona International Speedway (Lake Lloyd, the grandstand, the infield
+buildings), downloaded from the Overpass API. `node tools/build-places.mjs` turns them into `js/places.js`.
 
 Map data © OpenStreetMap contributors, available under the Open Database Licence (ODbL):
 https://www.openstreetmap.org/copyright

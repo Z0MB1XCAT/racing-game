@@ -11,14 +11,24 @@ export function buildTerrain(track, opts = {}){
 	const b = track.bounds, margin = 240;
 	const x0 = b.minX - margin, z0 = b.minZ - margin;
 	const spanX = b.maxX - b.minX + margin * 2, spanZ = b.maxZ - b.minZ + margin * 2;
-	const cell = Math.max(5, Math.max(spanX, spanZ) / 220);
+	// (A banked oval is small, and its banking changes quickly across and along: a finer grid.)
+	const isOval = opts.oval ?? !!(track.def && track.def.kind === "oval");
+	const cell = isOval ? Math.max(2.5, Math.max(spanX, spanZ) / 360) : Math.max(5, Math.max(spanX, spanZ) / 220);
 	const nx = Math.ceil(spanX / cell), nz = Math.ceil(spanZ / cell), W = nx + 1, D = nz + 1;
 	let minH = Infinity;
 	for(let i = 0; i < n; i++) minH = Math.min(minH, c.h[i] - Math.abs(c.bank[i]) * (hw + 1));    // (the low edge of any banking)
-	const base = minH - 0.6;
+	const oval = isOval;
+	const base = oval ? -0.9 : minH - 0.6;
 	const sumW = new Float32Array(W * D), sumH = new Float32Array(W * D);
 	const near = new Float32Array(W * D).fill(1e9), nearH = new Float32Array(W * D).fill(0);
 	const cap = new Float32Array(W * D).fill(Infinity);         // must stay under any road covering this cell
+	// A banked oval (opts.oval) sits on flat ground: a level infield, and behind the outside wall an
+	// embankment up to the top of the banking that slopes away. Which side is the infield: the side
+	// the lap turns towards.
+	let turning = 0;
+	for(let i = 0; i < n; i++) turning += c.curv[i];
+	const inSign = turning > 0 ? 1 : -1;
+	const nearLat = new Float32Array(W * D), nearEdge = new Float32Array(W * D);
 	// (The band next to the road is two cells wider than it, so no hill cell is
 	// ever blended into the road surface.)
 	const R = 110, ROAD = hw + 1.5 + cell * 2, COVER = hw + 1 + cell;
@@ -31,11 +41,12 @@ export function buildTerrain(track, opts = {}){
 			const px = x0 + gx * cell, pz = z0 + gz * cell, d = Math.hypot(px - x, pz - z);
 			const k = gz * W + gx;
 			// Just under the road surface across it (following the camber), level with its edges beyond.
-			const lat = Math.max(-hw - 1, Math.min(hw + 1, (px - x) * tz - (pz - z) * tx));
-			const low = h + lat * bank - 0.3 - Math.abs(bank) * 2;
+			const rawLat = (px - x) * tz - (pz - z) * tx;
+			const lat = Math.max(-hw - 1, Math.min(hw + 1, rawLat));
+			const low = h + lat * bank - (oval ? 0.4 : 0.3 + Math.abs(bank) * 2);
 			// Next to the road the ground takes the nearest road's height, but never rises
 			// into any road whose surface spans this cell.
-			if(d < near[k]){ near[k] = d; nearH[k] = low; }
+			if(d < near[k]){ near[k] = d; nearH[k] = low; nearLat[k] = rawLat; nearEdge[k] = h + Math.max(-hw, Math.min(hw, rawLat)) * bank; }
 			if(d < COVER && Math.abs((px - x) * tx + (pz - z) * tz) < cell * 0.5) cap[k] = Math.min(cap[k], low);   // (only square across from this sample)
 			// Influence fades to nothing at R, so there is no ring where it stops.
 			if(r === R && d < R){ const f = 1 - d / R, w = f * f / (d * d + 400); sumW[k] += w; sumH[k] += w * h; }
@@ -49,11 +60,18 @@ export function buildTerrain(track, opts = {}){
 		let y = near[k] < ROAD ? Math.min(nearH[k], cap[k]) : hill;
 		const gx = k % W, gz = Math.floor(k / W);
 		const px = x0 + gx * cell, pz = z0 + gz * cell;
-		if(opts.isSea && opts.isSea(px, pz)) y = Math.min(y, base - 2);
+		if(oval){
+			// Infield level with the bottom of the banking; outside, the embankment falls away from
+			// the top of the wall at about 25 degrees.
+			if(near[k] >= ROAD) y = nearLat[k] * inSign > 0 ? 0 : Math.max(0, nearEdge[k] + 0.4 - Math.max(0, near[k] - hw - 7) * 0.45);
+			else if(nearLat[k] * inSign > 0) y = Math.min(y, 0);
+			if(opts.isSea && opts.isSea(px, pz) && near[k] >= ROAD + cell * 2) y = -1.6;       // lakes in the infield (kept off the road's edge)
+		}else if(opts.isSea && opts.isSea(px, pz)) y = Math.min(y, base - 2);
 		else if(opts.isSea) y = Math.max(y, base + 0.1);          // (land stays above sea level)
 		// Fade to the base level at the edges of the patch.
 		const e = Math.min(gx, gz, nx - gx, nz - gz) / 6;
 		if(e < 1) y = base + (y - base) * Math.max(0, e);
+		if(oval && y > -1.2 && near[k] >= ROAD) y = Math.max(y, base + 0.08);          // (land stays above the lake's water line)
 		heights[k] = y;
 	}
 	// Smooth the ground away from the road so there are no steps.

@@ -1,6 +1,6 @@
 // Builds js/circuits.js from the real-world circuit data in data/circuits.
 //   node tools/build-circuits.mjs
-// For each F1 circuit:
+// For each real circuit (the five F1 tracks and the Daytona oval):
 //   - the real centreline (GeoJSON, race direction) in metres east/north;
 //   - the start line moved where needed;
 //   - sections that run side by side closer than the game's road width allows are eased
@@ -10,6 +10,12 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 
 const DIR = new URL("../data/circuits/", import.meta.url);
+// Monza: at 2000 game units (a bigger scale than the other F1 tracks) with a narrower road, the
+// Rettifilo, Roggia and Ascari chicanes keep their real shape. The Lesmos lean into the right.
+const MONZA_LENGTH = 2000, MONZA_WIDTH = 12, MONZA_CAMBER = [[2172, 2316, 3, "R"], [2532, 2604, 3, "R"]];
+// Daytona, metres from the start line: tri-oval 18, Turns 1-2 31, backstretch 3, Turns 3-4 31.
+const DAYTONA_LENGTH = 1000, DAYTONA_WIDTH = 18;
+const DAYTONA_BANK = [[0, 18], [420, 18], [640, 31], [1400, 31], [1580, 3], [2380, 3], [2560, 31], [3280, 31], [3500, 18]];
 const CONF = {
 	// Monaco's data starts at Casino Square; the start line is ~140 m before Ste Devote (point 120).
 	// The town is too steep for a 25 m DEM (it has the pit straight climbing the hillside), so the
@@ -40,8 +46,16 @@ const CONF = {
 		camber: [[950, 1090, 3, "R"],                                         // Raidillon, leaning into the right-hander
 			[3600, 3972, 2, "L"],                                             // Pouhon
 			[5628, 6060, 3, "L"]] },                                          // Blanchimont
-	monza: { file: "it-1922", length: 1350, width: 14, dem: "eudem25m", hills: 5,
-		camber: [[2172, 2304, 3, "R"], [2532, 2592, 3, "R"]] },                    // the Lesmos
+	// Monza and Daytona come from OpenStreetMap (much finer than the other outlines: every chicane
+	// is mapped). Monza's data starts at the Parabolica exit; point 1 is the start line.
+	monza: { file: "monza-osm", startPoint: 1, length: MONZA_LENGTH, width: MONZA_WIDTH, dem: "eudem25m", hills: 5,
+		camber: MONZA_CAMBER },
+	// Daytona: the 2.5-mile oval (not the road course). Flat ground at sea level, so no DEM; what
+	// matters is the banking: 31 degrees in all four turns, 18 through the tri-oval (the whole
+	// frontstretch), 3 on the backstretch. Real transitions are long, so they ease over bankRamp m.
+	// The data starts at Turn 3; point 116 is the start/finish line, at the apex of the tri-oval.
+	daytona: { file: "daytona-osm", startPoint: 116, length: DAYTONA_LENGTH, width: DAYTONA_WIDTH, flat: true,
+		bank: DAYTONA_BANK },
 	suzuka: { file: "jp-1962", length: 1650, width: 13, dem: "srtm30m", bridge: 22, hills: 5,   // bridge lift in metres (about 6 units at game scale)
 		camber: [[408, 684, 3, "R"],                                          // Turns 1-2
 			[1464, 1584, -4, "L"],                                            // Reverse Bank (gyaku bank)
@@ -165,7 +179,8 @@ for(const [id, conf] of Object.entries(CONF)){
 	const cacheFile = new URL(id + "-elev.json", DIR);
 	const ne = Math.round(L / ELEV_STEP);
 	let elev;
-	if(existsSync(cacheFile)) elev = JSON.parse(readFileSync(cacheFile, "utf8")).elev;
+	if(conf.flat) elev = new Array(ne).fill(0);
+	else if(existsSync(cacheFile)) elev = JSON.parse(readFileSync(cacheFile, "utf8")).elev;
 	if(!elev || elev.length !== ne){
 		const pts = Array.from({ length: ne }, (_, i) => at(start + i * L / ne));
 		elev = [];
@@ -325,16 +340,31 @@ for(const [id, conf] of Object.entries(CONF)){
 	// Camber, per output point: how much the road rises per metre to the left (so a right-hander
 	// banked into the corner is +), eased in and out over ~60 m.
 	let camber = null;
+	// bank: [metres from the start line, degrees] all the way round a lap (+ = leaning into a left turn
+	// here, since ovals turn left), eased between points and wrapping round past the line.
+	if(conf.bank){
+		const B = conf.bank, deg = s => {
+			let j = B.findIndex(p => p[0] > s);
+			const a = j <= 0 ? B.at(-1) : B[j - 1], b = j <= 0 ? B[0] : B[j];
+			const sa = a[0], sb = b[0] <= sa ? b[0] + L : b[0], sx = s < sa ? s + L : s;
+			const f = (sx - sa) / Math.max(1, sb - sa);
+			return a[1] + (b[1] - a[1]) * (0.5 - 0.5 * Math.cos(Math.PI * f));
+		};
+		camber = Array.from({ length: M }, (_, m) => -Math.tan(deg(m * OUT_STEP) * Math.PI / 180));
+	}
 	if(conf.camber){
 		camber = new Array(M).fill(0);
 		for(const [a, b, deg, dir] of conf.camber) for(let m = 0; m < M; m++){
-			const s = m * OUT_STEP, ramp = 60;
+			const s = m * OUT_STEP, ramp = conf.bankRamp || 60;
 			const w = Math.max(0, Math.min(1, (s - a + ramp) / ramp, (b + ramp - s) / ramp));
 			if(w > 0) camber[m] += (dir === "R" ? 1 : -1) * Math.tan(deg * Math.PI / 180) * (0.5 - 0.5 * Math.cos(Math.PI * w));
 		}
 	}
 	const min = Math.min(...h);
 	h = h.map(v => +(v - min).toFixed(2));
+	// A banked oval sits on flat ground: the inside edge of the track is at ground level and the
+	// banking rises from there to the outside wall, so the centreline is half a road-width up it.
+	if(conf.bank) h = h.map((v, m) => +(v + Math.abs(camber[m]) * conf.width / 2 / k).toFixed(2));
 
 	out[id] = {
 		meters: Math.round(L),

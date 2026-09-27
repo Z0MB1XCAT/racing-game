@@ -26,7 +26,7 @@ export const THEMES = {
 		runoff: [0x2f6fe0, 0xe0409a, 0x8f4de0, 0xd8342f], footbridges: 5,
 		sea: { dir: [-1, 0.08], color: 0x0a1830 }, lights: true, mountains: "none", fog: [0x121634, 320, 1500], sun: 0.32, amb: 0.72, grandstand: 2, standColor: 0x0e7c86, fans: false },
 	daytona: { sky: [0x4aa6ff, 0xdcf0ff], ground: 0x68a94c, stripes: true, wall: 0xf1f3f6, road: 0x3a3d44, trees: "palm", treeDensity: 0.15,
-		lake: true, grandstand: 4, standColor: 0x2f63c9, mountains: "none", fog: [0xdcf0ff, 500, 1700] },
+		grandstand: 0, fans: false, catchFence: "outside", standColor: 0x2f63c9, mountains: "none", fog: [0xdcf0ff, 500, 1700] },
 	dusk: { sky: [0x241a45, 0xff8a4c], ground: 0x86684a, wall: "tyres", road: 0x4e4540, trees: "none", mountains: "hills", mountainColor: 0x5a3f4a,
 		fog: [0xd98160, 220, 900], sun: 0.85, sunColor: 0xffb27a, amb: 0.45, grandstand: 2, standColor: 0xf48342, lights: true, tod: "sunset" },
 	snow: { sky: [0x93acc6, 0xe7eff7], ground: 0xe9eff5, wall: 0x2f6fbd, road: 0x5a5f68, trees: "snowpine", treeDensity: 1.1,
@@ -486,7 +486,12 @@ export function buildWorld(track, opts = {}){
 	if(theme.catchFence && track.center && track.elevated){
 		const t = track.features && track.features.tunnel, n = track.center.n;
 		const inTunnel = s => t && s >= 0 && ((s - t[0] + n) % n) <= ((t[1] - t[0] + n) % n) + 2;
-		const fenceItems = wallItems.filter(w => !inTunnel(w.seg ?? -1));
+		// catchFence "outside": only on the outside wall (an oval's, where the cars run up the banking).
+		const c = track.center;
+		let turning = 0;
+		for(let i = 0; i < n; i++) turning += c.curv[i];
+		const outside = w => { const s = w.seg ?? -1; if(s < 0) return true; return ((w.x - c.x[s]) * c.tz[s] - (w.z - c.z[s]) * c.tx[s]) * turning < 0; };
+		const fenceItems = wallItems.filter(w => !inTunnel(w.seg ?? -1) && (theme.catchFence !== "outside" || outside(w)));
 		const FH = 2.6, top = wallH + FH;
 		const rails = [], mesh = [];
 		for(const w of fenceItems){

@@ -5,7 +5,7 @@
 // scales the loop to `length` world units, and turns the start straight to face
 // +z so the original starting grid works unchanged.
 //
-// The five F1 tracks use the real circuits (see js/circuits.js). Corners are still opened up
+// The five F1 tracks and Daytona use the real circuits (see js/circuits.js). Corners are still opened up
 // where the original handling needs room (you can't brake). Remastered tracks have a new
 // `key`, so their lap records start fresh.
 
@@ -71,10 +71,12 @@ export const TRACKS = [
 		pts: CIRCUITS.spa.pts, elev: CIRCUITS.spa.elev, camber: CIRCUITS.spa.camber
 	},
 	{
-		id: "monza", key: "monza-v2", name: "Monza", place: "Italy", kind: "gp", flag: "IT",
+		id: "monza", key: "monza-v3", name: "Monza", place: "Italy", kind: "gp", flag: "IT",
 		blurb: "The Temple of Speed. Long straights, chicanes and the Parabolica.",
-		realLength: "5.793 km", length: 1350, width: 14, laps: 3, theme: "monza",
-		// The real circuit (js/circuits.js): centreline, elevation.
+		realLength: "5.793 km", length: 2000, width: 12, laps: 2, theme: "monza",
+		// The Rettifilo and Roggia chicanes keep their real tightness (metres from the start line).
+		tight: [[570, 730, 1], [1780, 1930, 3]].map(([a, b, room]) => [a / CIRCUITS.monza.meters, b / CIRCUITS.monza.meters, room]),
+		// The real GP circuit from OpenStreetMap (js/circuits.js): centreline, elevation, the Lesmos' camber.
 		pts: CIRCUITS.monza.pts, elev: CIRCUITS.monza.elev, camber: CIRCUITS.monza.camber
 	},
 	{
@@ -92,13 +94,12 @@ export const TRACKS = [
 		pts: CIRCUITS.jeddah.pts, elev: CIRCUITS.jeddah.elev, camber: CIRCUITS.jeddah.camber
 	},
 	{
-		id: "daytona", name: "Daytona", place: "Florida, USA", kind: "oval", flag: "US",
-		blurb: "2.5-mile tri-oval. Stay in the pack and time your move.",
+		id: "daytona", key: "daytona-v2", name: "Daytona", place: "Florida, USA", kind: "oval", flag: "US",
+		blurb: "2.5-mile tri-oval, banked at 31 degrees in the turns. Stay in the pack and time your move.",
 		realLength: "4.023 km", length: 1000, width: 18, laps: 4, theme: "daytona",
-		pts: [
-			[0, -0.6], [3, -0.3], [5.5, 0], [7.2, 0.4], [8.2, 1.6], [8.2, 3.2], [7.2, 4.4], [5.5, 4.8],
-			[0, 4.8], [-5.5, 4.8], [-7.2, 4.4], [-8.2, 3.2], [-8.2, 1.6], [-7.2, 0.4], [-5.5, 0], [-3, -0.3]
-		]
+		// The real oval from OpenStreetMap (js/circuits.js), flat ground, and its banking:
+		// 31 degrees in the turns, 18 through the tri-oval, 3 on the backstretch (looks only).
+		pts: CIRCUITS.daytona.pts, elev: CIRCUITS.daytona.elev, camber: CIRCUITS.daytona.camber
 	},
 	{
 		id: "figure8", name: "Crossroads", place: "Figure-8 speedway", kind: "fantasy",
