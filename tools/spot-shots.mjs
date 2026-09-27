@@ -6,8 +6,9 @@ import puppeteer from "puppeteer";
 import { mkdirSync } from "node:fs";
 
 // Add "rev" to shoot the track reversed (files get a -rev suffix).
-const args = process.argv.slice(2), rev = args.includes("rev");
-const [id = "monaco", ...wanted] = args.filter(a => a !== "rev");
+// Add "rain" for heavy rain (files get a -rain suffix).
+const args = process.argv.slice(2), rev = args.includes("rev"), rain = args.includes("rain");
+const [id = "monaco", ...wanted] = args.filter(a => a !== "rev" && a !== "rain");
 const spots = wanted.length ? wanted : ["0", "0.25", "0.5", "0.75", "high", "tunnel", "bridge"];
 mkdirSync("temporary screenshots/spots", { recursive: true });
 const b = await puppeteer.launch({ headless: "new" });
@@ -19,7 +20,7 @@ await p.goto("http://localhost:3000/", { waitUntil: "networkidle0" });
 await p.click("#btnBots"); await new Promise(r => setTimeout(r, 400));
 await p.click(`#setupTracks [data-id="${id}"]`); await new Promise(r => setTimeout(r, 800));
 if(rev){ await p.click('#setupDir [data-v="1"]'); await new Promise(r => setTimeout(r, 400)); }
-await p.evaluate(() => { window.__game.setup.bots = 5; });
+await p.evaluate(rain => { window.__game.setup.bots = 5; if(rain) window.__game.setup.weather = "rain"; }, rain);
 await p.click("#setupGo");
 await new Promise(r => setTimeout(r, 6000));
 for(const spot of spots){
@@ -74,7 +75,7 @@ for(const spot of spots){
 	}, spot);
 	if(!ok){ console.log(id, spot, "not on this track"); continue; }
 	await new Promise(r => setTimeout(r, 700));
-	await p.screenshot({ path: `temporary screenshots/spots/${id}${rev ? "-rev" : ""}-${spot}.png` });
+	await p.screenshot({ path: `temporary screenshots/spots/${id}${rev ? "-rev" : ""}${rain ? "-rain" : ""}-${spot}.png` });
 	console.log(id, spot, "ok");
 }
 console.log(errors.length ? errors : "no page errors");

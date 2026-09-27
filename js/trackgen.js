@@ -315,6 +315,37 @@ export function buildCircuit(def, reverse = false){
 		}
 	}
 
+	// A bridge: where the two roads overlap, each road's edges were left open above. Give both
+	// roads their barriers back there, each on its own level (lvl: road height), so a barrier
+	// only stops cars on its own road: the parapets on the bridge, the walls underneath.
+	if(features && features.bridge){
+		for(const at of features.bridge){
+			for(let s = 0; s < 2; s++){
+				let run = [];
+				const flush = () => {
+					if(run.length >= 2){
+						const simp = simplify(run, 0.3);
+						for(let k = 0; k < simp.length - 1; k++){
+							const [x1, z1, i1] = simp[k], [x2, z2, i2] = simp[k + 1];
+							if(Math.hypot(x2 - x1, z2 - z1) < 0.05) continue;
+							const lvl = (h[i1] + h[i2]) / 2;
+							walls.push(Object.assign(wallFromWorld(x1, z1, x2, z2), { lvl }));
+							wallSegs.push([x1, z1, x2, z2, s, i1, i2, lvl]);
+						}
+					}
+					run = [];
+				};
+				for(let o = -60; o <= 60; o++){
+					const i = (at + o + n) % n;
+					if(keep[s][i]){ if(run.length){ run.push(sides[s][i]); flush(); } continue; }
+					if(!run.length){ const p = (i - 1 + n) % n; run.push(sides[s][p]); }
+					run.push(sides[s][i]);
+				}
+				flush();
+			}
+		}
+	}
+
 	// Start line plus evenly spaced hidden sector lines, nudged away from crossings.
 	const lineAt = i => {
 		const nx = tz[i], nz = -tx[i];

@@ -31,6 +31,7 @@ export function race(track, tracker, skills, laps, opts = {}){
 		}
 		const before = cars.map(c => c.data.lap);
 		if(opts.draft) applySlipstream(cars, warp);
+		if(track.elevated) for(const c of cars) c.lvl = track.heightAt(c.data.x, c.data.y, c.hint ?? -1), c.hint = track.lastSample();
 		phys.stepCars(cars, track.walls, track.lines, track.oob, warp, (type, car, s) => { if(type === "car") car.contacts = (car.contacts || 0) + 1; if(type === "wall" && s > 0.05){ car.hits++; if(car === cars[0]) hitsAt.push([car.data.x, car.data.y]); } }, opts.contact);
 		t += dt * warp;
 		if(opts.frame) opts.frame(t, cars);

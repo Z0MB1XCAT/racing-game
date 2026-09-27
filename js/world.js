@@ -4,7 +4,7 @@ import { GRID } from "./physics.js";
 import { START_Z, seededRandom } from "./trackgen.js";
 import { buildScenery, canvasTexture } from "./scenery.js";
 import { naturalHour } from "./atmosphere.js";
-import { buildTerrain, buildTunnel, buildBridge, buildSkirts } from "./terrain.js";
+import { buildTerrain, buildTunnel, buildBridge, buildSkirts, TUNNEL_WALL } from "./terrain.js";
 
 const THREE = globalThis.THREE;
 
@@ -538,6 +538,30 @@ export function buildWorld(track, opts = {}){
 		group.add(new THREE.Mesh(keep(qg), keep(new THREE.MeshLambertMaterial({ color: 0xbfb4a0, side: THREE.DoubleSide }))));
 	}
 
+	// Where there's a roof overhead (the tunnel, under the bridge deck), and how high: rain
+	// doesn't fall there, and it sounds like you're under cover. Cells of 2 x 2 units.
+	const roofs = new Map(), RC = 2;
+	const addRoof = (x, z, y) => { const k = Math.floor(x / RC) + "," + Math.floor(z / RC), o = roofs.get(k); if(o === undefined || y < o) roofs.set(k, y); };
+	if(track.center && track.center.h && track.features){
+		const c = track.center, n = c.n, hw = c.hw;
+		const cover = (i, half, y) => {
+			for(let lat = -half; lat <= half; lat += 1) for(let al = -1; al <= 1; al += 1)
+				addRoof(c.x[i] + c.tz[i] * lat + c.tx[i] * al, c.z[i] - c.tx[i] * lat + c.tz[i] * al, y);
+		};
+		if(track.features.tunnel){
+			const [a, b] = track.features.tunnel, len = (b - a + n) % n;
+			for(let k = 0; k <= len; k++){ const i = (a + k) % n; cover(i, hw + TUNNEL_WALL + 0.7, c.h[i] + 6); }
+		}
+		if(track.features.bridge && terrain){
+			const up = track.features.bridge[1];
+			for(let o = -60; o <= 60; o++){
+				const i = (up + o + n) % n;
+				if(c.h[i] - groundAt(c.x[i], c.z[i]) > 1.2) cover(i, hw + 0.8, c.h[i] - 1.3);
+			}
+		}
+	}
+	const roofAt = (x, z) => roofs.get(Math.floor(x / RC) + "," + Math.floor(z / RC));
+
 	// Sea beyond one side of the circuit, in real compass terms.
 	if(seaEdge){
 		const { ux, uy, edge } = seaEdge, px = -uy, py = ux;
@@ -668,6 +692,7 @@ export function buildWorld(track, opts = {}){
 		const g = new THREE.BufferGeometry();
 		g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
 		rainLines = new THREE.LineSegments(keep(g), keep(new THREE.LineBasicMaterial({ color: 0xb8c4d2, transparent: true, opacity: 0, depthWrite: false })));
+		rainLines.userData.fallY = Float32Array.from({ length: N }, (_, i) => pos[i * 6 + 1]);
 		rainLines.frustumCulled = false;
 		rainLines.visible = false;
 		group.add(rainLines);
@@ -765,6 +790,8 @@ export function buildWorld(track, opts = {}){
 		group, theme, sun, fog, farPlane, occluders, info: extras.info,
 		// Height of the ground (terrain) and of the road surface at (x, z).
 		groundAt, heightAt, harbour,
+		// 1 if (x, y, z) is under a roof (the tunnel, under the bridge), else 0.
+		coverAt(x, y, z){ const r = roofAt(x, z); return r !== undefined && y < r ? 1 : 0; },
 		look,
 		// { hour 0-24, cloud 0-1, rain 0-1 }. Cheap to call every frame.
 		setAtmosphere(a){ now.hour = a.hour; now.cloud = a.cloud; now.rain = a.rain; },
@@ -774,7 +801,8 @@ export function buildWorld(track, opts = {}){
 		cheer(v){ extras.cheer(v); },
 		skyColor,
 		center: { x: cx, z: cz }, radius,
-		update(dt, focus){
+		// cam: where the camera is (the rain falls around it), if not the focus.
+		update(dt, focus, cam){
 			for(const u of updaters) u(dt);
 			// Wet road builds up in the rain and dries slowly afterwards.
 			wet += (now.rain - wet) * Math.min(1, dt * (now.rain > wet ? 0.12 : 0.04));
@@ -795,16 +823,26 @@ export function buildWorld(track, opts = {}){
 				clouds.position.set(focus.x, 190 + (focus.y || 0), focus.z);
 				stars.position.set(focus.x, 0, focus.z);
 			}
-			if(rainLines && rainLines.visible && focus){
+			const rf = cam || focus;
+			if(rainLines && rainLines.visible && rf){
 				const p = rainLines.geometry.attributes.position, a = p.array;
-				const fall = dt * (38 + now.rain * 14);
-				for(let i = 0; i < a.length; i += 6){
-					let y = a[i + 1] - fall;
+				const fall = dt * (38 + now.rain * 14), ys = rainLines.userData.fallY;
+				const ox = rf.x, oy = (rf.y || 0) - 14, oz = rf.z;
+				// Only look for roofs when there are any nearby.
+				const nearRoof = roofs.size > 0 && (roofAt(ox, oz) !== undefined || [[-30, 0], [30, 0], [0, -30], [0, 30], [-20, -20], [20, 20], [-20, 20], [20, -20]].some(([dx, dz]) => roofAt(ox + dx, oz + dz) !== undefined));
+				for(let i = 0, s = 0; i < a.length; i += 6, s++){
+					let y = ys[s] - fall;
 					if(y < 0){ y += 28; }
-					a[i + 1] = y; a[i + 4] = y + 0.9;
+					ys[s] = y;
+					let top = y + 0.9;
+					if(nearRoof){
+						const r = roofAt(a[i] + ox, a[i + 2] + oz);
+						if(r !== undefined && y + oy < r){ y = top = -500; }      // under a roof: not drawn
+					}
+					a[i + 1] = y; a[i + 4] = top;
 				}
 				p.needsUpdate = true;
-				rainLines.position.set(focus.x, (focus.y || 0) - 2, focus.z);
+				rainLines.position.set(ox, oy, oz);
 			}
 			if(skyMesh && focus) skyMesh.position.set(focus.x, 0, focus.z);
 			if(shadows && focus){

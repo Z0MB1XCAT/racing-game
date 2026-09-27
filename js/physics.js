@@ -145,6 +145,8 @@ export function stepCars(cars, walls, lines, oob, warp, hit, contact){
 
 		for(let w = 0; w < walls.length; w++){
 			const wall = walls[w];
+			// A barrier on one level of a bridge only stops cars on that level.
+			if(wall.lvl !== undefined && !(Math.abs((play.lvl ?? -1e9) - wall.lvl) < 3)) continue;
 			const posi = new THREE.Vector2(d.x, d.y);
 			if(Math.abs(wall.plane.distanceToPoint(play.pos.clone().sub(wall.position))) < WALL_SIZE){
 				if(wall.position.clone().distanceTo(play.pos) < wall.width / 2){

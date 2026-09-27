@@ -4,7 +4,8 @@
 // Mix: master volume → [music, effects, engines] → gentle compressor → speakers.
 import { createMusic } from "./music.js";
 
-let ctx = null, master = null, buses = null, noise = null, music = null, probe = null;
+let ctx = null, master = null, buses = null, noise = null, music = null, probe = null, echo = null;
+let rainLevel = 0, coverLevel = 0;
 let volume = 0.7, levels = { music: 0.5, sfx: 0.8, engine: 0.8 }, wantSong = null;
 // A number that's safe to hand to Web Audio (a NaN or infinity there throws, or silences
 // everything after it for good).
@@ -29,6 +30,7 @@ export function unlock(){
 	buses = {};
 	for(const k of ["music", "sfx", "engine"]){ buses[k] = ctx.createGain(); buses[k].gain.value = levels[k]; buses[k].connect(master); }
 	noise = noiseBuffer(2);
+	echo = makeEcho();
 	music = createMusic(ctx, buses.music, noise);
 	loadEngineModel();
 	if(wantSong) music.play(wantSong);
@@ -56,10 +58,11 @@ function rebuild(){
 	const old = ctx, engines = enginesOn;
 	try { if(music) music.dispose(); } catch {}
 	voices = new Map(); road = null; rainNodes = null; modelReady = null; probeBuf = null;
-	ctx = null; master = null; buses = null; music = null; probe = null;
+	ctx = null; master = null; buses = null; music = null; probe = null; echo = null;
 	try { old.onstatechange = null; old.close().catch(() => {}); } catch {}
 	unlock();
 	if(engines) startEngine();
+	applyRain(); setCover(coverLevel);
 }
 // For checks: the audio context's state.
 export function soundState(){ return ctx ? ctx.state : "none"; }
@@ -83,6 +86,36 @@ export function playMusic(name){
 }
 export function musicIntensity(v){ if(music) music.intensity(v); }
 export function duckMusic(on){ if(music) music.duck(on); }
+
+// Under a roof (a tunnel, under a bridge): engines and rain echo off the walls. A reverb built
+// from decaying noise with a few strong early reflections; its level follows setCover().
+function makeEcho(){
+	const len = Math.floor(ctx.sampleRate * 1.8), ir = ctx.createBuffer(2, len, ctx.sampleRate);
+	for(let ch = 0; ch < 2; ch++){
+		const d = ir.getChannelData(ch);
+		for(let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2) * 0.5;
+		// Slap-back off the tunnel walls.
+		for(const [ms, g] of [[23, 0.9], [41, 0.6], [67, 0.45], [96, 0.3], [131, 0.2]]){
+			const k = Math.floor(ctx.sampleRate * (ms + ch * 3) / 1000);
+			if(k < len) d[k] += g;
+		}
+	}
+	const conv = ctx.createConvolver(); conv.buffer = ir;
+	const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 120;
+	const wet = ctx.createGain(); wet.gain.value = 0;
+	const send = ctx.createGain(); send.gain.value = 1;
+	send.connect(hp); hp.connect(conv); conv.connect(wet); wet.connect(master);
+	buses.engine.connect(send); buses.sfx.connect(send);
+	return { send, wet };
+}
+// 0 in the open .. 1 under a roof.
+export function setCover(v){
+	coverLevel = Math.max(0, Math.min(1, fin(v)));
+	if(!ctx || ctx.state === "closed") return;
+	const t = ctx.currentTime;
+	if(echo) echo.wet.gain.setTargetAtTime(coverLevel * 0.55, t, 0.12);
+	applyRain();
+}
 
 function noiseBuffer(seconds){
 	const b = ctx.createBuffer(1, ctx.sampleRate * seconds, ctx.sampleRate);
@@ -348,8 +381,12 @@ export function updateEngines(cars, focus, dt){
 let rainNodes = null;
 // v: 0..1 how hard it's raining. Call as often as you like.
 export function setRain(v){
+	rainLevel = Math.max(0, Math.min(1, fin(v)));
+	applyRain();
+}
+function applyRain(){
 	if(!ctx || ctx.state === "closed") return;
-	v = Math.max(0, Math.min(1, fin(v)));
+	const v = rainLevel, cov = coverLevel;
 	if(!rainNodes){
 		if(v <= 0) return;
 		const src = noiseSrc(true);
@@ -360,12 +397,24 @@ export function setRain(v){
 		const rumble = ctx.createGain(); rumble.gain.value = 0;
 		src.connect(hp); hp.connect(lp); lp.connect(hiss); hiss.connect(buses.sfx);
 		src.connect(lo); lo.connect(rumble); rumble.connect(buses.sfx);
-		src.start();
-		rainNodes = { src, hiss, rumble };
+		// Rain drumming on the roof overhead: a dull patter (noise through a low band-pass,
+		// flickering like drops), heard under cover.
+		const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 520; bp.Q.value = 0.9;
+		const flick = ctx.createGain(); flick.gain.value = 0.6;
+		const lfo = ctx.createBufferSource(); lfo.buffer = noise; lfo.loop = true; lfo.playbackRate.value = 0.004;
+		const lfoG = ctx.createGain(); lfoG.gain.value = 0.5;
+		lfo.connect(lfoG); lfoG.connect(flick.gain);
+		const roof = ctx.createGain(); roof.gain.value = 0;
+		src.connect(bp); bp.connect(flick); flick.connect(roof); roof.connect(buses.sfx);
+		src.start(); lfo.start();
+		rainNodes = { src, lfo, hiss, rumble, roof, lp };
 	}
 	const t = ctx.currentTime;
-	rainNodes.hiss.gain.setTargetAtTime(v * 0.12, t, 0.4);
-	rainNodes.rumble.gain.setTargetAtTime(v * 0.1, t, 0.4);
+	// Outside: the full hiss. Under a roof: only a little of it leaks in, muffled, and the roof drums.
+	rainNodes.hiss.gain.setTargetAtTime(v * 0.12 * (1 - 0.85 * cov), t, 0.15);
+	rainNodes.lp.frequency.setTargetAtTime(6500 - 4800 * cov, t, 0.15);
+	rainNodes.rumble.gain.setTargetAtTime(v * 0.1 * (1 - 0.5 * cov), t, 0.15);
+	rainNodes.roof.gain.setTargetAtTime(v * 0.32 * cov, t, 0.15);
 }
 // A rumble of thunder after a delay (seconds).
 export function thunder(delay = 1){

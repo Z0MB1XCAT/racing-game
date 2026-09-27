@@ -682,6 +682,10 @@ function updateSky(r, raceMs, dt){
 	beamMat.opacity = Math.min(0.75, look.lights * 0.8);
 	for(const c of r.cars) if(c.beam) c.beam.visible = beamMat.opacity > 0.02 && c.model.visible;
 	audio.setRain(S.paused ? 0 : look.rain);
+	// Under a roof (the tunnel, under the bridge): the sound closes in. Eased so it doesn't click.
+	const covered = S.world.coverAt ? S.world.coverAt(camera.position.x, camera.position.y, camera.position.z) : 0;
+	S.cover = (S.cover || 0) + (covered - (S.cover || 0)) * Math.min(1, dt * 5);
+	audio.setCover(S.paused ? 0 : S.cover);
 	// Say when the weather turns.
 	if(S.atmos.dynamic && r.phase === "racing" && !S.replay){
 		if(!S.rainOn && a.rain > 0.3){ S.rainOn = true; hud.toast("Rain is falling", 2200); }
@@ -1472,10 +1476,10 @@ function frame(now){
 		if(r) for(const c of r.cars) c.model && animateCar(c.model, 0, 0, dt);
 		fx.update(dt);
 	}
-	if(r) updateSky(r, r.raceTime, dt);
 	// Debugging and screenshot tools can park the camera: __game.freeCam = { p: [x, y, z], t: [x, y, z] }.
 	if(S.freeCam){ camera.position.set(...S.freeCam.p); camera.lookAt(...S.freeCam.t); }
-	if(S.world) S.world.update(dt, focus ? focus.model.position : (S.showcase && camMode === "showcase" ? S.showcase.position : null));
+	if(r) updateSky(r, r.raceTime, dt);
+	if(S.world) S.world.update(dt, focus ? focus.model.position : (S.showcase && camMode === "showcase" ? S.showcase.position : null), r ? camera.position : null);
 	renderer.render(scene, camera);
 	renderMirror();
 }
