@@ -726,6 +726,9 @@ kbd{ font-family: var(--f-display); font-weight: 700; font-size: 13px; padding: 
 .opt-row.stacked{ flex-direction: column; align-items: stretch; gap: 8px; }
 .seg.seg-fill{ display: flex; width: 100%; }
 .seg.seg-fill button{ flex: 1 1 0; min-width: 0; padding-left: 4px; padding-right: 4px; }
+/* The Layout switch: up to five layouts, wrapping onto a second line on narrow screens. */
+.seg.seg-wrap{ flex-wrap: wrap; }
+.seg.seg-wrap button{ flex: 1 0 auto; white-space: nowrap; padding-left: 10px; padding-right: 10px; }
 
 /* New version available */
 .update-bar{

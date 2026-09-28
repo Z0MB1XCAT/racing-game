@@ -1,7 +1,7 @@
 // The garage: pick paint, number, underglow, tyre smoke and title; see what's locked
 // and how close you are. Also works out the weekly crown holder.
 import { CATEGORIES, DEFAULT_LOOK, progress, isUnlocked, requirement, unlockedIds, cleanLook, item, MAX_LEVEL } from "./cosmetics.js";
-import { TRACKS } from "./tracks.js";
+import { TRACKS, LAYOUTS } from "./tracks.js";
 import { weeklyChallenge } from "./weekly.js";
 import * as store from "./storage.js";
 import { patternCanvas } from "./cars.js";
@@ -75,7 +75,7 @@ export function initGarage(ctx){
 				const missing = past.filter(id => !(id in cache));
 				const [st, tops, winners] = await Promise.all([
 					net.myStats(),
-					Promise.all(TRACKS.flatMap(d => d.code ? [d.key || d.id] : [d.key || d.id, (d.key || d.id) + "-rev"]).map(k => net.topLaps(k, 1).catch(() => []))),
+					Promise.all([...TRACKS, ...LAYOUTS].flatMap(d => d.code ? [d.key || d.id] : [d.key || d.id, (d.key || d.id) + "-rev"]).map(k => net.topLaps(k, 1).catch(() => []))),
 					Promise.all(missing.map(id => net.weeklyWinner(id).catch(() => undefined)))
 				]);
 				missing.forEach((id, i) => { if(winners[i] !== undefined) cache[id] = winners[i]; });

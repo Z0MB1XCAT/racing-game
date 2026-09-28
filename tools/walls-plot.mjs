@@ -5,7 +5,8 @@ import puppeteer from "puppeteer";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 globalThis.THREE = require("./three.min.cjs");
-const { TRACKS } = await import("../js/tracks.js");
+const { TRACKS: MAIN, LAYOUTS } = await import("../js/tracks.js");
+const TRACKS = [...MAIN, ...LAYOUTS];   // (every layout of every venue)
 const { buildTrack } = await import("../js/trackgen.js");
 const [id, cx, cz, r = 60] = process.argv.slice(2);
 const def = TRACKS.find(t => t.id === id);

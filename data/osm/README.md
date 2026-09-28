@@ -8,3 +8,12 @@ Map data © OpenStreetMap contributors, available under the Open Database Licenc
 https://www.openstreetmap.org/copyright
 
 The Overpass queries used are noted at the top of `tools/build-places.mjs`.
+
+`*-roads.json` are the mapped roads and raceways of each venue, for tracing the circuits' other
+layouts (`tools/route-layouts.mjs`). Overpass queries (maps.mail.ru mirror), for example:
+
+    [out:json][timeout:120];way["highway"="raceway"](45.605,9.275,45.635,9.300);out geom;       (Monza)
+    [out:json][timeout:120];way["highway"~"raceway|primary|secondary|tertiary|trunk|unclassified|residential"](43.728,7.412,43.742,7.432);out geom;   (Monaco)
+
+Daytona, Spa, Suzuka and Jeddah use the raceway query with a box round the venue (Monaco needs its
+streets too, trimmed to the harbour half). `out geom` keeps the node ids, so the ways join up.

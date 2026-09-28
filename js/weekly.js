@@ -20,16 +20,23 @@ function isoWeek(monday){
 	return `${year}-W${String(week).padStart(2, "0")}`;
 }
 
+// Weeks picked by hand (the owner's choice); every other week picks itself as usual.
+const CHOSEN = {
+	"2026-W40": { track: "monaco", rev: false }
+};
+
 function rawPick(monday){
+	const chosen = CHOSEN[isoWeek(monday)];
+	if(chosen) return { i: TRACKS.findIndex(t => t.id === chosen.track), rev: chosen.rev, chosen: true };
 	const rand = seededRandom("weekly:" + isoWeek(monday));
 	return { i: Math.floor(rand() * TRACKS.length), rev: rand() < 0.4 };
 }
 
 export function weeklyChallenge(now = Date.now(), weeksBack = 0){
 	const monday = mondayOf(now) - weeksBack * WEEK;
-	let { i, rev } = rawPick(monday);
-	// Never the same track two weeks running.
-	if(i === rawPick(monday - WEEK).i) i = (i + 1) % TRACKS.length;
+	let { i, rev, chosen } = rawPick(monday);
+	// Never the same track two weeks running (unless it was picked by hand).
+	if(!chosen && i === rawPick(monday - WEEK).i) i = (i + 1) % TRACKS.length;
 	const id = isoWeek(monday);
 	// A challenge that started before a track was remastered finishes on the old layout.
 	const def = (LEGACY[id] && LEGACY[id][TRACKS[i].id]) || TRACKS[i];

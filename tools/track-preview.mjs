@@ -5,7 +5,8 @@ import { writeFileSync } from "node:fs";
 import puppeteer from "puppeteer";
 const require = createRequire(import.meta.url);
 globalThis.THREE = require(process.env.THREE_PATH || new URL("./three.min.cjs", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"));
-const { TRACKS } = await import("../js/tracks.js");
+const { TRACKS: MAIN, LAYOUTS } = await import("../js/tracks.js");
+const TRACKS = [...MAIN, ...LAYOUTS];   // (every layout of every venue)
 const { buildTrack, badGridSlots } = await import("../js/trackgen.js");
 const { GRID } = await import("../js/physics.js");
 

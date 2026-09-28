@@ -1,5 +1,5 @@
 // Game shell: screens, input, camera, and wiring races to the menus and online rooms.
-import { TRACKS, trackById } from "./tracks.js";
+import { TRACKS, LAYOUTS, trackById, venueOf, layoutsOf } from "./tracks.js";
 import { buildTrack } from "./trackgen.js";
 import { makeTracker } from "./progress.js";
 import { buildWorld } from "./world.js";
@@ -86,7 +86,12 @@ function customDefs(){
 	if(!EDITOR_ENABLED) return [];
 	return store.getCustomTracks().map(t => ({ id: t.id, name: t.name, place: "Your track", kind: "custom", code: t.code, laps: 3, theme: "classic" }));
 }
-function allDefs(){ return [...TRACKS, ...customDefs()]; }
+function allDefs(){ return [...TRACKS, ...LAYOUTS, ...customDefs()]; }
+// What the track pickers show: each venue once (its other layouts are on the Layout switch).
+function pickDefs(){ return [...TRACKS, ...customDefs()]; }
+// The layout last picked at each venue, so picking the venue again brings it back.
+const layoutPref = {};
+const prefLayout = def => trackById(layoutPref[def.id]) || def;
 function defFor(id, custom){
 	if(custom && custom.code) return { id: "custom-" + hash(custom.code), name: custom.name || "Custom track", place: "Custom track", kind: "custom", code: custom.code, laps: 3, theme: "classic" };
 	return allDefs().find(d => d.id === id) || trackById("classic");
@@ -286,31 +291,51 @@ function trackSvg(entry){
 const svgCache = new Map();
 function renderTrackGrid(container, selectedId, onPick, opts = {}){
 	container.innerHTML = "";
-	const defs = opts.defs || allDefs();
-	for(const def of defs){
+	const defs = opts.defs || pickDefs();
+	for(const venue of defs){
 		const btn = document.createElement("button");
 		btn.className = "track-card";
 		const multi = opts.multi;
-		const round = multi ? multi.indexOf(def.id) : -1;
+		const round = multi ? multi.findIndex(id => venueOf(id) === venue.id) : -1;
+		// A venue's card shows the layout that's picked (or was last picked) there.
+		const def = trackById(round >= 0 ? multi[round] : venueOf(selectedId) === venue.id ? selectedId : layoutPref[venue.id]) || venue;
 		btn.setAttribute("role", multi ? "checkbox" : "radio");
-		btn.setAttribute("aria-checked", String(multi ? round >= 0 : def.id === selectedId));
-		btn.dataset.id = def.id;
+		btn.setAttribute("aria-checked", String(multi ? round >= 0 : venue.id === venueOf(selectedId)));
+		btn.dataset.id = venue.id;
 		if(!svgCache.has(def.id)) svgCache.set(def.id, trackSvg(getTrack(def, false)));
 		const best = store.getBest(trackKey(def, false));
 		const tag = def.flag || (def.kind === "oval" ? "OVAL" : def.kind === "classic" ? "OG" : def.kind === "custom" ? "YOURS" : "FUN");
-		btn.innerHTML = `${svgCache.get(def.id)}<span class="tc-flag">${tag}</span><span class="tc-name">${def.name}</span>
-			<span class="tc-meta"><span>${def.place || ""}</span><span>${def.realLength || ""}</span></span>
+		const n = layoutsOf(venue.id).length;
+		btn.innerHTML = `${svgCache.get(def.id)}<span class="tc-flag">${tag}</span><span class="tc-name">${venue.name}</span>
+			<span class="tc-meta"><span>${n > 1 ? (opts.compact ? def.layoutName : `${def.layoutName} · ${n} layouts`) : def.place || ""}</span><span>${def.realLength || ""}</span></span>
 			${opts.compact ? "" : `<span class="tc-record">${best ? `Your best <b>${fmtTime(best)}</b>` : "No lap set yet"}</span>`}
 			${round >= 0 ? `<span class="tc-round">${round + 1}</span>` : ""}`;
 		btn.addEventListener("click", () => {
 			if(container.dataset.locked) return;
 			audio.sfx.click();
 			if(!multi) container.querySelectorAll(".track-card").forEach(c => c.setAttribute("aria-checked", String(c === btn)));
-			onPick(def);
+			onPick(prefLayout(venue));
 		});
 		container.appendChild(btn);
 	}
 }
+
+// The Layout switch: every layout of the picked track's venue (the row is hidden when there's only one).
+function renderLayoutSeg(el, selectedId, onPick, locked = false){
+	const list = layoutsOf(selectedId);
+	el.closest(".opt-row").hidden = list.length < 2;
+	el.dataset.locked = locked ? "1" : "";
+	el.innerHTML = list.map(d => `<button data-v="${d.id}" aria-checked="${d.id === selectedId}"${locked ? " disabled" : ""}>${d.layoutName}</button>`).join("");
+	el.querySelectorAll("button").forEach(b => b.addEventListener("click", () => {
+		if(el.dataset.locked || b.getAttribute("aria-checked") === "true") return;
+		audio.sfx.click();
+		layoutPref[venueOf(b.dataset.v)] = b.dataset.v;
+		el.querySelectorAll("button").forEach(x => x.setAttribute("aria-checked", String(x === b)));
+		onPick(trackById(b.dataset.v));
+	}));
+}
+// A championship's rounds (track ids, in order) with a venue's round switched to another layout.
+const withLayout = (rounds, id) => rounds.map(r => venueOf(r) === venueOf(id) ? id : r);
 
 // ---------- Solo setup ----------
 const setupDirSeg = seg($("setupDir"), "0", v => { S.setup.reverse = v === "1"; refreshSetup(); });
@@ -348,14 +373,23 @@ const champMode = () => S.setup.mode === "bots" && S.setup.gameMode === "champ";
 function renderSetupGrid(){
 	if(champMode()){
 		renderTrackGrid($("setupTracks"), null, def => {
-			const r = S.setup.rounds, i = r.indexOf(def.id);
+			const r = S.setup.rounds, i = r.findIndex(id => venueOf(id) === venueOf(def.id));
 			if(i >= 0) r.splice(i, 1); else if(r.length < 6) r.push(def.id);
+			S.setup.trackId = def.id;
 			renderSetupGrid();
 			refreshSetup();
 		}, { multi: S.setup.rounds, defs: TRACKS });
 	}else{
 		renderTrackGrid($("setupTracks"), S.setup.trackId, def => { S.setup.trackId = def.id; S.setup.laps = def.laps || 3; lapStep.render(); refreshSetup(); });
 	}
+}
+// Switching layout: the venue's card and the rounds follow.
+function pickSetupLayout(def){
+	S.setup.trackId = def.id;
+	if(champMode()) S.setup.rounds = withLayout(S.setup.rounds, def.id);
+	else { S.setup.laps = def.laps || 3; lapStep.render(); }
+	renderSetupGrid();
+	refreshSetup();
 }
 function refreshSetup(){
 	if(champMode()){
@@ -368,6 +402,7 @@ function refreshSetup(){
 		$("setupGo").disabled = r.length < 2;
 		$("setupGo").firstElementChild.textContent = "Start championship";
 		botStep.render();
+		renderLayoutSeg($("setupLayout"), S.setup.trackId, pickSetupLayout);
 		if(r[0]) showTrack(r[0], S.setup.reverse && !r[0].code);
 		return;
 	}
@@ -379,6 +414,7 @@ function refreshSetup(){
 	$("setupDir").querySelectorAll("button").forEach(b => { b.disabled = !!def.code && b.dataset.v === "1"; });
 	$("setupName").textContent = def.name;
 	$("setupPlace").textContent = [def.place, def.realLength].filter(Boolean).join(" · ");
+	renderLayoutSeg($("setupLayout"), def.id, pickSetupLayout);
 	$("setupBlurb").textContent = def.blurb || "A track you made in the editor.";
 	$("modeHelp").textContent = S.setup.gameMode === "elim" ? "Every time the leader finishes a lap, the car in last place is out. Last car running wins." : "First across the line after the last lap wins.";
 	document.querySelector('[data-for="bots laps"]').hidden = S.setup.mode === "trial" || S.setup.gameMode === "elim";
@@ -1755,21 +1791,23 @@ function renderLobby(room){
 	const rounds = (st.rounds || []).filter(id => trackById(id));
 	$("lobbyTrackLabel").textContent = isChamp ? "Rounds" : "Track";
 	$("lobbyTrackName").textContent = isChamp ? (rounds.length ? rounds.map(id => trackById(id).name).join(" → ") : "Pick 2 to 6 tracks in order") : def.name + (st.reverse ? " · reversed" : "");
-	const gridDefs = isChamp ? TRACKS : st.custom && !allDefs().some(d => d.code === st.custom.code) ? [...allDefs(), def] : allDefs();
+	const gridDefs = isChamp ? TRACKS : st.custom && !pickDefs().some(d => d.code === st.custom.code) ? [...pickDefs(), def] : pickDefs();
 	const gk = gridDefs.map(d => d.id).join() + "|" + def.id + "|" + host + "|" + st.mode + "|" + rounds.join();
 	if(gk !== lobbyGridKey){
 		lobbyGridKey = gk;
 		if(isChamp){
 			renderTrackGrid($("lobbyTracks"), null, d => {
-				const r = rounds.slice(), i = r.indexOf(d.id);
+				const r = rounds.slice(), i = r.findIndex(id => venueOf(id) === venueOf(d.id));
 				if(i >= 0) r.splice(i, 1); else if(r.length < 6) r.push(d.id);
-				net.updateSettings({ rounds: r });
+				net.updateSettings({ rounds: r, track: d.id, custom: null });
 			}, { compact: true, defs: gridDefs, multi: rounds });
 		}else{
 			renderTrackGrid($("lobbyTracks"), def.id, d => {
 				net.updateSettings({ track: d.code ? "custom" : d.id, custom: d.code ? { name: d.name, code: d.code } : null, laps: d.laps || 3, reverse: false });
 			}, { compact: true, defs: gridDefs });
 		}
+		// The Layout switch (in a championship: the last venue picked, and its round follows).
+		renderLayoutSeg($("lobbyLayout"), def.id, d => net.updateSettings(isChamp ? { rounds: withLayout(rounds, d.id), track: d.id } : { track: d.id, laps: d.laps || 3 }), !host);
 	}
 	$("lobbyTracks").dataset.locked = host ? "" : "1";
 	for(const el of [$("lobbyMode"), $("lobbyDir")]) el.dataset.locked = host ? "" : "1";
@@ -1915,9 +1953,17 @@ function renderBoards(){
 	$("boardTracks").hidden = boards.tab !== "tracks";
 	if(boards.tab === "drivers") loadDrivers();
 	else{
-		renderTrackGrid($("boardTrackGrid"), boards.trackId, def => { boards.trackId = def.id; loadLaps(); }, { compact: true, defs: TRACKS });
+		renderTrackGrid($("boardTrackGrid"), boards.trackId, def => { boards.trackId = def.id; renderBoardLayout(); loadLaps(); }, { compact: true, defs: TRACKS });
+		renderBoardLayout();
 		loadLaps();
 	}
+}
+function renderBoardLayout(){
+	renderLayoutSeg($("boardLayout"), boards.trackId, def => {
+		boards.trackId = def.id;
+		renderTrackGrid($("boardTrackGrid"), boards.trackId, d => { boards.trackId = d.id; renderBoardLayout(); loadLaps(); }, { compact: true, defs: TRACKS });
+		loadLaps();
+	});
 }
 function whenAgo(ts){
 	if(!ts) return "";
@@ -1971,7 +2017,7 @@ async function loadDrivers(){
 		$("youRaces").textContent = (mine && mine.races) || 0;
 		$("youNote").textContent = mine && mine.races ? `Win rate ${Math.round(mine.wins / mine.races * 100)}%. Last race ${whenAgo(mine.at).toLowerCase()}.` : "Race online to get on the board.";
 		// Lap records held: how many tracks you top.
-		const keys = TRACKS.flatMap(d => d.code ? [trackKey(d, false)] : [trackKey(d, false), trackKey(d, true)]);
+		const keys = [...TRACKS, ...LAYOUTS].flatMap(d => d.code ? [trackKey(d, false)] : [trackKey(d, false), trackKey(d, true)]);
 		const tops = await Promise.all(keys.map(key => net.topLaps(key, 1).catch(() => [])));
 		if(token === boards.token) $("youRecords").textContent = tops.filter(t => t[0] && t[0].id === net.uid).length;
 	} catch(e){
@@ -2317,10 +2363,10 @@ $("btnGarage").addEventListener("click", () => { audio.sfx.click(); garage.open(
 const admin = initAdmin({
 	connect, escapeHtml, fmtTime, showScreen, audio,
 	setCam: m => { camMode = m; },
-	trackKeys: () => TRACKS.flatMap(d => d.code ? [trackKey(d, false)] : [trackKey(d, false), trackKey(d, true)]),
+	trackKeys: () => [...TRACKS, ...LAYOUTS].flatMap(d => d.code ? [trackKey(d, false)] : [trackKey(d, false), trackKey(d, true)]),
 	trackName: k => { const base = k.replace(/-rev$/, ""), d = TRACKS.find(t => (t.key || t.id) === base) || trackById(base); return d ? d.name + (d.key && base !== d.key ? " (old layout)" : "") + (k.endsWith("-rev") ? " reversed" : "") : k; },
 	weeks: () => [weeklyChallenge().id, weeklyChallenge(Date.now(), 1).id],
-	minLapMap: () => Object.fromEntries(TRACKS.flatMap(d => (d.code ? [false] : [false, true]).map(rev => { const e = getTrack(d, rev); return [e.key, minLapMs(e)]; })))
+	minLapMap: () => Object.fromEntries([...TRACKS, ...LAYOUTS].flatMap(d => (d.code ? [false] : [false, true]).map(rev => { const e = getTrack(d, rev); return [e.key, minLapMs(e)]; })))
 });
 $("btnAdmin").addEventListener("click", () => { audio.sfx.click(); admin.open(); });
 

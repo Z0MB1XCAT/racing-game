@@ -1,6 +1,7 @@
 // Builds js/circuits.js from the real-world circuit data in data/circuits.
 //   node tools/build-circuits.mjs
-// For each real circuit (the five F1 tracks and the Daytona oval):
+// For each real circuit (the five F1 tracks and the Daytona oval, and their other layouts, which
+// tools/route-layouts.mjs traces from OpenStreetMap):
 //   - the real centreline (GeoJSON, race direction) in metres east/north;
 //   - the start line moved where needed;
 //   - sections that run side by side closer than the game's road width allows are eased
@@ -14,7 +15,11 @@ const DIR = new URL("../data/circuits/", import.meta.url);
 // Rettifilo, Roggia and Ascari chicanes keep their real shape. The Lesmos lean into the right.
 const MONZA_LENGTH = 2000, MONZA_WIDTH = 12, MONZA_CAMBER = [[2172, 2316, 3, "R"], [2532, 2604, 3, "R"]];
 // Daytona, metres from the start line: tri-oval 18, Turns 1-2 31, backstretch 3, Turns 3-4 31.
-const DAYTONA_LENGTH = 1000, DAYTONA_WIDTH = 18;
+// The real banked surface is 40 ft (12.2 m) wide, so at 31 degrees the outside edge is 20.6 ft
+// (6.3 m) above the inside. The game's road is about three times wider than the real one next to
+// the cars (a car is 2 units, about 4.5 m), so the banking is set to rise exactly as high as the
+// real one, in car lengths, across the whole road: the real height, at a gentler angle.
+const DAYTONA_LENGTH = 1000, DAYTONA_WIDTH = 18, BANK_SURFACE_M = 12.19, METRES_PER_UNIT = 2.25;
 const DAYTONA_BANK = [[0, 18], [420, 18], [640, 31], [1400, 31], [1580, 3], [2380, 3], [2560, 31], [3280, 31], [3500, 18]];
 const CONF = {
 	// Monaco's data starts at Casino Square; the start line is ~140 m before Ste Devote (point 120).
@@ -55,7 +60,7 @@ const CONF = {
 	// frontstretch), 3 on the backstretch. Real transitions are long, so they ease over bankRamp m.
 	// The data starts at Turn 3; point 116 is the start/finish line, at the apex of the tri-oval.
 	daytona: { file: "daytona-osm", startPoint: 116, length: DAYTONA_LENGTH, width: DAYTONA_WIDTH, flat: true,
-		bank: DAYTONA_BANK },
+		bank: DAYTONA_BANK, bankRise: { surface: BANK_SURFACE_M, perUnit: METRES_PER_UNIT } },
 	suzuka: { file: "jp-1962", length: 1650, width: 13, dem: "srtm30m", bridge: 22, hills: 5,   // bridge lift in metres (about 6 units at game scale)
 		camber: [[408, 684, 3, "R"],                                          // Turns 1-2
 			[1464, 1584, -4, "L"],                                            // Reverse Bank (gyaku bank)
@@ -63,7 +68,35 @@ const CONF = {
 			[4704, 4920, 2, "L"]] },                                          // 130R
 	// Jeddah is flat (the 30 m DEM mostly picks up buildings); Turn 13 is banked at 12 degrees.
 	jeddah: { file: "sa-2021", length: 1900, width: 13, dem: "srtm30m", flatten: 0,
-		camber: [[2292, 2556, 12, "L"]] }
+		camber: [[2292, 2556, 12, "L"]] },
+
+	// ----- Other layouts of the same venues (routed through OpenStreetMap by tools/route-layouts.mjs) -----
+	// origin: the parent circuit's data file, so the layout sits in the same place (its real
+	// surroundings line up). scale: the parent's game units per metre, unless the layout sets its own
+	// (length is then worked out from the layout's real length). from: heights and camber are the
+	// parent's wherever the layout runs on the same road (near it, going the same way); in between
+	// the heights ease from one end to the other (flat: stay at ground level) and the road is level.
+	// snapTo: follow the parent's own (eased) line where they share the road.
+	// (Avenue JFK runs along the harbour just below Beau Rivage, which climbs: keep it at harbour level.)
+	"monaco-fe": { file: "monaco-fe", origin: "mc-1929", scale: "monaco", width: 10, from: ["monaco"], skip: [[43.73725, 7.4240, 110]] },
+	"spa-moto": { file: "spa-moto", origin: "be-1925", scale: "spa", width: 14, from: ["spa"] },
+	// Monza's oval: its bankings are progressive (steeper the higher you go, 80% at the top); no
+	// survey of their height is published, so they're taken as a 12 m wide surface at an average
+	// 30 degrees, rising 6 m (an estimate; in car lengths across the road, as at Daytona).
+	"monza-oval": { file: "monza-oval", origin: "monza-osm", scale: "monza", width: MONZA_WIDTH, from: ["monza"],
+		bank: [[0, 0], [560, 0], [700, -30], [1250, -30], [1390, 0], [2730, 0], [2870, -30], [3400, -30], [3540, 0]], bankRise: { surface: 12, perUnit: METRES_PER_UNIT } },
+	// (The road course passes under the oval's north banking at the Serraglio: bridge lift in metres.)
+	"monza-combined": { file: "monza-combined", origin: "monza-osm", scale: "monza", width: MONZA_WIDTH, from: ["monza", "monza-oval"], bridge: 12 },
+	"suzuka-moto": { file: "suzuka-moto", origin: "jp-1962", scale: "suzuka", width: 13, from: ["suzuka"], snapTo: true, bridge: true },
+	"suzuka-east": { file: "suzuka-east", origin: "jp-1962", scale: "suzuka", width: 13, from: ["suzuka"], snapTo: true },
+	// (West: from the chicane the link back to Degner turns right round next to 130R, too tight for the
+	// game's road at Suzuka's scale, so this layout is a little bigger with a slightly narrower road.)
+	"suzuka-west": { file: "suzuka-west", origin: "jp-1962", perMetre: 0.36, width: 12, from: ["suzuka"], snapTo: true, bridge: true },
+	"suzuka-south": { file: "suzuka-south", origin: "jp-1962", perMetre: 0.4, width: 12, dem: "srtm30m", hills: 2 },   // (small and twisty: a bigger scale, so the grid fits on its straight either way round)
+	"jeddah-fe": { file: "jeddah-fe", origin: "sa-2021", scale: "jeddah", width: 13, from: ["jeddah"] },
+	// Daytona's road course: the infield is twisty, so it's at a bigger scale than the oval with a
+	// narrower road (the banking still rises its real height).
+	"daytona-road": { file: "daytona-road", origin: "daytona-osm", perMetre: 0.33, width: 13, from: ["daytona"], flat: true }
 };
 const STEP = 5, ELEV_STEP = 25, OUT_STEP = 12;
 
@@ -143,12 +176,43 @@ function cleanHills(h, min){
 }
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
-const out = {};
+const out = {}, built = {};
+
+// For each output point of a layout: the height and camber of the nearest point of its parent
+// circuit(s) running the same way within 30 m, or null (also inside conf.skip: [lat, lon, m], a road
+// that runs beside the parent but isn't on it). Heights are the parent's ground heights (before
+// any banking lifts the centreline); a parent's banking made to rise its real height (bankRise) is
+// rescaled so it rises the same height across this road.
+function fromParents(conf, Q, idx, M, k, toXY){
+	const skip = (conf.skip || []).map(([la, lo, r]) => [...toXY(la, lo), r]);
+	const dir = (P, i) => { const a = P[(i - 1 + P.length) % P.length], b = P[(i + 1) % P.length], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l]; };
+	const pts = idx.map(i => [Q[i].x, Q[i].y]);
+	return pts.map((p, m) => {
+		const [hx, hy] = dir(pts, m);
+		if(skip.some(([x, y, r]) => Math.hypot(p[0] - x, p[1] - y) < r)) return null;
+		for(const pid of conf.from){
+			const B = built[pid];
+			let best = -1, bd = 30;
+			for(let j = 0; j < B.pts.length; j++){
+				const d = Math.hypot(B.pts[j][0] - p[0], B.pts[j][1] - p[1]);
+				if(d >= bd) continue;
+				const [dx, dy] = dir(B.pts, j);
+				if(dx * hx + dy * hy < 0.8) continue;
+				bd = d; best = j;
+			}
+			if(best < 0) continue;
+			const f = B.conf.bankRise ? B.conf.width / conf.width : 1;
+			return { h: B.h[best], c: B.camber ? B.camber[best] * f : 0 };
+		}
+		return null;
+	});
+}
 
 for(const [id, conf] of Object.entries(CONF)){
 	const coords = JSON.parse(readFileSync(new URL(conf.file + ".geojson", DIR), "utf8")).features[0].geometry.coordinates;
 	if(Math.hypot(coords[0][0] - coords.at(-1)[0], coords[0][1] - coords.at(-1)[1]) < 1e-6) coords.pop();
-	const lat0 = coords[0][1], lon0 = coords[0][0], kx = Math.cos(lat0 * Math.PI / 180) * 111320, ky = 110540;
+	const o = conf.origin ? JSON.parse(readFileSync(new URL(conf.origin + ".geojson", DIR), "utf8")).features[0].geometry.coordinates[0] : coords[0];
+	const lat0 = o[1], lon0 = o[0], kx = Math.cos(lat0 * Math.PI / 180) * 111320, ky = 110540;
 	const raw = coords.map(([lo, la]) => ({ x: (lo - lon0) * kx, y: (la - lat0) * ky, lon: lo, lat: la }));
 
 	// Resample every STEP metres around the loop.
@@ -179,7 +243,7 @@ for(const [id, conf] of Object.entries(CONF)){
 	const cacheFile = new URL(id + "-elev.json", DIR);
 	const ne = Math.round(L / ELEV_STEP);
 	let elev;
-	if(conf.flat) elev = new Array(ne).fill(0);
+	if(conf.flat || conf.from) elev = new Array(ne).fill(0);
 	else if(existsSync(cacheFile)) elev = JSON.parse(readFileSync(cacheFile, "utf8")).elev;
 	if(!elev || elev.length !== ne){
 		const pts = Array.from({ length: ne }, (_, i) => at(start + i * L / ne));
@@ -213,6 +277,38 @@ for(const [id, conf] of Object.entries(CONF)){
 	// elev[i] is at distance start + i * step, so index by distance from the start.
 	const E = s => { const u = ((((s - start) / L) * ne) % ne + ne) % ne, i = Math.floor(u), f = u - i; return elev[i] + (elev[(i + 1) % ne] - elev[i]) * f; };
 
+	// ----- A layout on the same road as its parent follows the parent's final line there -----
+	// (conf.snapTo: where the parent was eased apart, the layout gets the same room; off the parent,
+	// the shift fades from one end of the stretch to the other.)
+	if(conf.snapTo){
+		const B = built[conf.from[0]].pts, nb = B.length;
+		const off = Q.map((q, i) => {
+			const a = Q[(i - 2 + N) % N], b = Q[(i + 2) % N], hl = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+			let best = null, bd = 30;
+			for(let j = 0; j < nb; j++){
+				const p = B[j], r = B[(j + 1) % nb], vx = r[0] - p[0], vy = r[1] - p[1], vl = Math.hypot(vx, vy) || 1;
+				if(((b.x - a.x) * vx + (b.y - a.y) * vy) / hl / vl < 0.8) continue;
+				const t = Math.max(0, Math.min(1, ((q.x - p[0]) * vx + (q.y - p[1]) * vy) / (vl * vl)));
+				const px = p[0] + vx * t, py = p[1] + vy * t, d = Math.hypot(px - q.x, py - q.y);
+				if(d < bd){ bd = d; best = [px - q.x, py - q.y]; }
+			}
+			return best;
+		});
+		const first = off.findIndex(o => o);
+		for(let k = 1; k <= N; k++){
+			const i = (first + k) % N;
+			if(off[i]) continue;
+			const a = (i - 1 + N) % N;
+			let b = i; while(!off[b]) b = (b + 1) % N;
+			const len = (b - a + N) % N;
+			for(let t = 1; t < len; t++) off[(a + t) % N] = [off[a][0] + (off[b][0] - off[a][0]) * t / len, off[a][1] + (off[b][1] - off[a][1]) * t / len];
+			k += len - 2;
+		}
+		// (Smoothed along the lap, so the line never jumps where the nearest bit of parent changes.)
+		const sm = off.map((_, i) => { let x = 0, y = 0, w = 0; for(let o = -8; o <= 8; o++){ const v = off[(i + o + N) % N], ww = 9 - Math.abs(o); x += v[0] * ww; y += v[1] * ww; w += ww; } return [x / w, y / w]; });
+		Q.forEach((q, i) => { q.x += sm[i][0]; q.y += sm[i][1]; });
+	}
+
 	// ----- Hairpin legs -----
 	if(conf.hairpin){
 		const [tipM, legM, gap] = conf.hairpin, r = gap / 2, sM = L / N;
@@ -241,6 +337,7 @@ for(const [id, conf] of Object.entries(CONF)){
 	}
 
 	// ----- Ease apart sections that run too close -----
+	if(!conf.length) conf.length = Math.round(L * (conf.perMetre || CONF[conf.scale].length / out[conf.scale].meters));
 	const k = conf.length / L;                       // game units per metre
 	const minSep = (conf.width + 4) / k;              // centre to centre, in metres
 	const along = (a, b) => { const d = Math.abs(a - b) % N; return Math.min(d, N - d) * (L / N); };
@@ -254,6 +351,7 @@ for(const [id, conf] of Object.entries(CONF)){
 			if(d < best){ best = d; cross = [i, j]; }
 		}
 	}
+	if(process.env.DEBUG_HILLS && cross) console.log(id, "crossing", cross, Q[cross[0]].lat.toFixed(5), Q[cross[0]].lon.toFixed(5), Math.hypot(Q[cross[0]].x - Q[cross[1]].x, Q[cross[0]].y - Q[cross[1]].y).toFixed(1));
 	const nearCross = (i, j) => cross && ((along(i, cross[0]) < 140 && along(j, cross[1]) < 140) || (along(i, cross[1]) < 140 && along(j, cross[0]) < 140));
 	let passes = 0, worst = 0;
 	for(; passes < 120; passes++){
@@ -316,6 +414,29 @@ for(const [id, conf] of Object.entries(CONF)){
 	// descent run one way only (no ripples), and ease it.
 	if(conf.hills) h = cleanHills(h, conf.hills);
 	if(conf.heights) h = Array.from({ length: M }, (_, m) => profileAt(conf.heights, m * OUT_STEP));
+	let fromCam = null;
+	if(conf.from){
+		const got = fromParents(conf, Q, idx, M, k, (la, lo) => [(lo - lon0) * kx, (la - lat0) * ky]);
+		const miss = got.filter(g => !g).length;
+		if(miss === M) throw new Error(id + ": doesn't run on any of " + conf.from.join(", "));
+		// Between matched stretches: heights ease from one end to the other (or stay on the ground).
+		h = new Array(M); fromCam = new Array(M).fill(0);
+		for(let m = 0; m < M; m++) if(got[m]){ h[m] = got[m].h; fromCam[m] = got[m].c; }
+		for(let m0 = 0; m0 < M; m0++){
+			if(got[m0] || !got[(m0 - 1 + M) % M]) continue;          // (the start of a stretch off the parent)
+			const a = (m0 - 1 + M) % M;
+			let b = m0; while(!got[b]) b = (b + 1) % M;
+			const len = (b - a + M) % M;
+			for(let t = 1; t < len; t++) h[(a + t) % M] = conf.flat ? 0 : got[a].h + (got[b].h - got[a].h) * t / len;
+		}
+		// Ease the joins (heights and camber) over about 60 m.
+		const edge = new Uint8Array(M);
+		for(let m = 0; m < M; m++) if(!got[m] !== !got[(m + 1) % M]) for(let o = -6; o <= 6; o++) edge[(m + o + M) % M] = 1;
+		const hs = smooth(h, 5), cs = smooth(fromCam, 5);
+		h = h.map((v, m) => edge[m] ? hs[m] : v);
+		fromCam = fromCam.map((v, m) => edge[m] ? cs[m] : v);
+		console.log(`${id}: ${M - miss} of ${M} points on ${conf.from.join(" / ")}`);
+	}
 	// Monaco tunnel: the DEM reads the hillside above it; the road runs level-ish underneath.
 	let tunnel = null;
 	if(conf.tunnel){
@@ -325,7 +446,7 @@ for(const [id, conf] of Object.entries(CONF)){
 		tunnel = [a / M, b / M];
 	}
 	// Suzuka: lift the later road over the earlier one on a bridge.
-	if(cross){
+	if(cross && typeof conf.bridge === "number"){
 		const up = Math.round(cross[1] * M / N), low = Math.round(cross[0] * M / N);
 		const span = Math.round(220 / OUT_STEP);
 		const base = Math.max(h[up], h[low]);
@@ -335,7 +456,7 @@ for(const [id, conf] of Object.entries(CONF)){
 		}
 	}
 	// (Again after the bridge, so its ramps join the hills either side without a dip.)
-	if(cross && conf.hills) h = cleanHills(h, conf.hills);
+	if(cross && conf.hills && typeof conf.bridge === "number") h = cleanHills(h, conf.hills);
 	if(conf.flatten !== undefined){ const mean = h.reduce((a, b) => a + b, 0) / h.length; h = h.map(v => mean + (v - mean) * conf.flatten); }
 	// Camber, per output point: how much the road rises per metre to the left (so a right-hander
 	// banked into the corner is +), eased in and out over ~60 m.
@@ -350,7 +471,10 @@ for(const [id, conf] of Object.entries(CONF)){
 			const f = (sx - sa) / Math.max(1, sb - sa);
 			return a[1] + (b[1] - a[1]) * (0.5 - 0.5 * Math.cos(Math.PI * f));
 		};
-		camber = Array.from({ length: M }, (_, m) => -Math.tan(deg(m * OUT_STEP) * Math.PI / 180));
+		// The slope across the game's road: the real angle, or (bankRise) the real rise from the inside
+		// edge to the outside one, spread across the game's wider road.
+		const R = conf.bankRise, slope = d => R ? Math.sin(d) * R.surface / R.perUnit / conf.width : Math.tan(d);
+		camber = Array.from({ length: M }, (_, m) => -slope(deg(m * OUT_STEP) * Math.PI / 180));
 	}
 	if(conf.camber){
 		camber = new Array(M).fill(0);
@@ -360,14 +484,21 @@ for(const [id, conf] of Object.entries(CONF)){
 			if(w > 0) camber[m] += (dir === "R" ? 1 : -1) * Math.tan(deg * Math.PI / 180) * (0.5 - 0.5 * Math.cos(Math.PI * w));
 		}
 	}
+	// A layout's camber comes from its parent, with its own banking (Monza's oval) where the parent has none.
+	if(fromCam) camber = camber ? fromCam.map((v, m) => v || camber[m]) : fromCam;
+	const ground = h.slice();
 	const min = Math.min(...h);
 	h = h.map(v => +(v - min).toFixed(2));
 	// A banked oval sits on flat ground: the inside edge of the track is at ground level and the
 	// banking rises from there to the outside wall, so the centreline is half a road-width up it.
-	if(conf.bank) h = h.map((v, m) => +(v + Math.abs(camber[m]) * conf.width / 2 / k).toFixed(2));
+	const banked = conf.bank || (conf.from && conf.from.some(p => CONF[p].bank));
+	if(banked) h = h.map((v, m) => +(v + Math.abs(camber[m]) * conf.width / 2 / k).toFixed(2));
 
+	built[id] = { conf, k, pts: idx.map(i => [Q[i].x, Q[i].y]), h: ground, camber };
 	out[id] = {
 		meters: Math.round(L),
+		...(conf.origin ? { length: conf.length } : {}),
+		base: +min.toFixed(2),
 		pts: idx.map(i => [+Q[i].x.toFixed(1), +Q[i].y.toFixed(1)]),
 		elev: h,
 		...(tunnel ? { tunnel: tunnel.map(v => +v.toFixed(4)) } : {}),
@@ -379,7 +510,8 @@ for(const [id, conf] of Object.entries(CONF)){
 
 const js = `// Generated by tools/build-circuits.mjs from data/circuits. Don't edit by hand.
 // Real circuit centrelines (metres east/north, race direction, from the start line) and
-// elevation in metres above the lowest point. Circuit shapes: bacinger/f1-circuits (MIT).
+// elevation in metres above the lowest point (base: that point's real height, so a venue's layouts
+// line up with each other). Circuit shapes: bacinger/f1-circuits (MIT).
 // Elevation: Open Topo Data (EU-DEM, SRTM).
 export const CIRCUITS = ${JSON.stringify(out)};
 `;

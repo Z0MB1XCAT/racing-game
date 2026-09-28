@@ -4,12 +4,17 @@
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 globalThis.THREE = require("./three.min.cjs");
-const { TRACKS } = await import("../js/tracks.js");
+const { TRACKS: MAIN, LAYOUTS } = await import("../js/tracks.js");
+const TRACKS = [...MAIN, ...LAYOUTS];   // (every layout of every venue)
 const { buildTrack } = await import("../js/trackgen.js");
 const { buildTerrain } = await import("../js/terrain.js");
+const { remnants, remnantGround } = await import("../js/remnants.js");
 let bad = 0;
 for(const def of TRACKS.filter(d => d.elev)) for(const rev of [false, true]){
-	const t = buildTrack(def, rev), c = t.center, n = c.n, { groundAt } = buildTerrain(t, { isSea: () => false });   // (as in the game: land above sea level)
+	// (As in the game: land above sea level, and the ground shaped round the rest of the venue's
+	// circuit too, which mustn't push it up through this track's road.)
+	const t = buildTrack(def, rev), c = t.center, n = c.n, rg = remnantGround(t, remnants(t));
+	const { groundAt } = buildTerrain(t, { isSea: () => false, extra: rg.extra, bounds: rg.bounds });
 	const f = t.features || {};
 	const near = (i, k) => k && Math.min(...k.map(a => Math.min(Math.abs(i - a), n - Math.abs(i - a)))) < 70;
 	const inTunnel = i => f.tunnel && (f.tunnel[0] < f.tunnel[1] ? i >= f.tunnel[0] && i <= f.tunnel[1] : i >= f.tunnel[0] || i <= f.tunnel[1]);

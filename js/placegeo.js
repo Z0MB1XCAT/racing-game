@@ -15,7 +15,7 @@ export function inPoly(ring, x, y){
 // null if this track has no real surroundings.
 export function placeGeo(track){
 	const def = track.def;
-	const P = def && def.pts && track.mapScale && PLACES[def.id];
+	const P = def && def.pts && track.mapScale && PLACES[def.layoutOf || def.id];   // (a venue's other layouts share its surroundings)
 	if(!P) return null;
 	const S = track.mapScale;
 	// Metres east/north -> world x, z (and back).

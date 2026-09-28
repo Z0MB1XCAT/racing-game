@@ -6,6 +6,7 @@ import { buildScenery, canvasTexture } from "./scenery.js";
 import { naturalHour } from "./atmosphere.js";
 import { buildTerrain, buildTunnel, buildBridge, buildSkirts, TUNNEL_WALL } from "./terrain.js";
 import { placeGeo } from "./placegeo.js";
+import { remnants, remnantGround } from "./remnants.js";
 
 const THREE = globalThis.THREE;
 
@@ -222,7 +223,12 @@ export function buildWorld(track, opts = {}){
 	const updaters = [];
 	const keep = x => (disposables.push(x), x);
 
-	const b = track.bounds;
+	// The rest of the venue's circuit (its other layouts' roads), closed off (remnants.js). The world
+	// is made big enough for all of it.
+	const rem = remnants(track);
+	track.remnantSpace = rem.space;
+	track.remnants = rem.list;
+	const remGround = remnantGround(track, rem), b = remGround.bounds;
 	const cx = (b.minX + b.maxX) / 2, cz = (b.minZ + b.maxZ) / 2;
 	const radius = Math.max(b.maxX - b.minX, b.maxZ - b.minZ) / 2 + 30;
 	const mDist = Math.max(track.mountainDist, radius + 150);
@@ -279,6 +285,7 @@ export function buildWorld(track, opts = {}){
 			const [mx, my] = track.toMap(x, z);
 			edge = Math.max(edge, mx * ux + my * uy);
 		}
+		for(const p of rem.space ? rem.space.pts : []){ const [mx, my] = track.toMap(p.x, p.z); edge = Math.max(edge, mx * ux + my * uy + track.center.hw); }
 		seaEdge = { ux, uy, edge: edge + 25 };
 	}
 	const isSea = seaEdge ? (x, z) => { const [mx, my] = track.toMap(x, z); return mx * seaEdge.ux + my * seaEdge.uy > seaEdge.edge; } : null;
@@ -324,14 +331,19 @@ export function buildWorld(track, opts = {}){
 	const geo = track.center ? placeGeo(track) : null;
 	if(geo){
 		const c = track.center, clear = c.hw + 10;
-		const byRoad = (x, z) => { let near = false; c.hash.near(x, z, clear, j => { if(!near && Math.hypot(c.x[j] - x, c.z[j] - z) < clear) near = true; }); return near; };
+		const byRoad = (x, z) => {
+			let near = false;
+			c.hash.near(x, z, clear, j => { if(!near && Math.hypot(c.x[j] - x, c.z[j] - z) < clear) near = true; });
+			if(!near && rem.space) rem.space.near(x, z, clear, p => { if(!near && Math.hypot(p.x - x, p.z - z) < clear) near = true; });
+			return near;
+		};
 		isWater = (x, z) => !byRoad(x, z) && geo.isWater(x, z);
 	}
 
 	// Elevated circuits get rolling ground built from the road's own heights.
 	let terrain = null;
 	if(track.elevated){
-		terrain = buildTerrain(track, { isSea: isWater, uvOrigin: { x: cx - groundSize / 2, z: cz + groundSize / 2 } });
+		terrain = buildTerrain(track, { isSea: isWater, uvOrigin: { x: cx - groundSize / 2, z: cz + groundSize / 2 }, extra: remGround.extra, bounds: b });
 		keep(terrain.geometry);
 		let tmat = groundMat;
 		if(theme.stripes && groundMat.emissiveMap){
@@ -352,7 +364,7 @@ export function buildWorld(track, opts = {}){
 	ground.receiveShadow = shadows;
 	group.add(ground);
 
-	let roadMat = null;
+	let roadMat = null, remnantSides = [];
 	// Road, edge lines, kerbs, start line, grid boxes (circuits only; the Classic look has none).
 	if(track.center && theme.road !== undefined){
 		const c = track.center, hw = c.hw;
@@ -379,26 +391,63 @@ export function buildWorld(track, opts = {}){
 		// Chequered start line.
 		const chk = keep(canvasTexture(16, 2, (g) => { for(let i = 0; i < 16; i++) for(let j = 0; j < 2; j++){ g.fillStyle = (i + j) % 2 ? "#111" : "#f5f5f5"; g.fillRect(i, j, 1, 1); } }));
 		chk.magFilter = THREE.NearestFilter;
-		const startLine = new THREE.Mesh(keep(new THREE.PlaneBufferGeometry(hw * 2, 1.6)), keep(new THREE.MeshLambertMaterial({ map: chk })));
-		startLine.rotation.x = -Math.PI / 2;
+		// On a banked start (Daytona's tri-oval) the line, gantry and grid slots follow the camber:
+		// the road rises by bank0 per unit to the left (+x at the line).
+		const bank0 = track.center && track.center.bank ? track.center.bank[0] : 0, tilt = Math.atan(bank0);
+		const lineGeo = keep(new THREE.PlaneBufferGeometry(hw * 2, 1.6));
+		lineGeo.rotateX(-Math.PI / 2);
+		lineGeo.rotateZ(tilt);
+		const startLine = new THREE.Mesh(lineGeo, keep(new THREE.MeshLambertMaterial({ map: chk })));
 		const h0 = heightAt(0, START_Z);
 		startLine.position.set(0, 0.05 + h0, START_Z);
 		group.add(startLine);
 		// Gantry over the line.
+		// Each post stands on its own edge of the road (they differ on a banked start), up to a level beam.
+		const eL = hw * bank0, eR = -hw * bank0, beamY = 7.2 + Math.max(eL, eR, 0);
+		const post = (x, e) => ({ x, y: (e - 1 + beamY) / 2, z: START_Z, w: 0.5, h: beamY - e + 1, d: 0.5, color: 0x2a2e38 });
 		const gantry = mergedBoxes([
-			{ x: hw + 1.6, y: 3.5, z: START_Z, w: 0.5, h: 7, d: 0.5, color: 0x2a2e38 },
-			{ x: -hw - 1.6, y: 3.5, z: START_Z, w: 0.5, h: 7, d: 0.5, color: 0x2a2e38 },
-			{ x: 0, y: 7.2, z: START_Z, w: hw * 2 + 3.7, h: 1.2, d: 0.6, color: 0x1a1d25 }
+			post(hw + 1.6, eL),
+			post(-hw - 1.6, eR),
+			{ x: 0, y: beamY, z: START_Z, w: hw * 2 + 3.7, h: 1.2, d: 0.6, color: 0x1a1d25 }
 		]);
 		const gm = new THREE.Mesh(keep(gantry), keep(new THREE.MeshLambertMaterial({ vertexColors: true })));
 		gm.position.y = h0;
 		group.add(gm);
 		const banner = new THREE.Mesh(keep(new THREE.PlaneBufferGeometry(hw * 2 + 3, 1)), keep(new THREE.MeshBasicMaterial({ map: chk, side: THREE.DoubleSide })));
-		banner.position.set(0, 7.2 + h0, START_Z - 0.32);
+		banner.position.set(0, beamY + h0, START_Z - 0.32);
 		group.add(banner);
 		// Grid slots.
-		const slots = GRID.slice(0, 10).map(g => ({ x: g.x, y: 0.05 + heightAt(g.x, g.y + 1.25), z: g.y + 1.25, sx: 1.4, sy: 1, sz: 0.14 }));
+		const slots = GRID.slice(0, 10).map(g => ({ x: g.x, y: 0.05 + heightAt(g.x, g.y + 1.25), z: g.y + 1.25, sx: 1.4, sy: 1, sz: 0.14, rz: tilt }));
 		group.add(instanced(keep(new THREE.BoxBufferGeometry(1, 0.02, 1)), lineMat, slots));
+		// The rest of the venue's circuit: closed road (a little below the track where they meet),
+		// its edge lines, low walls down to the ground where it stands above it, and a barrier
+		// across it wherever it joins the track.
+		const blocks = [], sides = [];
+		for(const r of rem.list){
+			const rc = r.center, n = rc.n, piece = i => r.draw[i] && r.draw[(i + 1) % n];
+			group.add(new THREE.Mesh(keep(ribbon(rc, hw + 0.8, -hw - 0.8, -0.03, piece)), roadMat));
+			const open = i => r.open[i] && r.open[(i + 1) % n];
+			group.add(new THREE.Mesh(keep(ribbon(rc, hw - 0.5, hw - 0.8, -0.015, open)), lineMat));
+			group.add(new THREE.Mesh(keep(ribbon(rc, -hw + 0.8, -hw + 0.5, -0.015, open)), lineMat));
+			sides.push({ rc, piece });
+			for(const e of r.ends){
+				const i = e.i, nx = rc.tz[i], nz = -rc.tx[i], ry = Math.atan2(rc.tx[i], rc.tz[i]);   // (blocks side by side across the road)
+				let k = 0;
+				for(let lat = -hw - 0.4; lat <= hw + 0.4; lat += 1.6, k++){
+					const x = rc.x[i] + nx * lat, z = rc.z[i] + nz * lat;
+					let onTrack = false;
+					c.hash.near(x, z, hw + 0.8, j => { if(!onTrack && Math.hypot(c.x[j] - x, c.z[j] - z) < hw + 0.8) onTrack = true; });
+					if(onTrack) continue;
+					blocks.push({ x, y: rc.h[i] + lat * rc.bank[i] + 0.55, z, w: 1.5, h: 1.1, d: 0.6, ry, color: k % 2 ? 0xd8342f : 0xf2f2f2 });
+				}
+			}
+		}
+		if(blocks.length){
+			const m = new THREE.Mesh(keep(mergedBoxes(blocks)), keep(new THREE.MeshLambertMaterial({ vertexColors: true })));
+			m.castShadow = m.receiveShadow = shadows;
+			group.add(m);
+		}
+		remnantSides = sides;
 	}else if(!track.center){
 		// Original-style start line and checkpoint.
 		track.lines.forEach((l, i) => {
@@ -514,7 +563,16 @@ export function buildWorld(track, opts = {}){
 
 	// Trees, grandstands, pits, billboards, buildings (see scenery.js).
 	const scenery = track.scenery || [];
-	const extras = buildScenery(track, theme, { group, keep, shadows, quality, rand, groundAt, harbour, geo, isWater });
+	// Spots for buildings and trees along the closed roads too (the same spread as the track's own).
+	const extraSpots = [], rr = seededRandom("remnants:" + track.id);
+	for(const r of rem.list){
+		const rc = r.center, open = [...r.open.keys()].filter(i => r.open[i]);
+		for(let k = 0; k < open.length / 5; k++){
+			const i = open[Math.floor(rr() * open.length)], side = rr() < 0.5 ? 1 : -1, off = rc.hw + 6 + Math.pow(rr(), 1.6) * 70;
+			extraSpots.push({ x: rc.x[i] + rc.tz[i] * off * side, z: rc.z[i] - rc.tx[i] * off * side, off: off - rc.hw, i: -1, side, r: rr(), r2: rr(), face: Math.atan2(-rc.tz[i] * side, rc.tx[i] * side) });
+		}
+	}
+	const extras = buildScenery(track, theme, { group, keep, shadows, quality, rand, groundAt, harbour, geo, isWater, extraSpots });
 	const occluders = extras.occluders;
 	updaters.push(...extras.updaters);
 	if(theme.trees === "classic"){
@@ -539,6 +597,32 @@ export function buildWorld(track, opts = {}){
 		const sk = new THREE.Mesh(keep(buildSkirts(track, groundAt, skip, { ground: theme.ground, stone: theme.skirt })), keep(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })));
 		sk.receiveShadow = shadows;
 		group.add(sk);
+	}
+	// The closed-off roads' sides, down to the ground where they stand above it.
+	if(terrain && remnantSides.length){
+		const pos = [], c = track.center, hw = c.hw;
+		for(const { rc, piece } of remnantSides) for(let i = 0; i < rc.n; i++){
+			if(!piece(i)) continue;
+			const j = (i + 1) % rc.n;
+			for(const lat of [hw + 0.8, -hw - 0.8]){
+				const p = k => { const x = rc.x[k] + rc.tz[k] * lat, z = rc.z[k] - rc.tx[k] * lat; return [x, rc.h[k] + lat * rc.bank[k] - 0.03, z, groundAt(x, z) - 0.3]; };
+				const [ax, ay, az, ag] = p(i), [bx, by, bz, bg] = p(j);
+				if(ay - ag < 0.4 && by - bg < 0.4) continue;
+				// (Not where it passes over the track on a bridge: the cars drive underneath.)
+				let over = false;
+				for(const [x, z] of [[ax, az], [bx, bz]]) c.hash.near(x, z, c.hw + 3, k => { if(!over && Math.hypot(c.x[k] - x, c.z[k] - z) < c.hw + 3) over = true; });
+				if(over) continue;
+				pos.push(ax, ay, az, bx, by, bz, ax, ag, az, bx, by, bz, bx, bg, bz, ax, ag, az);
+			}
+		}
+		if(pos.length){
+			const g = keep(new THREE.BufferGeometry());
+			g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+			g.computeVertexNormals();
+			const m = new THREE.Mesh(g, keep(new THREE.MeshLambertMaterial({ color: theme.skirt ?? 0x9a9ea6, side: THREE.DoubleSide })));
+			m.receiveShadow = shadows;
+			group.add(m);
+		}
 	}
 	if(track.features && track.features.bridge && terrain){
 		const br = buildBridge(track, track.features.bridge, groundAt, keep);
@@ -645,12 +729,14 @@ export function buildWorld(track, opts = {}){
 			const off = hw + 3;
 			const x = c.x[i] + nx * off, z = c.z[i] + nz * off;
 			if(!track.keep[side > 0 ? 0 : 1][i] || !roomFor(x, z, 0.8)) continue;
-			const gy = Math.max(groundAt(x, z), c.h ? c.h[i] - 1 : 0), py = c.h ? c.h[i] : 0;
+			// Heights from the edge of the road beside the pole (they differ across a banked road).
+			const bank = c.bank ? c.bank[i] : 0, edgeY = c.h ? c.h[i] + side * hw * bank : 0;
+			const gy = Math.max(groundAt(x, z), c.h ? edgeY - 1 : 0), py = edgeY;
 			poles.push({ x, y: gy + 5 + (py - gy) / 2, z, sx: 0.3, sy: 10 + (py - gy), sz: 0.3 });
 			heads.push({ x: x - nx * 1.2, y: py + 10, z: z - nz * 1.2, sx: 1.4, sy: 0.4, sz: 1.4 });
 			// The pool of light lies on the road, tilted with its camber (so it doesn't clip into it).
-			const lat = -side * (hw * 0.7 + 3) + side * off, bank = c.bank ? c.bank[i] : 0;
-			pools.push({ x: x - nx * (hw * 0.7 + 3), y: py + lat * bank + 0.07, z: z - nz * (hw * 0.7 + 3), rx: -Math.PI / 2 + Math.atan(bank), ry: Math.atan2(-c.tz[i], c.tx[i]), s: hw * 1.6 });
+			const lat = -side * (hw * 0.7 + 3) + side * off, cy = c.h ? c.h[i] : 0;
+			pools.push({ x: x - nx * (hw * 0.7 + 3), y: cy + lat * bank + 0.07, z: z - nz * (hw * 0.7 + 3), rx: -Math.PI / 2 + Math.atan(bank), ry: Math.atan2(-c.tz[i], c.tx[i]), s: hw * 1.6 });
 		}
 		const unit = keep(new THREE.BoxBufferGeometry(1, 1, 1));
 		group.add(instanced(unit, keep(new THREE.MeshLambertMaterial({ color: 0x3a3f4a })), poles));

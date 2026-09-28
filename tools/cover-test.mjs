@@ -10,7 +10,7 @@ for(const [id, where] of [["monaco", "tunnel"], ["suzuka", "bridge"]]){
 	await p.setViewport({ width: 1000, height: 700 });
 	await p.goto("http://localhost:3000/", { waitUntil: "networkidle0" });
 	await p.click("#btnBots"); await new Promise(r => setTimeout(r, 400));
-	await p.click(`#setupTracks [data-id="${id}"]`); await new Promise(r => setTimeout(r, 800));
+	await p.evaluate(async id => { const { venueOf } = await import("/js/tracks.js"); document.querySelector(`#setupTracks [data-id="${venueOf(id)}"]`).click(); if(venueOf(id) !== id) document.querySelector(`#setupLayout [data-v="${id}"]`).click(); }, id);   // (a layout: its venue, then the Layout switch) await new Promise(r => setTimeout(r, 800));
 	await p.evaluate(() => { window.__game.setup.weather = "rain"; window.__game.setup.bots = 3; });
 	await p.click("#setupGo");
 	await new Promise(r => setTimeout(r, 6000));

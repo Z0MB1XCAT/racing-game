@@ -54,6 +54,7 @@ on purpose; `npm run setup` recreates them. If the server is already running, do
 | `spot-shots.mjs <id> [rev] [rain] [spots...]` | screenshots round a track (fractions, `s<i>`, `v<frac>`, `above<frac>`, `tunnel`, `bridge`, `top`, ...) into `temporary screenshots/spots/` |
 | `montage.mjs out.png cols a.png b.png ...` | several screenshots on one sheet (read it with the Read tool) |
 | `corner-plot.mjs <id> <fraction> [radius]` | the game road over the real layout at a corner |
+| `route-layouts.mjs [layout ...]` | traces the other layouts (Monaco FE, Monza Oval, Suzuka East...) through `data/osm/*-roads.json` into `data/circuits/` |
 | `build-circuits.mjs [--corners]` | rebuilds `js/circuits.js` (real F1 layouts, elevation, camber) from `data/circuits/` |
 | `build-places.mjs` | rebuilds `js/places.js` (real surroundings, OpenStreetMap) from `data/osm/` |
 | `screenshot.mjs <url> [label]` (repo root) | one screenshot into `temporary screenshots/` |

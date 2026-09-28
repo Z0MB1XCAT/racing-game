@@ -166,6 +166,8 @@ function makeSpace(track){
 	function edge(x, z, reach){
 		let best = hw + reach;
 		c.hash.near(x, z, hw + reach, j => { const d = Math.hypot(c.x[j] - x, c.z[j] - z); if(d < best) best = d; });
+		// (The rest of the venue's circuit counts as road too: see remnants.js.)
+		if(track.remnantSpace) track.remnantSpace.near(x, z, hw + reach, p => { const d = Math.hypot(p.x - x, p.z - z); if(d < best) best = d; });
 		return best - hw;
 	}
 	const C = 12, taken = new Map();
@@ -644,7 +646,7 @@ export function buildScenery(track, theme, ctx){
 	}
 
 	// --- City blocks (Monaco, Jeddah) from the scenery spots near the road.
-	const spots = (track.scenery || []).slice().sort((a, b) => a.off - b.off);
+	const spots = [...(track.scenery || []), ...(ctx.extraSpots || [])].sort((a, b) => a.off - b.off);
 	const used = new Set();
 	const bdef = theme.buildings;
 	const extraTrees = [];
