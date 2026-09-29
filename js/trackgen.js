@@ -274,15 +274,32 @@ export function buildCircuit(def, reverse = false){
 		return ok;
 	}
 
+	// A lap that uses the same road twice (Monza's GP + oval, down the main straight twice): the second
+	// time along it (dup) is the same road as the first time (pair), so it has no walls of its own.
+	let dup = null, pair = null;
+	for(let i = 0; i < n; i++){
+		hash.near(xs[i], zs[i], 1.5, j => {
+			if(j >= i || circDist(i, j, n) < 200 || Math.hypot(xs[j] - xs[i], zs[j] - zs[i]) >= 1.5 || tx[i] * tx[j] + tz[i] * tz[j] < 0.9) return;
+			if(h && Math.abs(h[i] - h[j]) > 1) return;
+			if(!dup){ dup = new Uint8Array(n); pair = new Int32Array(n).fill(-1); }
+			if(pair[i] < 0){ dup[i] = 1; pair[i] = j; }
+		});
+	}
 	// Both edges; drop edge points that sit on top of another piece of road
 	// (tight inside corners and the figure-8 crossings), leaving gaps in the wall.
 	const sides = [[], []], keep = [new Uint8Array(n), new Uint8Array(n)];
+	const clearOfRoad = (x, z) => {
+		if(!dup) return clearOfOtherRoad(x, z, -1, 0, hw - 0.35);
+		let ok = true;
+		hash.near(x, z, hw - 0.35, j => { if(ok && !dup[j] && Math.hypot(xs[j] - x, zs[j] - z) < hw - 0.35) ok = false; });
+		return ok;
+	};
 	for(let i = 0; i < n; i++){
 		const nx = tz[i], nz = -tx[i];
 		const L = [xs[i] + nx * hw, zs[i] + nz * hw, i], R = [xs[i] - nx * hw, zs[i] - nz * hw, i];   // (x, z, sample)
 		sides[0].push(L); sides[1].push(R);
-		keep[0][i] = clearOfOtherRoad(L[0], L[1], -1, 0, hw - 0.35) ? 1 : 0;
-		keep[1][i] = clearOfOtherRoad(R[0], R[1], -1, 0, hw - 0.35) ? 1 : 0;
+		keep[0][i] = !(dup && dup[i]) && clearOfRoad(L[0], L[1]) ? 1 : 0;
+		keep[1][i] = !(dup && dup[i]) && clearOfRoad(R[0], R[1]) ? 1 : 0;
 	}
 
 	const walls = [], wallSegs = [];
@@ -391,7 +408,7 @@ export function buildCircuit(def, reverse = false){
 		pinches,
 		id: (def.key || def.id) + (reverse ? "-rev" : ""), def, reverse, kind: "circuit",
 		walls, lines, lineIdx, wallSegs,
-		center: { x: xs, z: zs, tx, tz, curv, n, len: n * STEP, step: STEP, hw, hash, h, bank },
+		center: { x: xs, z: zs, tx, tz, curv, n, len: n * STEP, step: STEP, hw, hash, h, bank, dup, pair },
 		elevated: !!h, features,
 		hash, kerbs, sides, keep, toMap, fromMap, mapScale: scale,
 		bounds: { minX, maxX, minZ, maxZ },

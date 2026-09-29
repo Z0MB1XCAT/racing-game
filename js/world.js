@@ -369,7 +369,7 @@ export function buildWorld(track, opts = {}){
 	if(track.center && theme.road !== undefined){
 		const c = track.center, hw = c.hw;
 		roadMat = keep(new THREE.MeshPhongMaterial({ color: theme.road, emissive: theme.night ? 0x14161c : 0x000000, specular: 0x000000, shininess: 40, side: THREE.DoubleSide }));
-		const road = new THREE.Mesh(keep(ribbon(c, hw + 0.8, -hw - 0.8, 0.02)), roadMat);
+		const road = new THREE.Mesh(keep(ribbon(c, hw + 0.8, -hw - 0.8, 0.02, c.dup ? i => !c.dup[i] : null)), roadMat);   // (a road used twice is drawn once)
 		road.receiveShadow = shadows;
 		group.add(road);
 		const lineMat = keep(new THREE.MeshBasicMaterial({ color: 0xe9edf2, side: THREE.DoubleSide, fog: true }));
@@ -920,8 +920,65 @@ export function buildWorld(track, opts = {}){
 	}
 	apply();
 
+	// Where a lap uses the same road twice and then it parts (Monza's GP + oval, at the end of the
+	// main straight): arrow boards across whichever way is wrong for the car being followed, pointing
+	// it the right way. The first time down the straight they close off the oval; the second time,
+	// the way on round the GP circuit (setRoute, every frame, from the car's place on the lap).
+	const forks = [];
+	if(track.center && track.center.dup){
+		const c = track.center, n = c.n, hw = c.hw, wrap = i => ((i % n) + n) % n;
+		const chevrons = right => {
+			const t = keep(canvasTexture(128, 64, g => {
+				g.fillStyle = "#15171c"; g.fillRect(0, 0, 128, 64);
+				g.fillStyle = "#ffd21f";
+				for(let k = 0; k < 3; k++){ const x0 = 12 + k * 36; g.beginPath(); g.moveTo(x0, 8); g.lineTo(x0 + 17, 8); g.lineTo(x0 + 33, 32); g.lineTo(x0 + 17, 56); g.lineTo(x0, 56); g.lineTo(x0 + 16, 32); g.closePath(); g.fill(); }
+			}));
+			if(!right){ t.wrapS = THREE.RepeatWrapping; t.repeat.x = -1; }
+			return t;
+		};
+		const boardGeo = keep(new THREE.PlaneBufferGeometry(hw * 0.6, hw * 0.3)), postGeo = keep(new THREE.BoxBufferGeometry(0.15, 1, 0.15));
+		const postMat = keep(new THREE.MeshLambertMaterial({ color: 0x3a3f4a }));
+		const mats = { true: keep(new THREE.MeshBasicMaterial({ map: chevrons(true), side: THREE.DoubleSide })), false: keep(new THREE.MeshBasicMaterial({ map: chevrons(false), side: THREE.DoubleSide })) };
+		// A row of boards across the road at sample k, arrows towards (x, z).
+		const boards = (k, x, z) => {
+			const grp = new THREE.Group(), lat0 = (x - c.x[k]) * c.tz[k] - (z - c.z[k]) * c.tx[k];
+			for(const f of [-0.62, 0, 0.62]){
+				const lat = f * hw, px = c.x[k] + c.tz[k] * lat, pz = c.z[k] - c.tx[k] * lat, y = c.h ? c.h[k] + lat * c.bank[k] : 0;
+				const b = new THREE.Mesh(boardGeo, mats[lat0 < 0]);
+				b.position.set(px, y + 1.1 + hw * 0.15, pz);
+				b.rotation.y = Math.atan2(-c.tx[k], -c.tz[k]);          // (facing the cars coming up to it)
+				grp.add(b);
+				for(const side of [-1, 1]){
+					const p = new THREE.Mesh(postGeo, postMat);
+					p.scale.y = 1.1 + 0.2;
+					p.position.set(px + c.tz[k] * side * hw * 0.27, y + 0.6, pz - c.tx[k] * side * hw * 0.27);
+					grp.add(p);
+				}
+			}
+			grp.visible = false;
+			group.add(grp);
+			return grp;
+		};
+		for(let a = 0; a < n; a++){
+			if(!c.dup[a] || c.dup[wrap(a + 1)]) continue;
+			// The boards go where the two ways are clearly apart (a road's width between them); if they never
+			// part, it's still one road (the lap line runs across it), not a fork.
+			const b = c.pair[a];
+			let D = 0;
+			for(let d = 5; d < 80 && !D; d++) if(Math.hypot(c.x[wrap(a + d)] - c.x[wrap(b + d)], c.z[wrap(a + d)] - c.z[wrap(b + d)]) > hw * 2.4) D = d;
+			if(!D) continue;
+			const ka = wrap(a + D), kb = wrap(b + D);
+			forks.push({ a, b, D, onA: boards(ka, c.x[kb], c.z[kb]), onB: boards(kb, c.x[ka], c.z[ka]) });
+		}
+		const near = (ci, at, D) => { const d = wrap(at - ci); return d <= 180 || n - d <= D + 5; };      // (coming up to it, or just past)
+		forks.setRoute = ci => { for(const f of forks){ f.onB.visible = ci >= 0 && near(ci, f.a, f.D); f.onA.visible = ci >= 0 && near(ci, f.b, f.D); } };
+	}
+
 	return {
 		group, theme, sun, fog, farPlane, occluders, info: extras.info,
+		// Arrow boards at a fork in a lap that uses the same road twice: ci, the followed car's sample.
+		setRoute(ci){ if(forks.setRoute) forks.setRoute(ci); },
+		forks,
 		// Height of the ground (terrain) and of the road surface at (x, z).
 		groundAt, heightAt, harbour,
 		// 1 if (x, y, z) is under a roof (the tunnel, under the bridge), else 0.

@@ -85,8 +85,10 @@ const CONF = {
 	// 30 degrees, rising 6 m (an estimate; in car lengths across the road, as at Daytona).
 	"monza-oval": { file: "monza-oval", origin: "monza-osm", scale: "monza", width: MONZA_WIDTH, from: ["monza"],
 		bank: [[0, 0], [560, 0], [700, -30], [1250, -30], [1390, 0], [2730, 0], [2870, -30], [3400, -30], [3540, 0]], bankRise: { surface: 12, perUnit: METRES_PER_UNIT } },
-	// (The road course passes under the oval's north banking at the Serraglio: bridge lift in metres.)
-	"monza-combined": { file: "monza-combined", origin: "monza-osm", scale: "monza", width: MONZA_WIDTH, from: ["monza", "monza-oval"], bridge: 12 },
+	// GP + oval: the GP lap, then the oval; the main straight is used twice. (The road course passes
+	// under the oval's north banking at the Serraglio: bridge lift in metres.)
+	// (Eased apart gently: the Parabolica and the south banking run close side by side.)
+	"monza-combined": { file: "monza-combined", origin: "monza-osm", scale: "monza", width: MONZA_WIDTH, from: ["monza", "monza-oval"], bridge: 12, ease: "steady" },
 	"suzuka-moto": { file: "suzuka-moto", origin: "jp-1962", scale: "suzuka", width: 13, from: ["suzuka"], snapTo: true, bridge: true },
 	"suzuka-east": { file: "suzuka-east", origin: "jp-1962", scale: "suzuka", width: 13, from: ["suzuka"], snapTo: true },
 	// (West: from the chicane the link back to Degner turns right round next to 130R, too tight for the
@@ -343,10 +345,23 @@ for(const [id, conf] of Object.entries(CONF)){
 	const along = (a, b) => { const d = Math.abs(a - b) % N; return Math.min(d, N - d) * (L / N); };
 	// The Suzuka crossover really crosses: leave the area around it alone.
 	let cross = null;
+	// A lap that uses the same road twice (Monza's GP + oval, down the main straight twice): points
+	// on the same line going the same way are the same road, not a crossing or roads too close.
+	const dirQ = i => { const a = Q[(i - 1 + N) % N], b = Q[(i + 1) % N], l = Math.hypot(b.x - a.x, b.y - a.y) || 1; return [(b.x - a.x) / l, (b.y - a.y) / l]; };
+	const sameRoad = (i, j) => {
+		const [ax, ay] = dirQ(i), [bx, by] = dirQ(j);
+		if(ax * bx + ay * by < 0.9) return false;
+		return Math.abs((Q[j].x - Q[i].x) * ay - (Q[j].y - Q[i].y) * ax) < 3;
+	};
+	// (And near where they part or meet, a fork: not a crossing either, and left as it is.)
+	const shared = new Uint8Array(N);
+	for(let i = 0; i < N; i += 2) for(let j = 0; j < N; j += 2) if(along(i, j) > 500 && Math.hypot(Q[i].x - Q[j].x, Q[i].y - Q[j].y) < 12 && sameRoad(i, j)){ shared[i] = shared[j] = 1; }
+	const nearShared = new Uint8Array(N), FORK = Math.round(200 / (L / N));
+	for(let i = 0; i < N; i++) if(shared[i]) for(let o = -FORK; o <= FORK; o++) nearShared[(i + o + N) % N] = 1;
 	if(conf.bridge){
 		let best = Infinity;
 		for(let i = 0; i < N; i += 2) for(let j = i + 1; j < N; j += 2){
-			if(along(i, j) < 500) continue;
+			if(along(i, j) < 500 || nearShared[i] || nearShared[j]) continue;
 			const d = Math.hypot(Q[i].x - Q[j].x, Q[i].y - Q[j].y);
 			if(d < best){ best = d; cross = [i, j]; }
 		}
@@ -355,11 +370,11 @@ for(const [id, conf] of Object.entries(CONF)){
 	const nearCross = (i, j) => cross && ((along(i, cross[0]) < 140 && along(j, cross[1]) < 140) || (along(i, cross[1]) < 140 && along(j, cross[0]) < 140));
 	let passes = 0, worst = 0;
 	for(; passes < 120; passes++){
-		const dx = new Float64Array(N), dy = new Float64Array(N);
+		const dx = new Float64Array(N), dy = new Float64Array(N), cnt = new Uint16Array(N);
 		let any = false;
 		worst = Infinity;
 		for(let i = 0; i < N; i++) for(let j = i + 1; j < N; j++){
-			if(along(i, j) < Math.max(250, minSep * 3) || nearCross(i, j)) continue;
+			if(along(i, j) < Math.max(250, minSep * 3) || nearCross(i, j) || nearShared[i] || nearShared[j]) continue;
 			const ex = Q[i].x - Q[j].x, ey = Q[i].y - Q[j].y, d = Math.hypot(ex, ey);
 			if(d < worst) worst = d;
 			if(d >= minSep) continue;
@@ -367,8 +382,12 @@ for(const [id, conf] of Object.entries(CONF)){
 			const push = (minSep - d) * 0.3 / Math.max(d, 1e-6);
 			dx[i] += ex * push; dy[i] += ey * push;
 			dx[j] -= ex * push; dy[j] -= ey * push;
+			cnt[i]++; cnt[j]++;
 		}
 		if(!any) break;
+		// (ease: "steady": each point moves by the average of its pushes, not their sum, so long
+		// stretches side by side part gently instead of being thrown apart in one go.)
+		if(conf.ease === "steady") for(let i = 0; i < N; i++) if(cnt[i] > 1){ dx[i] /= cnt[i]; dy[i] /= cnt[i]; }
 		// Spread the push along the track so corners keep their shape.
 		const R = 14, sx = new Float64Array(N), sy = new Float64Array(N);
 		for(let i = 0; i < N; i++){

@@ -48,6 +48,7 @@ on purpose; `npm run setup` recreates them. If the server is already running, do
 | `physics-equivalence.mjs` | our physics vs the original, bit-for-bit |
 | `track-sim.mjs [id] [--rev]` | bots lap every track: lap times, stuck cars, escapes (Classic's practice bot flag is known) |
 | `terrain-check.mjs` | on the F1 tracks the ground never pokes through the road, both directions |
+| `remnant-check.mjs [id]` | the closed-off roads of a venue's other layouts never show through the track |
 | `e2e.mjs <flow> [trackId]` | drives the game in headless Chrome (flows: solo, online, tv, midjoin, p2p, quali, champ, migrate, ghost, ...) |
 | `audio-test.mjs` | sound survives bad values and rebuilds itself if it breaks |
 | `cover-test.mjs` | no rain under the Monaco tunnel / Suzuka bridge, and the sound knows it's covered |
