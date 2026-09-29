@@ -9,7 +9,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 // Each layout: osm (the road data), via (the places the lap passes, in race order; the first is the
 // start line, and the line is started exactly there), and optionally:
 //   start: the start line, when it isn't the first via (that's then the mapped point before it);
-//   avoid: road names (regex) never used, e.g. pit lanes;
+//   avoid: road names (regex) never used, e.g. pit lanes; avoidIds: ways never used (by OSM id);
 //   twoWay: ignore one-way tags (street circuits that race against the normal traffic);
 //   snap: join mapped road ends to other roads within this many metres (default 4);
 //   smooth: [[lat, lon, m], ...] leave out the mapped road within m of a place (a chicane that
@@ -42,13 +42,12 @@ export const LAYOUTS = {
 	// banking, the oval's back straight and the south banking.
 	"monza-oval": { osm: "monza-roads.json", avoid: "Pit|Junior|Pirelli|Tondo|Variante", via: [
 		[45.618975, 9.281223], [45.62463, 9.28286], [45.61359, 9.28875], [45.61135, 9.28101]] },
-	// Monza 1955-61: the road course then the oval in one 10 km lap, down the main straight twice.
-	// There were no chicanes then: the old straight past the Rettifilo is still mapped, but the
-	// Roggia and Ascari chicanes are smoothed out (the old road ran straight through the Roggia,
-	// and Ascari was the fast Curva del Vialone).
-	"monza-combined": { osm: "monza-roads.json", avoid: "Pit|Junior|Pirelli|Tondo|Variante del Rettifilo", lanes: 48,
-		smooth: [[45.63029, 9.29149, 100], [45.62160, 9.28560, 110]], via: [
-		[45.618975, 9.281223], [45.62575, 9.28202], [45.62915, 9.28358], [45.63029, 9.29149], [45.63124, 9.29617], [45.62843, 9.29679],
+	// Monza, GP + oval: a lap of the Grand Prix circuit, then back down the main straight and right
+	// onto the oval, round both bankings and back to the line. The main straight is one road, used
+	// twice a lap (the game puts arrow boards at the fork). avoidIds: the old straight past the
+	// Rettifilo and the motorcycle line through it (the cars take the chicane).
+	"monza-combined": { osm: "monza-roads.json", avoid: "Pit|Junior|Pirelli|Tondo", avoidIds: [179968267, 38168756], via: [
+		[45.618975, 9.281223], [45.62452, 9.28229], [45.62915, 9.28358], [45.63029, 9.29149], [45.63124, 9.29617], [45.62843, 9.29679],
 		[45.62650, 9.29211], [45.62147, 9.28554], [45.61596, 9.28420], [45.61200, 9.28195], [45.618975, 9.281223],
 		[45.62463, 9.28286], [45.61359, 9.28875], [45.61135, 9.28101]] },
 	// Suzuka: the GP circuit's final chicane is different for motorcycles (the Hitachi Astemo
@@ -94,6 +93,7 @@ function graph(file, conf){
 		if(w.type !== "way" || !w.nodes || !w.geometry) continue;
 		const t = w.tags || {};
 		if(avoid && avoid.test(t.name || "")) continue;
+		if(conf.avoidIds && conf.avoidIds.includes(w.id)) continue;
 		w.nodes.forEach((id, i) => nodes.set(id, w.geometry[i]));
 		const one = conf.twoWay ? "no" : t.oneway === "yes" || t.junction === "roundabout" ? "yes" : t.oneway === "-1" ? "-1" : "no";
 		for(let i = 0; i < w.nodes.length - 1; i++){

@@ -1575,6 +1575,7 @@ function frame(now){
 	// Debugging and screenshot tools can park the camera: __game.freeCam = { p: [x, y, z], t: [x, y, z] }.
 	if(S.freeCam){ camera.position.set(...S.freeCam.p); camera.lookAt(...S.freeCam.t); }
 	if(r) updateSky(r, r.raceTime, dt);
+	if(S.world) S.world.setRoute(focus && focus.ci !== undefined ? focus.ci : -1);
 	if(S.world) S.world.update(dt, focus ? focus.model.position : (S.showcase && camMode === "showcase" ? S.showcase.position : null), r ? camera.position : null);
 	renderer.render(scene, camera);
 	renderMirror();

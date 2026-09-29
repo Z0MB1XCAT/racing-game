@@ -66,9 +66,10 @@ original did).
     Chicane, then Tabac, the pool and La Rascasse, beside the harbour.
   - **Spa-Francorchamps**: GP, and **Moto** (the full lap with the old, faster Bus Stop).
   - **Monza**: GP, the **Oval** (the 1955 high-speed ring on its own, with its two bankings), and
-    **Road + Oval**, the 10 km lap of 1955-61: the road course with no chicanes (the Roggia and
-    Ascari smoothed out, the old straight past the Rettifilo), then round the bankings, down the
-    main straight twice side by side and under the north banking at the Serraglio on a bridge.
+    **GP + Oval**, a 10 km lap: the whole GP circuit, then back down the main straight (one road,
+    used twice a lap) and right onto the oval, round both bankings and back to the line. Arrow
+    boards at the fork show the way: the first time down the straight they close off the oval, the
+    second time the GP circuit. The GP circuit passes under the north banking at the Serraglio.
   - **Suzuka**: GP, **Moto** (the bike line through the final chicane), **East** (Turns 1-2, the
     Esses and Dunlop, then the link back to the pits), **West** (Degner, the hairpin, Spoon, 130R
     and the chicane, over the crossover bridge, back to Degner by the link road) and **South** (the
@@ -449,6 +450,7 @@ The last two also need puppeteer installed.
 - `node tools/spot-shots.mjs <trackId> [rev] [tunnel|bridge|over|bridgeside|high|low|top|0.25|s700|end0|rem0 ...]` screenshots chosen places round a track (`end<k>`, `rem<k>`: the closed-off roads of the venue's other layouts).
 - `node tools/corner-plot.mjs <trackId> <lap fraction> [radius] [label]` overlays the game's road on the real layout (with distance labels) to see how much a corner has been opened up.
 - `node tools/terrain-check.mjs` checks the ground never pokes through the road on the F1 tracks (both directions).
+- `node tools/remnant-check.mjs [trackId]` checks the closed-off roads of a venue's other layouts never show through the track.
 - `node tools/montage.mjs out.png cols a.png b.png ...` puts several screenshots on one sheet.
 - `node tools/walls-plot.mjs <trackId> <x> <z> [radius]` draws the physics walls around a point.
 - `node tools/sky-shots.mjs [trackId] [tod-weather ...]` screenshots a track at different times and weather (e.g. `monza night-rain`).
