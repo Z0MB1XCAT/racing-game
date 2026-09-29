@@ -57,10 +57,12 @@ on purpose; `npm run setup` recreates them. If the server is already running, do
 | `corner-plot.mjs <id> <fraction> [radius]` | the game road over the real layout at a corner |
 | `route-layouts.mjs [layout ...]` | traces the other layouts (Monaco FE, Monza Oval, Suzuka East...) through `data/osm/*-roads.json` into `data/circuits/` |
 | `build-circuits.mjs [--corners]` | rebuilds `js/circuits.js` (real F1 layouts, elevation, camber) from `data/circuits/` |
-| `build-places.mjs` | rebuilds `js/places.js` (real surroundings, OpenStreetMap) from `data/osm/` |
+| `fetch-osm.mjs [venue]`, `fetch-dem.mjs [venue]` | download the real surroundings (OpenStreetMap) and lie of the land (Open Topo Data) of Monaco, Spa, Monza, Suzuka into `data/osm/`, `data/dem/` |
+| `build-places.mjs` | rebuilds `js/places/<venue>.js` (real surroundings, loaded on demand) from `data/osm/` and `data/dem/` |
+| `place-plot.mjs <venue> [m] [frac]` | a map of a venue's surroundings as the game has them, with the circuit |
 | `screenshot.mjs <url> [label]` (repo root) | one screenshot into `temporary screenshots/` |
 
-Generated files (`js/circuits.js`, `js/places.js`) are never edited by hand: change the build
+Generated files (`js/circuits.js`, `js/places/*.js`) are never edited by hand: change the build
 script or its data and rebuild.
 
 ## Code conventions
@@ -69,7 +71,10 @@ script or its data and rebuild.
   Tabs for indentation. Comments are short, plain English, and explain why.
 - The F1 tracks are real data: centrelines (bacinger/f1-circuits), heights from real altitudes,
   camber only on corners that really have it (`camber` in `tools/build-circuits.mjs`, with the
-  corner's direction), Jeddah's surroundings from OpenStreetMap. Credit sources in the README
+  corner's direction), every F1 venue's surroundings from OpenStreetMap (and the real terrain round
+  Monaco, Spa, Monza and Suzuka), moved out near the track to fit the game's wider road (`js/placegeo.js`).
+- Trackside sponsors are made up (`js/sponsors.js`): sound-alikes in the real ones' colours, never real
+  names or logos. Credit sources in the README
   (OpenStreetMap is ODbL and must stay credited).
 - Elevation is looks only; physics is flat. Things with height (cars, camera, scenery, fx) use
   `track.heightAt(x, z, hint)` with a road-sample hint so bridges resolve to the right level.

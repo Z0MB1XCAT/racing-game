@@ -9,12 +9,13 @@ const THREE = globalThis.THREE;
 export function buildTerrain(track, opts = {}){
 	const c = track.center, hw = c.hw, n = c.n;
 	// (opts.bounds: a bigger area, when there's more road than the track's own: see remnants.js.)
-	const b = opts.bounds || track.bounds, margin = 240;
+	// (opts.demAt: the real lie of the land, where the venue has it: the ground reaches further out then.)
+	const b = opts.bounds || track.bounds, margin = opts.margin ?? 240;
 	const x0 = b.minX - margin, z0 = b.minZ - margin;
 	const spanX = b.maxX - b.minX + margin * 2, spanZ = b.maxZ - b.minZ + margin * 2;
 	// (A banked oval is small, and its banking changes quickly across and along: a finer grid.)
 	const isOval = opts.oval ?? !!(track.def && track.def.kind === "oval");
-	const cell = isOval ? Math.max(2.5, Math.max(spanX, spanZ) / 360) : Math.max(5, Math.max(spanX, spanZ) / 220);
+	const cell = isOval ? Math.max(2.5, Math.max(spanX, spanZ) / 360) : Math.max(5, Math.max(spanX, spanZ) / (opts.demAt && !opts.low ? 300 : 220));
 	const nx = Math.ceil(spanX / cell), nz = Math.ceil(spanZ / cell), W = nx + 1, D = nz + 1;
 	let minH = Infinity;
 	for(let i = 0; i < n; i++) minH = Math.min(minH, c.h[i] - Math.abs(c.bank[i]) * (hw + 1));    // (the low edge of any banking)
@@ -60,12 +61,20 @@ export function buildTerrain(track, opts = {}){
 	}
 	const W0 = 3 / (90 * 90 + 400);
 	const heights = new Float32Array(W * D);
+	// With the real lie of the land, the hills are the real ones: the road's own heights close to it,
+	// easing into the real ground over DEM_EASE beyond the band beside the road.
+	const DEM_EASE = 45;
 	for(let k = 0; k < W * D; k++){
-		const hill = (sumH[k] + base * W0) / (sumW[k] + W0) - 0.4;
-		// Next to the road the hills are made mostly of nearby road heights, so they meet it smoothly.
-		let y = near[k] < ROAD ? Math.min(nearH[k], cap[k]) : hill;
 		const gx = k % W, gz = Math.floor(k / W);
 		const px = x0 + gx * cell, pz = z0 + gz * cell;
+		let hill = (sumH[k] + base * W0) / (sumW[k] + W0) - 0.4;
+		const real = opts.demAt ? opts.demAt(px, pz) : null;
+		if(real !== null && real !== undefined){
+			const t = Math.max(0, Math.min(1, (near[k] - ROAD) / DEM_EASE)), f = t * t * (3 - 2 * t);
+			hill = hill + (real - 0.4 - hill) * f;
+		}
+		// Next to the road the hills are made mostly of nearby road heights, so they meet it smoothly.
+		let y = near[k] < ROAD ? Math.min(nearH[k], cap[k]) : hill;
 		if(oval){
 			// Infield level with the bottom of the banking; outside, the embankment falls away from
 			// the top of the wall at about 25 degrees.
@@ -73,9 +82,9 @@ export function buildTerrain(track, opts = {}){
 			else if(nearLat[k] * inSign > 0) y = Math.min(y, 0);
 			if(opts.isSea && opts.isSea(px, pz) && near[k] >= ROAD + cell * 2) y = -1.6;       // lakes in the infield (kept off the road's edge)
 		}else if(opts.isSea && opts.isSea(px, pz)) y = Math.min(y, base - 2);
-		else if(opts.isSea) y = Math.max(y, base + 0.1);          // (land stays above sea level)
+		else if(opts.isSea) y = Math.max(y, base + 0.3);          // (land stays clearly above sea level, so the two never flicker)
 		// Fade to the base level at the edges of the patch.
-		const e = Math.min(gx, gz, nx - gx, nz - gz) / 6;
+		const e = Math.min(gx, gz, nx - gx, nz - gz) / (opts.demAt ? 18 : 6);
 		if(e < 1) y = base + (y - base) * Math.max(0, e);
 		if(oval && y > -1.2 && near[k] >= ROAD) y = Math.max(y, base + 0.08);          // (land stays above the lake's water line)
 		heights[k] = y;
@@ -106,6 +115,18 @@ export function buildTerrain(track, opts = {}){
 	const geo = new THREE.BufferGeometry();
 	geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
 	geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+	// opts.colorAt(x, z): the ground's colour there (forest floor, fields, car parks: the real ground
+	// cover), fading to plain ground (opts.color) at the edges of the patch so it meets the ground beyond.
+	if(opts.colorAt){
+		const col = new Float32Array(W * D * 3), plain = new THREE.Color(opts.color), k2 = new THREE.Color();
+		for(let gz = 0; gz <= nz; gz++) for(let gx = 0; gx <= nx; gx++){
+			const k = gz * W + gx, got = opts.colorAt(x0 + gx * cell, z0 + gz * cell);
+			k2.copy(plain);
+			if(got !== null && got !== undefined) k2.lerp(new THREE.Color(got), Math.max(0, Math.min(1, Math.min(gx, gz, nx - gx, nz - gz) / 8 - 0.5)));
+			col.set([k2.r, k2.g, k2.b], k * 3);
+		}
+		geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+	}
 	geo.setIndex(idx);
 	geo.computeVertexNormals();
 	// Height of the ground at (x, z).
@@ -277,6 +298,7 @@ export function buildBridge(track, [lowAt, upAt], groundAt, keep){
 // (hillside roads above lower ones, banked edges), so the road never looks like it floats.
 // `skip(i)`: samples to leave open (under a bridge deck). Low edges take the ground's
 // colour (they're just the verge); tall ones are stone.
+// skip(i, side): leave out the wall at sample i on that side (+1 left).
 export function buildSkirts(track, groundAt, skip = () => false, colors = {}){
 	const c = track.center, n = c.n, pos = [], col = [], idx = [];
 	const soil = new THREE.Color(colors.ground ?? 0x5b7a3a), stone = new THREE.Color(colors.stone ?? 0x8f8a80), k = new THREE.Color();
@@ -292,7 +314,7 @@ export function buildSkirts(track, groundAt, skip = () => false, colors = {}){
 		}
 		for(let i = 0; i < n; i++){
 			const j = (i + 1) % n;
-			if(skip(i) || skip(j) || Math.max(gap[i], gap[j]) < 0.08) continue;
+			if(skip(i, side) || skip(j, side) || Math.max(gap[i], gap[j]) < 0.08) continue;
 			const p = start + i * 2, q = start + j * 2;
 			idx.push(p, p + 1, q, q, p + 1, q + 1);
 		}

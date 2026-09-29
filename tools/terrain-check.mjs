@@ -9,12 +9,16 @@ const TRACKS = [...MAIN, ...LAYOUTS];   // (every layout of every venue)
 const { buildTrack } = await import("../js/trackgen.js");
 const { buildTerrain } = await import("../js/terrain.js");
 const { remnants, remnantGround } = await import("../js/remnants.js");
+const { placeGeo, loadPlaces, PLACE_VENUES } = await import("../js/placegeo.js");
+for(const v of PLACE_VENUES) await loadPlaces(v);
 let bad = 0;
 for(const def of TRACKS.filter(d => d.elev)) for(const rev of [false, true]){
 	// (As in the game: land above sea level, and the ground shaped round the rest of the venue's
 	// circuit too, which mustn't push it up through this track's road.)
 	const t = buildTrack(def, rev), c = t.center, n = c.n, rg = remnantGround(t, remnants(t));
-	const { groundAt } = buildTerrain(t, { isSea: () => false, extra: rg.extra, bounds: rg.bounds });
+	// (And the real lie of the land where the venue has it, reaching as far out as in the game.)
+	const geo = placeGeo(t);
+	const { groundAt } = buildTerrain(t, { isSea: () => false, extra: rg.extra, bounds: rg.bounds, demAt: geo && geo.demAt, margin: geo && geo.demAt ? 560 : 240 });
 	const f = t.features || {};
 	const near = (i, k) => k && Math.min(...k.map(a => Math.min(Math.abs(i - a), n - Math.abs(i - a)))) < 70;
 	const inTunnel = i => f.tunnel && (f.tunnel[0] < f.tunnel[1] ? i >= f.tunnel[0] && i <= f.tunnel[1] : i >= f.tunnel[0] || i <= f.tunnel[1]);

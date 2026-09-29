@@ -3,6 +3,7 @@ import { TRACKS, LAYOUTS, trackById, venueOf, layoutsOf } from "./tracks.js";
 import { buildTrack } from "./trackgen.js";
 import { makeTracker } from "./progress.js";
 import { buildWorld } from "./world.js";
+import { PLACE_VENUES, loadPlaces, placesLoaded } from "./placegeo.js";
 import { ghostSectors } from "./ghosts.js";
 import { makeAtmosphere } from "./atmosphere.js";
 import { makeCar, disposeCar, animateCar, BODIES } from "./cars.js";
@@ -114,6 +115,7 @@ function showTrack(def, reverse){
 	if(S.world){ scene.remove(S.world.group); S.world.dispose(); }
 	S.trackKey = entry.key; S.track = entry.track; S.tracker = entry.tracker;
 	S.world = buildWorld(entry.track, { quality: quality() });
+	S.worldHasPlaces = !!(entry.def && placesLoaded(venueOf(entry.def.id)));
 	scene.add(S.world.group);
 	scene.fog = S.world.fog;
 	scene.background = S.world.skyColor;
@@ -124,6 +126,14 @@ function showTrack(def, reverse){
 	placeShowcase();
 	return entry;
 }
+
+// The real surroundings of the circuits (js/places/) load in the background. When a venue's
+// arrive while its track is on show in the menus, it's built again with them (never mid-race).
+for(const v of PLACE_VENUES) loadPlaces(v).then(() => {
+	if(!S.track || !S.world || S.race || !S.track.def || venueOf(S.track.def.id) !== v || S.worldHasPlaces) return;
+	S.trackKey = null;
+	showTrack(S.track.def, S.track.reverse);
+});
 
 // ---------- Menu showcase car ----------
 function placeShowcase(){

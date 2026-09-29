@@ -12,7 +12,7 @@ const THREE = globalThis.THREE;
 
 export const THEMES = {
 	classic: { sky: 0x7fb0ff, ground: 0x57c115, stripes: true, wall: 0xf48342, wallH: 1.5, trees: "classic", mountains: "cubes", mountainColor: 0x888888, sun: 0.7, amb: 0.5 },
-	monaco: { sky: [0x4f9dea, 0xd6ebff], ground: 0xcdc3ae, wall: "redwhite", road: 0x45484f, trees: "palm", treeDensity: 0.25,
+	monaco: { sky: [0x4f9dea, 0xd6ebff], ground: 0xc2b9a5, grass: 0x5f9446, wall: "redwhite", road: 0x45484f, trees: "palm", treeDensity: 0.25,
 		buildings: { density: 0.9, tall: [12, 30], palette: [0xf2d7b6, 0xf0c9a8, 0xe8e0cf, 0xf5e6c8, 0xd9b99b, 0xf4efe6, 0xe9c9c0] },
 		catchFence: true, sea: { dir: [0.9, -0.45], color: 0x1f6fb0 }, mountains: "hills", mountainColor: 0x7f956a, fog: [0xd6ebff, 500, 1600], grandstand: 2, standColor: 0xd8342f, fans: false },
 	spa: { sky: [0x7f90a6, 0xcbd4dd], ground: 0x3f7b34, stripes: true, wall: 0xa9b1ba, road: 0x3c4047, trees: "pine", treeDensity: 1.3,
@@ -33,6 +33,19 @@ export const THEMES = {
 	snow: { sky: [0x93acc6, 0xe7eff7], ground: 0xe9eff5, wall: 0x2f6fbd, road: 0x5a5f68, trees: "snowpine", treeDensity: 1.1,
 		mountains: "peaks", mountainColor: 0x6d7c8e, fog: [0xdfe8f0, 240, 1100], snowfall: true, sun: 0.6, amb: 0.65, grandstand: 1, standColor: 0x2f6fbd }
 };
+
+// Ground colours for the real ground cover (placegeo.js landAt), from the track's own grass.
+function landColours(theme, town){
+	// (Vegetation from the track's grass, or its own green where the ground isn't grass, like Monaco's.)
+	const g = new THREE.Color(theme.grass ?? theme.ground), hsl = {};
+	g.getHSL(hsl);
+	const tone = (dh, ds, dl) => new THREE.Color().setHSL(hsl.h + dh, Math.max(0, Math.min(1, hsl.s + ds)), Math.max(0, Math.min(1, hsl.l + dl))).getHex();
+	return {
+		forest: tone(0.02, -0.12, -0.1), scrub: tone(0.01, -0.15, -0.04), grass: tone(-0.01, 0.02, 0.05), orchard: tone(-0.02, -0.08, 0.0),
+		farm: theme.farm ?? (town === "japan" ? 0x7fa84e : 0xa9a462), res: town === "city" ? 0x96938b : tone(0.02, -0.35, 0.02), ind: 0x9b9a94, paved: 0x74767c, pitch: tone(0, 0.05, 0.02),
+		sand: 0xd8c79f, gravel: 0xb9b09f, dirt: 0x9c8466, water: null, pool: null
+	};
+}
 
 // Merge many boxes into one mesh (one draw call). Each item: {x, y, z, w, h, d, ry, color}
 function mergedBoxes(items){
@@ -231,7 +244,12 @@ export function buildWorld(track, opts = {}){
 	const remGround = remnantGround(track, rem), b = remGround.bounds;
 	const cx = (b.minX + b.maxX) / 2, cz = (b.minZ + b.maxZ) / 2;
 	const radius = Math.max(b.maxX - b.minX, b.maxZ - b.minZ) / 2 + 30;
-	const mDist = Math.max(track.mountainDist, radius + 150);
+	// Real surroundings (js/places/): the real coastline, lagoons and marina, buildings, forests, and
+	// where the venue has it, the real lie of the land, which reaches further out (so the far hills
+	// stand beyond it).
+	const geo = track.center ? placeGeo(track) : null;
+	const demMargin = geo && geo.demAt ? 560 : 240;
+	const mDist = Math.max(track.mountainDist, radius + demMargin + (geo && geo.demAt ? 120 : -90));
 	const farPlane = Math.max(1000, mDist + 900);
 
 	// Sky, fog and light.
@@ -294,6 +312,7 @@ export function buildWorld(track, opts = {}){
 	let harbour = null;
 	if(track.def && track.def.harbour && track.center && track.center.h){
 		const c = track.center, n = c.n, [f0, f1] = track.def.harbour, rev = !!track.reverse;
+		const nearRemnant = (x, z, r) => { let hit = false; if(rem.space) rem.space.near(x, z, r, p => { if(!hit && Math.hypot(p.x - x, p.z - z) < r) hit = true; }); return hit; };
 		const a = Math.floor((rev ? 1 - f1 : f0) * n), b = Math.floor((rev ? 1 - f0 : f1) * n), side = rev ? -1 : 1, off = c.hw + 9;
 		const quay = [];
 		for(let i = a; i <= b; i += 2){
@@ -305,6 +324,8 @@ export function buildWorld(track, opts = {}){
 			if(near < off - 0.5) continue;
 			const prev = quay[quay.length - 1];
 			if(prev && ((x - prev.x) * c.tx[s] + (z - prev.z) * c.tz[s]) <= 0) continue;
+			// (No quay across a closed-off road of another layout that runs by the water.)
+			if(nearRemnant(x, z, c.hw + 4)) continue;
 			quay.push({ s, x, z });
 		}
 		// Water: points whose nearest bit of this stretch of road has them on the harbour side,
@@ -316,7 +337,7 @@ export function buildWorld(track, opts = {}){
 			for(const s of S){ const d = (c.x[s] - x) ** 2 + (c.z[s] - z) ** 2; if(d < best){ best = d; j = s; } }
 			const dx = x - c.x[j], dz = z - c.z[j];
 			const lat = (dx * c.tz[j] - dz * c.tx[j]) * side, along = dx * c.tx[j] + dz * c.tz[j];
-			return lat > off - 0.5 && lat < 420 && Math.abs(along) < 3;
+			return lat > off - 0.5 && lat < 420 && Math.abs(along) < 3 && !nearRemnant(x, z, c.hw + 5);
 		};
 		// Its extent, for the water surface.
 		const bb = track.bounds, box = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
@@ -326,9 +347,8 @@ export function buildWorld(track, opts = {}){
 		harbour = { quay, inside, side, box };
 	}
 	let isWater = harbour ? (x, z) => (isSea && isSea(x, z)) || harbour.inside(x, z) : isSea;
-	// Real surroundings (js/places.js): the real coastline, lagoons and marina. Never right next
-	// to the road (the map's coastline and the game's road don't line up to the metre).
-	const geo = track.center ? placeGeo(track) : null;
+	// The real water, never right next to the road (the map's coastline and the game's road don't
+	// line up to the metre).
 	if(geo){
 		const c = track.center, clear = c.hw + 10;
 		const byRoad = (x, z) => {
@@ -337,13 +357,18 @@ export function buildWorld(track, opts = {}){
 			if(!near && rem.space) rem.space.near(x, z, clear, p => { if(!near && Math.hypot(p.x - x, p.z - z) < clear) near = true; });
 			return near;
 		};
-		isWater = (x, z) => !byRoad(x, z) && geo.isWater(x, z);
+		// (Monaco's harbour beside the track stays water too.)
+		isWater = (x, z) => !byRoad(x, z) && (geo.isWater(x, z) || !!(harbour && harbour.inside(x, z)));
 	}
 
 	// Elevated circuits get rolling ground built from the road's own heights.
 	let terrain = null;
 	if(track.elevated){
-		terrain = buildTerrain(track, { isSea: isWater, uvOrigin: { x: cx - groundSize / 2, z: cz + groundSize / 2 }, extra: remGround.extra, bounds: b });
+		// The real ground cover, where the venue has it (forest floor, meadows, fields, car parks...).
+		const cover = geo && geo.P.land ? landColours(theme, geo.P.town) : null;
+		const colorAt = cover ? (x, z) => { const k = geo.landAt(x, z) || (geo.fillAt && geo.fillAt(x, z)); return k ? cover[k] : null; } : null;
+		terrain = buildTerrain(track, { isSea: isWater, uvOrigin: { x: cx - groundSize / 2, z: cz + groundSize / 2 }, extra: remGround.extra, bounds: b, colorAt, color: theme.ground,
+			demAt: geo && geo.demAt, margin: demMargin, low: quality === "low" });
 		keep(terrain.geometry);
 		let tmat = groundMat;
 		if(theme.stripes && groundMat.emissiveMap){
@@ -351,6 +376,7 @@ export function buildWorld(track, opts = {}){
 			t.repeat.set(1, 1); t.needsUpdate = true;
 			tmat = keep(new THREE.MeshLambertMaterial({ color: theme.ground, emissive: 0x0f0f0f, emissiveMap: t }));
 		}
+		if(colorAt){ tmat = keep(tmat.clone()); tmat.color.set(0xffffff); tmat.vertexColors = true; }
 		const tm = new THREE.Mesh(terrain.geometry, tmat);
 		tm.receiveShadow = shadows;
 		tm.frustumCulled = false;
@@ -525,6 +551,11 @@ export function buildWorld(track, opts = {}){
 				const lat = out * (c.hw + 7), x = c.x[i] + c.tz[i] * lat, z = c.z[i] - c.tx[i] * lat;
 				let ok = true;
 				c.hash.near(x, z, c.hw + 1, j => { if(ok && Math.min(Math.abs(j - i), n - Math.abs(j - i)) > 30 && Math.hypot(c.x[j] - x, c.z[j] - z) < c.hw + 1) ok = false; });
+				// (Nor over the closed-off roads of the venue's other layouts, across the band.)
+				if(ok && rem.space) for(const f of [0.1, 0.5, 1]){
+					const l = out * (c.hw + 0.35 + 6.65 * f), px = c.x[i] + c.tz[i] * l, pz = c.z[i] - c.tx[i] * l;
+					rem.space.near(px, pz, c.hw + 1.5, p => { if(ok && Math.hypot(p.x - px, p.z - pz) < c.hw + 1.5) ok = false; });
+				}
 				return ok;
 			};
 			group.add(new THREE.Mesh(keep(ribbon(c, a, b2, 0.015, i => inRange(i) && track.keep[kb.side === 0 ? 1 : 0][i] && clearAt(i), () => color)),
@@ -593,7 +624,16 @@ export function buildWorld(track, opts = {}){
 	if(terrain && track.center){
 		// Retaining walls where the road stands above the ground beside it (left open under the bridge deck).
 		const br = track.features && track.features.bridge, n = track.center.n;
-		const skip = br ? i => Math.min(Math.abs(i - br[1]), n - Math.abs(i - br[1])) <= 60 && track.center.h[i] - groundAt(track.center.x[i], track.center.z[i]) > 1.2 : undefined;
+		const underDeck = br ? i => Math.min(Math.abs(i - br[1]), n - Math.abs(i - br[1])) <= 60 && track.center.h[i] - groundAt(track.center.x[i], track.center.z[i]) > 1.2 : () => false;
+		// (Nor down over a closed-off road running alongside, a little below the track's edge.)
+		const c = track.center, besideRemnant = (i, side) => {
+			if(!rem.space) return false;
+			const lat = side * (c.hw + 0.8), x = c.x[i] + c.tz[i] * lat, z = c.z[i] - c.tx[i] * lat;
+			let hit = false;
+			rem.space.near(x, z, c.hw + 1, p => { if(!hit && Math.hypot(p.x - x, p.z - z) < c.hw + 0.9) hit = true; });
+			return hit;
+		};
+		const skip = (i, side) => underDeck(i) || besideRemnant(i, side);
 		const sk = new THREE.Mesh(keep(buildSkirts(track, groundAt, skip, { ground: theme.ground, stone: theme.skirt })), keep(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })));
 		sk.receiveShadow = shadows;
 		group.add(sk);
@@ -639,7 +679,8 @@ export function buildWorld(track, opts = {}){
 
 	// Real water (the sea, lagoons, the marina) across the whole ground patch: the ground only
 	// dips below it where the map says there's water.
-	if(geo && terrain){
+	// (Inland venues with no coast, like Spa, have none: their ponds are drawn where they are.)
+	if(geo && terrain && !(geo.P.land && !geo.P.coast.length)){
 		const pt = terrain.patch, wg = keep(new THREE.PlaneBufferGeometry(pt.x1 - pt.x0, pt.z1 - pt.z0));
 		wg.rotateX(-Math.PI / 2);
 		wg.translate((pt.x0 + pt.x1) / 2, terrain.base + 0.02, (pt.z0 + pt.z1) / 2);
@@ -661,7 +702,9 @@ export function buildWorld(track, opts = {}){
 		harbour.quay.forEach((p, k) => {
 			const top = c.h[p.s] - 0.3;
 			pos.push(p.x, top, p.z, p.x, terrain.base - 1, p.z);
-			if(k) idx.push((k - 1) * 2, (k - 1) * 2 + 1, k * 2, k * 2, (k - 1) * 2 + 1, k * 2 + 1);
+			// (A gap where it was left out, by a closed-off road: two walls, not one across the gap.)
+			const q = harbour.quay[k - 1];
+			if(k && Math.hypot(p.x - q.x, p.z - q.z) < 6) idx.push((k - 1) * 2, (k - 1) * 2 + 1, k * 2, k * 2, (k - 1) * 2 + 1, k * 2 + 1);
 		});
 		const qg = new THREE.BufferGeometry();
 		qg.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
@@ -751,35 +794,43 @@ export function buildWorld(track, opts = {}){
 		group.add(instanced(keep(new THREE.PlaneBufferGeometry(1, 1)), poolMat, pools));
 	}
 
-	// A big wheel in the paddock at Suzuka.
-	if(theme.ferris && scenery.some(s => s.off > 40 && roomFor(s.x, s.z, 22))){
-		const spot = scenery.find(s => s.off > 40 && roomFor(s.x, s.z, 22));
-		const wheel = new THREE.Group();
+	// A big wheel in the paddock at Suzuka: the real ones where the map has them (Suzuka Circuit's
+	// amusement park), otherwise one on a spot well away from the road.
+	function bigWheel(x, z, face, R){
+		const k = R / 18, wheel = new THREE.Group();
 		const ringMat = keep(new THREE.MeshLambertMaterial({ color: 0xf4f6fa }));
-		const ring = new THREE.Mesh(keep(new THREE.TorusBufferGeometry(18, 0.5, 6, 40)), ringMat);
-		wheel.add(ring);
-		for(let k = 0; k < 12; k++){
-			const a = k / 12 * Math.PI * 2;
-			const spoke = new THREE.Mesh(keep(new THREE.BoxBufferGeometry(0.3, 18, 0.3)), ringMat);
-			spoke.position.set(Math.sin(a) * 9, Math.cos(a) * 9, 0);
+		wheel.add(new THREE.Mesh(keep(new THREE.TorusBufferGeometry(R, 0.5 * k, 6, 40)), ringMat));
+		const cabs = [];
+		for(let i = 0; i < 12; i++){
+			const a = i / 12 * Math.PI * 2;
+			const spoke = new THREE.Mesh(keep(new THREE.BoxBufferGeometry(0.3 * k, R, 0.3 * k)), ringMat);
+			spoke.position.set(Math.sin(a) * R / 2, Math.cos(a) * R / 2, 0);
 			spoke.rotation.z = -a;
 			wheel.add(spoke);
-			const cab = new THREE.Mesh(keep(new THREE.BoxBufferGeometry(2, 2, 2)), keep(new THREE.MeshLambertMaterial({ color: new THREE.Color(`hsl(${k * 30}, 80%, 58%)`) })));
-			cab.position.set(Math.sin(a) * 18, Math.cos(a) * 18 - 1.4, 0);
+			const cab = new THREE.Mesh(keep(new THREE.BoxBufferGeometry(2 * k, 2 * k, 2 * k)), keep(new THREE.MeshLambertMaterial({ color: new THREE.Color(`hsl(${i * 30}, 80%, 58%)`) })));
+			cab.position.set(Math.sin(a) * R, Math.cos(a) * R - 1.4 * k, 0);
 			wheel.add(cab);
+			cabs.push(cab);
 		}
 		const holder = new THREE.Group();
-		holder.position.set(spot.x, 21 + groundAt(spot.x, spot.z), spot.z);
-		holder.rotation.y = spot.face;
+		holder.position.set(x, R + 3 * k + groundAt(x, z), z);
+		holder.rotation.y = face;
 		holder.add(wheel);
 		const legs = mergedBoxes([
-			{ x: -6, y: -10.5, z: 0, w: 0.8, h: 22, d: 0.8, ry: 0, color: 0x9aa3ad },
-			{ x: 6, y: -10.5, z: 0, w: 0.8, h: 22, d: 0.8, ry: 0, color: 0x9aa3ad }
+			{ x: -R / 3, y: -(R + 3 * k) / 2, z: 0, w: 0.8 * k, h: R + 4 * k, d: 0.8 * k, ry: 0, color: 0x9aa3ad },
+			{ x: R / 3, y: -(R + 3 * k) / 2, z: 0, w: 0.8 * k, h: R + 4 * k, d: 0.8 * k, ry: 0, color: 0x9aa3ad }
 		]);
 		holder.add(new THREE.Mesh(keep(legs), keep(new THREE.MeshLambertMaterial({ vertexColors: true }))));
 		group.add(holder);
-		occluders.add({ x: spot.x, z: spot.z, ry: spot.face, hw: 19, hd: 2, y0: 2, y1: 40 });
-		updaters.push(dt => { wheel.rotation.z += dt * 0.08; wheel.children.forEach(o => { if(o.geometry && o.geometry.parameters && o.geometry.parameters.width === 2) o.rotation.z = -wheel.rotation.z; }); });
+		occluders.add({ x, z, ry: face, hw: R + 1, hd: 2, y0: 2, y1: R * 2 + 4 * k + groundAt(x, z) });
+		updaters.push(dt => { wheel.rotation.z += dt * 0.08; for(const cb of cabs) cb.rotation.z = -wheel.rotation.z; });
+	}
+	if(theme.ferris && extras.wheels && extras.wheels.length){
+		// (Facing the middle of the circuit.)
+		for(const w of extras.wheels) if(roomFor(w.x, w.z, w.r * 0.4)) bigWheel(w.x, w.z, Math.atan2(cx - w.x, cz - w.z) + Math.PI / 2, Math.max(8, w.r));
+	}else if(theme.ferris && scenery.some(s => s.off > 40 && roomFor(s.x, s.z, 22))){
+		const spot = scenery.find(s => s.off > 40 && roomFor(s.x, s.z, 22));
+		bigWheel(spot.x, spot.z, spot.face, 18);
 	}
 
 	// Mountains around the edge.
@@ -975,7 +1026,7 @@ export function buildWorld(track, opts = {}){
 	}
 
 	return {
-		group, theme, sun, fog, farPlane, occluders, info: extras.info,
+		group, theme, sun, fog, farPlane, occluders, info: extras.info, boards: extras.boards,
 		// Arrow boards at a fork in a lap that uses the same road twice: ci, the followed car's sample.
 		setRoute(ci){ if(forks.setRoute) forks.setRoute(ci); },
 		forks,

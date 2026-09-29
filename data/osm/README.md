@@ -1,5 +1,11 @@
 # Real surroundings (OpenStreetMap)
 
+`monaco.json`, `spa.json`, `monza.json` and `suzuka.json` are everything round those circuits
+(buildings, land use, forests, water, streets, railways, trees, landmarks), downloaded by
+`node tools/fetch-osm.mjs` (the queries and the box round each circuit are in that script; only the
+tags the game uses are kept). The lie of the land round them is in `../dem/`, from
+`node tools/fetch-dem.mjs` (Open Topo Data: EU-DEM 25 m, SRTM 30 m for Suzuka).
+
 `jeddah.json` and `jeddah-lagoon.json` are OpenStreetMap data around the Jeddah Corniche Circuit,
 and `daytona.json` around Daytona International Speedway (Lake Lloyd, the grandstand, the infield
 buildings), downloaded from the Overpass API. `node tools/build-places.mjs` turns them into `js/places.js`.

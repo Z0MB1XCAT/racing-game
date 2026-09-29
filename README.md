@@ -213,6 +213,28 @@ original did).
   can turn music off during races.
 - **Rear-view mirror** at the top of the screen (switch it off in Settings), and hold **B** to look behind you.
 - **Scenery**: every circuit gets a pit building with team garages, grandstands full of fans (who cheer at the start and the finish), fans behind the fences at corners, billboards, a bridge over the track, and trees or city blocks to suit the place. Nothing is allowed to stick onto the road: every piece is checked against the whole circuit, including where it doubles back. The TV cameras only use positions that can see the cars, and cut away if a tree or building gets in the way.
+- **The real surroundings of every F1 track**, from OpenStreetMap, on the real lie of the land:
+  - **Monaco**: all of the principality, about 4,500 buildings at their real size (most with their real
+    number of floors) climbing the hillside, the Casino (green copper roof and turrets), the Hôtel de
+    Paris and the Hermitage, the Yacht Club, the palace on the Rock, the harbour's piers with yachts,
+    the gardens, the Stade Nautique's pool and the streets winding up the hill.
+  - **Spa**: the Ardennes forest exactly where it is, the meadows, the villages of Francorchamps and
+    Burnenville, the real grandstands as proper seating full of fans, and the valley and hills round
+    Eau Rouge from the real terrain.
+  - **Monza**: the royal park's woods and lawns round the circuit, the town of Monza and the villages
+    beyond with their red roofs, the park's own trees, the real grandstands, the railway and the river.
+  - **Suzuka**: the wooded hills (every slope the map leaves blank is wooded, as it really is), the rice
+    fields, the amusement park with its **two big wheels** where they really stand, the hotel, the
+    factories and the town.
+  - Near the track, the real surroundings are moved out to fit the game's wider road, so they line it the
+    way they really do; further out, they're exactly where the map has them. Streets have lamps that come
+    on at night, windows light up after dark, and on **Low** graphics the smallest far-off buildings are
+    left out.
+- **Sponsors**: the boards round every track carry made-up sponsors that sound like the real ones
+  (ROLAX, PIRATELLI, DXL, PETRAMCO, ZWS, CRYPTIC.COM, SAILFORCE, LEMONOVO, QATAIR, MCS CRUISES, TAG HOUR,
+  DUNLOOP, HONDO...), each in its own colours, with the local ones at each track (TAG HOUR and RICHARD
+  MILD in Monaco, UNIDEBIT and LAVAZZO at Monza, HONDO and DUNLOOP at Suzuka, PETRAMCO and SAUDAIR in
+  Jeddah). The bridge over the track carries the local one (Suzuka's is the DUNLOOP arch). No real names or logos.
 - Skid marks, sparks, tyre smoke, three cameras and four car bodies (looks only).
 - **R** puts your car back on the track if you get stuck. If a crash knocks you outside
   the walls, it happens automatically.
@@ -422,6 +444,8 @@ Once it's on, open **Track editor** from the menu.
 | `js/trackgen.js` | Turns a circuit into walls, kerbs, checkpoints and a racing line |
 | `js/circuits.js`, `js/terrain.js` | Real F1 circuit data (generated); hills, the Monaco tunnel and the Suzuka bridge |
 | `js/world.js`, `js/scenery.js` | Sky, road and themes for each track; pits, grandstands, fans, billboards, buildings and trees |
+| `js/landscape.js`, `js/placegeo.js`, `js/places/` | The real surroundings of the F1 tracks (OpenStreetMap, real terrain), placed round the game's road |
+| `js/sponsors.js` | The made-up trackside sponsors and their boards |
 | `js/remnants.js` | The rest of a venue's circuit (its other layouts' roads), closed off |
 | `js/race.js` | Race rules: laps, finishing, elimination, ghosts, syncing cars |
 | `js/bots.js`, `js/progress.js`, `js/navfield.js`, `js/rescue.js` | AI drivers, race order, getting cars back on track |
@@ -443,7 +467,9 @@ The last two also need puppeteer installed.
 - `node tools/physics-equivalence.mjs` checks that the physics matches the original.
 - `node tools/track-sim.mjs` drives bots round every track and reports lap times, stuck cars and escapes.
 - `node tools/draft-test.mjs daytona` compares slipstream on and off (lap times, gaps, lead changes).
-- `node tools/build-places.mjs` rebuilds `js/places.js` (real surroundings) from `data/osm/`.
+- `node tools/fetch-osm.mjs [venue ...]` downloads the real surroundings of Monaco, Spa, Monza and Suzuka from OpenStreetMap into `data/osm/`, and `node tools/fetch-dem.mjs [venue ...]` the lie of the land round them into `data/dem/`.
+- `node tools/build-places.mjs` rebuilds `js/places/<venue>.js` (real surroundings, loaded by the game when it needs them) from `data/osm/` and `data/dem/`.
+- `node tools/place-plot.mjs <venue> [metres across] [lap fraction]` draws a map of a venue's surroundings as the game has them, with the circuit.
 - `node tools/route-layouts.mjs [layout ...]` traces the other layouts (Monaco Formula E, Monza Oval, Suzuka East...) through the OpenStreetMap roads in `data/osm/*-roads.json` into `data/circuits/<layout>.geojson`.
 - `node tools/build-circuits.mjs` rebuilds `js/circuits.js` from `data/circuits/` (real layouts and elevation).
 - `node tools/build-circuits.mjs --corners` also lists each circuit's corners by distance from the start line (for placing camber).
@@ -465,6 +491,10 @@ The last two also need puppeteer installed.
 - F1 circuit centrelines: [bacinger/f1-circuits](https://github.com/bacinger/f1-circuits) (MIT, see
   `data/circuits/`). Elevation: [Open Topo Data](https://www.opentopodata.org/) (EU-DEM, SRTM). Monaco's
   heights are from its corners' known elevations, as the town is too steep for the elevation data.
+- The surroundings of Monaco, Spa, Monza and Suzuka (buildings, forests, fields, water, streets,
+  railways, trees, landmarks; `node tools/fetch-osm.mjs`): © [OpenStreetMap](https://www.openstreetmap.org/copyright)
+  contributors, ODbL. The lie of the land round them: [Open Topo Data](https://www.opentopodata.org/)
+  (EU-DEM 25 m for Monaco, Spa and Monza, SRTM 30 m for Suzuka; `node tools/fetch-dem.mjs`).
 - Jeddah's surroundings (buildings, coastline, lagoon, marina piers, parks, streets, mosques), the
   Monza and Daytona circuit outlines, every other track layout (traced along the mapped roads and
   raceways), and Daytona's surroundings (Lake Lloyd, the grandstand, the

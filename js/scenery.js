@@ -8,6 +8,8 @@
 
 import { TUNNEL_WALL } from "./terrain.js";
 import { inPoly } from "./placegeo.js";
+import { buildLandscape } from "./landscape.js";
+import { AD_COLS, AD_ROWS, AD_MONTE_CARLO, AD_MONACO_GP, drawSponsors, sponsorsFor, bridgeSponsor } from "./sponsors.js";
 const THREE = globalThis.THREE;
 
 export function canvasTexture(w, h, draw){
@@ -113,9 +115,11 @@ class Builder {
 		g.setAttribute("normal", new THREE.Float32BufferAttribute(this.nor, 3));
 		g.setAttribute("color", new THREE.Float32BufferAttribute(this.col, 3));
 		g.setAttribute("uv", new THREE.Float32BufferAttribute(this.uv, 2));
-		const all = [];
-		this.idx.forEach((list, slot) => { if(list.length){ g.addGroup(all.length, list.length, slot); all.push(...list); } });
-		g.setIndex(all);
+		// (One big index array; a real town can have millions of entries, too many to spread.)
+		const total = this.idx.reduce((a, l) => a + l.length, 0), all = new (this.pos.length / 3 > 65535 ? Uint32Array : Uint16Array)(total);
+		let at = 0;
+		this.idx.forEach((list, slot) => { if(list.length){ g.addGroup(at, list.length, slot); all.set(list, at); at += list.length; } });
+		g.setIndex(new THREE.BufferAttribute(all, 1));
 		return g;
 	}
 }
@@ -217,27 +221,9 @@ function makeSpace(track){
 }
 
 // ---------- Textures ----------
-const AD_COLS = 2, AD_ROWS = 9, AD_RANDOM = 16;   // (the last row: signs for particular places)
-const ADS_TEXT = [
-	["GRAND PRIX", "#e23b3b", "#fff"], ["BVS RACING", "#1f4fbf", "#fff"], ["FULL THROTTLE", "#111418", "#f4c542"], ["APEX ENERGY", "#3ddc84", "#08140c"],
-	["TURBO COLA", "#c8102e", "#fff"], ["NITRO TYRES", "#f4c542", "#111"], ["SLIPSTREAM", "#2580db", "#fff"], ["PIT LANE PIZZA", "#f48342", "#1b0e04"],
-	["POLE POSITION", "#fff", "#111"], ["BOX BOX", "#a95cff", "#fff"], ["CHEQUERED", "#111", "#fff"], ["KERB APPEAL", "#e23b3b", "#fff"],
-	["LAP ONE FUEL", "#0e7c86", "#fff"], ["PODIUM", "#f4f6fa", "#c8102e"], ["GRID GARAGE", "#2a2f3d", "#7ad7ff"], ["DRIFT KING", "#ff5ea8", "#fff"],
-	["MONTE-CARLO", "#c8102e", "#fff"], ["#MONACOGP", "#16233f", "#f4f6fa"]
-];
-const AD_MONTE_CARLO = 16, AD_MONACO_GP = 17;
+// The sponsor boards (made-up sound-alikes of real Grand Prix sponsors: js/sponsors.js).
 function adsTexture(){
-	return canvasTexture(1024, 576, (g, W, H) => {
-		const bw = W / AD_COLS, bh = H / AD_ROWS;
-		ADS_TEXT.forEach(([text, bg, fg], k) => {
-			const x = (k % AD_COLS) * bw, y = Math.floor(k / AD_COLS) * bh;
-			g.fillStyle = bg; g.fillRect(x, y, bw, bh);
-			g.fillStyle = fg; g.globalAlpha = 0.18; g.fillRect(x, y + bh - 8, bw, 8); g.globalAlpha = 1;
-			g.font = `italic 900 ${Math.round(bh * 0.62)}px "Barlow Condensed", Impact, "Arial Narrow", sans-serif`;
-			g.textAlign = "center"; g.textBaseline = "middle";
-			g.fillText(text, x + bw / 2, y + bh / 2 + 2, bw - 24);
-		});
-	});
+	return canvasTexture(2048, 1024, (g, W, H) => drawSponsors(g, W, H));
 }
 // Repeating 8 x 8 block of windows. The emissive map lights some of them up after dark.
 function windowTextures(night, glass){
@@ -504,6 +490,7 @@ export function buildScenery(track, theme, ctx){
 	}
 
 	// --- Billboards along the straights, just behind the barriers.
+	const ads = sponsorsFor(track.def && track.def.theme), boards = [];
 	for(let i = 0; i < n; i += 9){
 		if(Math.abs(i) < 14 || n - i < 14) continue;
 		if(sp.bend(i, 6) > 1 / 220) continue;
@@ -511,9 +498,12 @@ export function buildScenery(track, theme, ctx){
 		const f = sp.at(i, s, hw + 0.9);
 		const [bx, bz] = f.local(0, -0.1);
 		if(!sp.boxClear(bx, bz, f.ry, 8.4, 0.6, 0.6) || !sp.free(bx, bz, 4.2, "ads")) continue;
-		B.board({ x: bx, z: bz, y: 0.35, w: 8, h: 1.2, ry: f.ry }, Math.floor(rand() * AD_RANDOM));
+		// (Standing up above the barrier, so it can be read from the track.)
+		const lift = Math.max(0.35, (c.h ? c.h[sp.wrap(i)] - G(bx, bz) : 0) + (theme.wallH || 1.2) - 0.1);
+		B.board({ x: bx, z: bz, y: lift, w: 8, h: 1.2, ry: f.ry }, ads[Math.floor(rand() * ads.length)]);
+		boards.push({ x: bx, z: bz, ry: f.ry });
 		const [kx, kz] = f.local(0, -0.18);
-		B.box({ x: kx, z: kz, w: 8, d: 0.12, h: 1.6, ry: f.ry, color: 0x2a2e38 });
+		B.box({ x: kx, z: kz, w: 8, d: 0.12, h: lift + 1.25, ry: f.ry, color: 0x2a2e38 });
 		sp.take(bx, bz, 4.2, "ads");
 	}
 
@@ -543,20 +533,24 @@ export function buildScenery(track, theme, ctx){
 	if(bridge){
 		const { i, L, R } = bridge;
 		for(const p of [L, R]){
-			B.box({ x: p.x, z: p.z, w: 1.6, d: 1.6, h: 6.2, ry: p.ry, color: 0xb9c0c9 });
-			place({ x: p.x, z: p.z, ry: p.ry, hw: 0.8, hd: 0.8, y0: 0, y1: 6.2 });
+			const ph = (c.h ? c.h[i] - G(p.x, p.z) : 0) + 6.2;
+			B.box({ x: p.x, z: p.z, w: 1.6, d: 1.6, h: ph, ry: p.ry, color: 0xb9c0c9 });
+			place({ x: p.x, z: p.z, ry: p.ry, hw: 0.8, hd: 0.8, y0: 0, y1: ph });
 			sp.take(p.x, p.z, 1.5, "bridge");
 		}
 		const mid = sp.at(i, 1, 0), span = (hw + 3.4) * 2;
+		// (Over the road: heights from the road there, which may be up a hill from the ground at the pillars.)
+		const deckY = (c.h ? c.h[i] - G(mid.x, mid.z) : 0) + 6.2;
 		// Deck runs across the track: local z of the frame on the left side points across it.
-		B.box({ x: mid.x, z: mid.z, y: 6.2, w: 2.6, d: span, h: 0.7, ry: mid.ry, color: 0x2a2e38, bottom: true });
+		B.box({ x: mid.x, z: mid.z, y: deckY, w: 2.6, d: span, h: 0.7, ry: mid.ry, color: 0x2a2e38, bottom: true });
 		for(const side of [-1, 1]){
 			const [bx, bz] = mid.local(side * 1.36, 0), [fx, fz] = mid.local(side * 1.42, 0);
 			const face = mid.ry + (side > 0 ? Math.PI / 2 : -Math.PI / 2);
-			B.board({ x: fx, z: fz, y: 6.9, w: span * 0.8, h: 1.3, ry: face }, 0);
-			B.box({ x: bx, z: bz, y: 6.9, w: 0.1, d: span, h: 1.3, ry: mid.ry, color: 0xe9edf2 });
+			// (Heights are above the ground where each piece stands: level with the deck, over the road.)
+			B.board({ x: fx, z: fz, y: deckY + 0.7 + G(mid.x, mid.z) - G(fx, fz), w: span * 0.8, h: 1.3, ry: face }, bridgeSponsor(track.def && track.def.theme));
+			B.box({ x: bx, z: bz, y: deckY + 0.7 + G(mid.x, mid.z) - G(bx, bz), w: 0.1, d: span, h: 1.3, ry: mid.ry, color: 0xe9edf2 });
 		}
-		place({ x: mid.x, z: mid.z, ry: mid.ry, hw: 1.3, hd: span / 2, y0: 6.2, y1: 8.3 });
+		place({ x: mid.x, z: mid.z, ry: mid.ry, hw: 1.3, hd: span / 2, y0: deckY, y1: deckY + 2.1 });
 	}
 
 	// --- Monaco: the tunnel runs under the Fairmont hotel. The hotel stands over the mouth and
@@ -650,7 +644,11 @@ export function buildScenery(track, theme, ctx){
 	const used = new Set();
 	const bdef = theme.buildings;
 	const extraTrees = [];
-	if(ctx.geo) buildRealCity(ctx.geo, { track, theme, B, G, sp, place, c, hw, n, rand, group, keep, shadows, extraTrees, isWater: ctx.isWater, low, updaters });
+	// The real landscape (forests, fields, towns: Monaco, Spa, Monza, Suzuka) or the real city (Jeddah, Daytona).
+	const treeOcc = { add: o => { const g = G(o.x, o.z); o.y0 += g; o.y1 += g; occ.add(o); } };
+	let land = null;
+	if(ctx.geo && ctx.geo.P.land) land = buildLandscape(ctx.geo, { track, theme, B, G, sp, place, c, n, rand, group, keep, shadows, isWater: ctx.isWater, low, buildTrees, treeOccluders: treeOcc, people, fill });
+	else if(ctx.geo) buildRealCity(ctx.geo, { track, theme, B, G, sp, place, c, hw, n, rand, group, keep, shadows, extraTrees, isWater: ctx.isWater, low, updaters });
 	else if(bdef){
 		for(const s of spots){
 			if(s.off > 46 || s.r > bdef.density) continue;
@@ -695,17 +693,18 @@ export function buildScenery(track, theme, ctx){
 		const win = windowTextures(bdef && bdef.night, glass);
 		const nightTheme = !!(bdef && bdef.night);
 		keep(win.map); if(win.emissive) keep(win.emissive);
-		const ads = keep(adsTexture());
-		ads.anisotropy = 4;
+		const adsTex = keep(adsTexture());
+		adsTex.anisotropy = 4;
 		const mats = [
 			keep(new THREE.MeshLambertMaterial({ vertexColors: true, map: win.map, emissive: nightTheme ? 0xffffff : 0x000000, emissiveMap: win.emissive })),
 			keep(new THREE.MeshLambertMaterial({ vertexColors: true })),
-			keep(new THREE.MeshLambertMaterial({ map: ads, emissive: theme.night ? 0x555555 : 0x000000, emissiveMap: ads, side: THREE.DoubleSide }))
+			keep(new THREE.MeshLambertMaterial({ map: adsTex, emissive: theme.night ? 0x555555 : 0x000000, emissiveMap: adsTex, side: THREE.DoubleSide }))
 		];
 		// After dark: lit windows and billboards (0..1).
 		api.setNight = n => {
 			mats[0].emissive.setScalar(nightTheme ? Math.max(0.35, n) : Math.max(0, (n - 0.2) / 0.8));
 			mats[2].emissive.setScalar(0.35 * n);
+			if(land && land.setNight) land.setNight(n);
 		};
 		const mesh = new THREE.Mesh(keep(B.build()), mats);
 		mesh.castShadow = mesh.receiveShadow = shadows;
@@ -732,8 +731,9 @@ export function buildScenery(track, theme, ctx){
 	}
 
 	// --- Trees, only where their branches stay well clear of the road and of everything else.
+	// (Where the map has the real forests and trees, they're all there is: see landscape.js.)
 	const kind = theme.trees;
-	if(kind && kind !== "none" && kind !== "classic"){
+	if(kind && kind !== "none" && kind !== "classic" && !land){
 		const tl = [];
 		const lowQ = low ? 0.5 : 1;
 		for(const s of spots){
@@ -746,10 +746,12 @@ export function buildScenery(track, theme, ctx){
 			tl.push({ x: s.x, y: G(s.x, s.z), z: s.z, s: scale, ry: s.r2 * 6, r: crownR, k: s.r });
 		}
 		tl.push(...extraTrees);
-		buildTrees(kind, tl, theme, { group, keep, shadows, rand, occ: { add: o => { const g = G(o.x, o.z); o.y0 += g; o.y1 += g; occ.add(o); } } });
+		buildTrees(kind, tl, theme, { group, keep, shadows, rand, occ: treeOcc });
 	}
 
-	api.info = { straight: [s0, s1], garages, mainStand, cornerStands: chosen.length, fans: people.length, bridge: !!bridge, buildings: used.size };
+	api.info = { straight: [s0, s1], garages, mainStand, cornerStands: chosen.length, fans: people.length, bridge: !!bridge, buildings: used.size + (land ? land.buildings : 0), ...(land ? { trees: land.trees, clumps: land.clumps } : {}) };
+	api.wheels = land ? land.wheels : [];
+	api.boards = boards;   // (where the billboards are: for tools/spot-shots.mjs)
 	api.corners = chosen;
 	api.pitSide = pitSide;
 	api.clearOfRoad = (x, z, m) => sp.edge(x, z, m + 1) >= m;
@@ -998,7 +1000,7 @@ function buildTrees(kind, list, theme, { group, keep, shadows, rand, occ }){
 		inst(crown, crownMat, lean.map(t => Object.assign({}, t, { color: vary(theme.night ? 0x1e4a2c : 0x2f7d3a, 0.12) })));
 	}else if(kind === "round" || kind === "sakura"){
 		trunkH = 3;
-		const trunk = keep(new THREE.CylinderBufferGeometry(0.35, 0.5, trunkH, 6)); trunk.translate(0, trunkH / 2, 0);
+		const trunk = keep(new THREE.CylinderBufferGeometry(0.35, 0.5, trunkH, 5, 1, true)); trunk.translate(0, trunkH / 2, 0);   // (open ends: nobody sees them)
 		const crown = keep(new THREE.IcosahedronBufferGeometry(3.2, 0)); crown.translate(0, trunkH + 2.3, 0);
 		const top = keep(new THREE.IcosahedronBufferGeometry(2.2, 0)); top.translate(0.6, trunkH + 4.4, -0.4);
 		const base = t => kind === "sakura" ? (t.k < 0.65 ? 0xf6a9c6 : t.k < 0.82 ? 0xfbd3e2 : 0x4d8f3c) : (t.k < 0.5 ? 0x3d7f2c : 0x4f9435);
@@ -1007,7 +1009,7 @@ function buildTrees(kind, list, theme, { group, keep, shadows, rand, occ }){
 		inst(top, crownMat, list.map(t => Object.assign({}, t, { color: vary(base(t), 0.14) })));
 	}else{
 		trunkH = 2.5;
-		const trunk = keep(new THREE.CylinderBufferGeometry(0.35, 0.45, trunkH, 6)); trunk.translate(0, trunkH / 2, 0);
+		const trunk = keep(new THREE.CylinderBufferGeometry(0.35, 0.45, trunkH, 5, 1, true)); trunk.translate(0, trunkH / 2, 0);
 		const lower = keep(new THREE.ConeBufferGeometry(3.4, 6.5, 7)); lower.translate(0, trunkH + 3, 0);
 		const upper = keep(new THREE.ConeBufferGeometry(2.5, 5.5, 7)); upper.translate(0, trunkH + 6.8, 0);
 		const green = kind === "snowpine" ? 0x2f5a44 : 0x24532e;
