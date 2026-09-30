@@ -24,6 +24,9 @@ on purpose; `npm run setup` recreates them. If the server is already running, do
   contact, or barriers with a `lvl` that only stop cars on one level of a bridge).
 - **Bump the version on every update**: `VERSION` in `js/config.js` and `version.json`, same
   value, format `YYYY.MM.DD-N` (N counts up within the day). Players get an update bar from it.
+- **Work directly on `main` in the project folder; don't use git worktrees.** The owner asked for this
+  (2026-09-30). If a session starts inside `.claude/worktrees/...`, bring its commits onto `main` in the
+  main checkout (fast-forward) and carry on there.
 - **Commit locally; the owner pushes.** Don't push, and don't open PRs unless asked. End commit
   messages with the Co-Authored-By line.
 - **Never create accounts in, or write test data to, the live Firebase.** Online tests use
