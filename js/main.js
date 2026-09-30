@@ -4,6 +4,7 @@ import { buildTrack } from "./trackgen.js";
 import { makeTracker } from "./progress.js";
 import { buildWorld } from "./world.js";
 import { PLACE_VENUES, loadPlaces, placesLoaded } from "./placegeo.js";
+import { preload as preloadAssets, assetsStamp } from "./assets.js";
 import { ghostSectors } from "./ghosts.js";
 import { makeAtmosphere } from "./atmosphere.js";
 import { makeCar, disposeCar, animateCar, BODIES } from "./cars.js";
@@ -109,13 +110,17 @@ function getTrack(def, reverse){
 	return trackCache.get(key);
 }
 
+// What a world was built with: its venue's real surroundings (placegeo.js) and the assets loaded so far
+// (assets.js). A world built under an older stamp is built again the next time its track is shown.
+const worldStamp = def => (def && placesLoaded(venueOf(def.id)) ? 1 : 0) + "/" + assetsStamp();
+
 function showTrack(def, reverse){
 	const entry = getTrack(def, reverse);
-	if(S.trackKey === entry.key && S.world) return entry;
+	if(S.trackKey === entry.key && S.world && S.worldStamp === worldStamp(entry.def)) return entry;
 	if(S.world){ scene.remove(S.world.group); S.world.dispose(); }
 	S.trackKey = entry.key; S.track = entry.track; S.tracker = entry.tracker;
 	S.world = buildWorld(entry.track, { quality: quality() });
-	S.worldHasPlaces = !!(entry.def && placesLoaded(venueOf(entry.def.id)));
+	S.worldStamp = worldStamp(entry.def);
 	scene.add(S.world.group);
 	scene.fog = S.world.fog;
 	scene.background = S.world.skyColor;
@@ -127,13 +132,16 @@ function showTrack(def, reverse){
 	return entry;
 }
 
-// The real surroundings of the circuits (js/places/) load in the background. When a venue's
-// arrive while its track is on show in the menus, it's built again with them (never mid-race).
-for(const v of PLACE_VENUES) loadPlaces(v).then(() => {
-	if(!S.track || !S.world || S.race || !S.track.def || venueOf(S.track.def.id) !== v || S.worldHasPlaces) return;
+// The real surroundings of the circuits (js/places/) and the models and textures (assets/) load in the
+// background. When they arrive while a track is on show in the menus, it's built again with them (never
+// mid-race).
+function refreshWorld(){
+	if(!S.track || !S.world || S.race || !S.track.def || S.worldStamp === worldStamp(S.track.def)) return;
 	S.trackKey = null;
 	showTrack(S.track.def, S.track.reverse);
-});
+}
+for(const v of PLACE_VENUES) loadPlaces(v).then(refreshWorld);
+preloadAssets(quality()).then(refreshWorld);
 
 // ---------- Menu showcase car ----------
 function placeShowcase(){
@@ -270,6 +278,7 @@ function applyQuality(){
 	applyPixelRatio();
 	fx.dispose();
 	fx = new Effects(scene, quality());
+	preloadAssets(quality()).then(refreshWorld);     // (models and textures kept for high quality)
 	const key = S.trackKey;
 	if(key && S.world){
 		scene.remove(S.world.group); S.world.dispose(); S.world = null; S.trackKey = null;

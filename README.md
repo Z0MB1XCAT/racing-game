@@ -235,6 +235,13 @@ original did).
   DUNLOOP, HONDO...), each in its own colours, with the local ones at each track (TAG HOUR and RICHARD
   MILD in Monaco, UNIDEBIT and LAVAZZO at Monza, HONDO and DUNLOOP at Suzuka, PETRAMCO and SAUDAIR in
   Jeddah). The bridge over the track carries the local one (Suzuka's is the DUNLOOP arch). No real names or logos.
+- **A graphics pipeline for models and textures** (`assets/`, no build step): drop a `.glb` model or a
+  `.jpg`/`.png` texture in the folder, list it in `assets/manifest.json`, and the game uses it. Models are
+  placed as many cheap copies (a street lamp goes up thousands of times), can light up at night, and can
+  wait for High quality; a missing or broken file just means the game draws its own version, so an asset
+  can never break a race. Today: fine tarmac grain and rubbered racing lines on every road, a grass texture
+  on the F1 tracks' ground, and models for the floodlights (all tracks) and the street lamps (Monaco and
+  Monza, High quality). Swap in better ones of the same name to upgrade them. `assets/README.md` says how.
 - Skid marks, sparks, tyre smoke, three cameras and four car bodies (looks only).
 - **R** puts your car back on the track if you get stuck. If a crash knocks you outside
   the walls, it happens automatically.
@@ -446,6 +453,7 @@ Once it's on, open **Track editor** from the menu.
 | `js/world.js`, `js/scenery.js` | Sky, road and themes for each track; pits, grandstands, fans, billboards, buildings and trees |
 | `js/landscape.js`, `js/placegeo.js`, `js/places/` | The real surroundings of the F1 tracks (OpenStreetMap, real terrain), placed round the game's road |
 | `js/sponsors.js` | The made-up trackside sponsors and their boards |
+| `js/assets.js`, `js/materials.js`, `assets/`, `vendor/` | Models and textures loaded from `assets/manifest.json` (glTF via the vendored r128 loader), placed as instances; the road and ground textures, drawn in code unless a file replaces them |
 | `js/remnants.js` | The rest of a venue's circuit (its other layouts' roads), closed off |
 | `js/race.js` | Race rules: laps, finishing, elimination, ghosts, syncing cars |
 | `js/bots.js`, `js/progress.js`, `js/navfield.js`, `js/rescue.js` | AI drivers, race order, getting cars back on track |
@@ -469,6 +477,9 @@ The last two also need puppeteer installed.
 - `node tools/draft-test.mjs daytona` compares slipstream on and off (lap times, gaps, lead changes).
 - `node tools/fetch-osm.mjs [venue ...]` downloads the real surroundings of Monaco, Spa, Monza and Suzuka from OpenStreetMap into `data/osm/`, and `node tools/fetch-dem.mjs [venue ...]` the lie of the land round them into `data/dem/`.
 - `node tools/build-places.mjs` rebuilds `js/places/<venue>.js` (real surroundings, loaded by the game when it needs them) from `data/osm/` and `data/dem/`.
+- `node tools/build-models.mjs` builds the game's own simple models (street lamp, floodlight) into `assets/models/*.glb`.
+- `node tools/check-assets.mjs` checks `assets/manifest.json` against the files (they exist, plain glTF, within their triangle and size budgets).
+- `node tools/asset-test.mjs` plays the game with assets loading, missing, broken and replaced, and checks it copes with each.
 - `node tools/place-plot.mjs <venue> [metres across] [lap fraction]` draws a map of a venue's surroundings as the game has them, with the circuit.
 - `node tools/route-layouts.mjs [layout ...]` traces the other layouts (Monaco Formula E, Monza Oval, Suzuka East...) through the OpenStreetMap roads in `data/osm/*-roads.json` into `data/circuits/<layout>.geojson`.
 - `node tools/build-circuits.mjs` rebuilds `js/circuits.js` from `data/circuits/` (real layouts and elevation).
@@ -502,5 +513,6 @@ The last two also need puppeteer installed.
   (see `data/osm/` and `data/circuits/`).
   A few towers OpenStreetMap doesn't have were placed from satellite imagery, with heights
   estimated from their shadows.
+- `vendor/three-r128/GLTFLoader.js`: the glTF loader from three.js r128 (MIT, © three.js authors).
 - Licensed under **GPL-3.0**, the same as the original (see [LICENSE](LICENSE)). If you share
   your version, keep it open source and keep this credit.

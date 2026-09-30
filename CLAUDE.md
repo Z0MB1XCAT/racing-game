@@ -63,6 +63,9 @@ on purpose; `npm run setup` recreates them. If the server is already running, do
 | `fetch-osm.mjs [venue]`, `fetch-dem.mjs [venue]` | download the real surroundings (OpenStreetMap) and lie of the land (Open Topo Data) of Monaco, Spa, Monza, Suzuka into `data/osm/`, `data/dem/` |
 | `build-places.mjs` | rebuilds `js/places/<venue>.js` (real surroundings, loaded on demand) from `data/osm/` and `data/dem/` |
 | `place-plot.mjs <venue> [m] [frac]` | a map of a venue's surroundings as the game has them, with the circuit |
+| `check-assets.mjs` | `assets/manifest.json` vs the files: they exist, plain glTF, within their triangle/size budgets |
+| `asset-test.mjs` | the game with assets loading, missing, broken, replaced and on Low: it must cope with each |
+| `build-models.mjs` | builds the simple models in `assets/models/` from code (replace any with a better one of the same name) |
 | `screenshot.mjs <url> [label]` (repo root) | one screenshot into `temporary screenshots/` |
 
 Generated files (`js/circuits.js`, `js/places/*.js`) are never edited by hand: change the build
@@ -70,7 +73,9 @@ script or its data and rebuild.
 
 ## Code conventions
 
-- Plain ES modules loaded directly by the browser; three.js is the global `THREE` (r128).
+- Plain ES modules loaded directly by the browser; three.js is the global `THREE` (r128). Still no build
+  step: models and textures are plain files in `assets/` (see `assets/README.md`), loaded by `js/assets.js`.
+  Every use of an asset must have a drawn-in-code fallback, so a missing file never breaks the game.
   Tabs for indentation. Comments are short, plain English, and explain why.
 - The F1 tracks are real data: centrelines (bacinger/f1-circuits), heights from real altitudes,
   camber only on corners that really have it (`camber` in `tools/build-circuits.mjs`, with the

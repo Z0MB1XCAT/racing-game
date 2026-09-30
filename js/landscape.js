@@ -6,6 +6,7 @@
 // Anything that would touch the road, or something already placed, is left out.
 import { inPoly } from "./placegeo.js";
 import { roadField } from "./roadfield.js";
+import { instantiate } from "./assets.js";
 const THREE = globalThis.THREE;
 
 // Colours by the kind of place (P.town).
@@ -256,7 +257,7 @@ export function buildLandscape(geo, ctx){
 			}
 			if(lampGap) for(let d = lampGap * 0.5; d < len; d += lampGap){
 				const x = ax + ux * d + nx * 1.1, z = az + uz * d + nz * 1.1;
-				if(sp.edge(x, z, 4) > 2.5 && !(ctx.isWater && ctx.isWater(x, z))) lamps.push({ x, z, y: G(x, z) });
+				if(sp.edge(x, z, 4) > 2.5 && !(ctx.isWater && ctx.isWater(x, z))) lamps.push({ x, z, y: G(x, z), ry: Math.atan2(nz, -nx) });
 			}
 		}
 	}
@@ -277,18 +278,26 @@ export function buildLandscape(geo, ctx){
 		}
 	}
 	if(lamps.length){
-		const unit = keep(new THREE.BoxBufferGeometry(1, 1, 1));
-		const pole = new THREE.InstancedMesh(unit, keep(new THREE.MeshLambertMaterial({ color: 0x5b6068 })), lamps.length);
-		const head = new THREE.InstancedMesh(unit, keep(new THREE.MeshBasicMaterial({ color: 0xffc46b })), lamps.length);
-		const m = new THREE.Matrix4(), ph = Math.max(2.2, 8 * S);
-		lamps.forEach((l, i) => {
-			m.makeScale(0.12, ph, 0.12); m.setPosition(l.x, l.y + ph / 2, l.z); pole.setMatrixAt(i, m);
-			m.makeScale(0.45, 0.16, 0.45); m.setPosition(l.x, l.y + ph + 0.05, l.z); head.setMatrixAt(i, m);
-		});
-		pole.frustumCulled = head.frustumCulled = false;
-		group.add(pole, head);
+		const glowMat = keep(new THREE.MeshBasicMaterial({ color: 0xffc46b }));
+		// The lamp post model (assets/models/lamp-post.glb: 8 m tall, its arm reaching over the street) where it's
+		// loaded, else a pole and a box. (Never shorter than 2.2 units, so it still reads on a small map.)
+		const size = Math.max(1, 2.2 / (8 * S));
+		const model = instantiate("lamp-post", lamps.map(l => Object.assign({ s: size }, l)), { S, materials: { glow: glowMat }, quality: low ? "low" : "high" });
+		if(model) group.add(model);
+		else{
+			const unit = keep(new THREE.BoxBufferGeometry(1, 1, 1));
+			const pole = new THREE.InstancedMesh(unit, keep(new THREE.MeshLambertMaterial({ color: 0x5b6068 })), lamps.length);
+			const head = new THREE.InstancedMesh(unit, glowMat, lamps.length);
+			const m = new THREE.Matrix4(), ph = Math.max(2.2, 8 * S);
+			lamps.forEach((l, i) => {
+				m.makeScale(0.12, ph, 0.12); m.setPosition(l.x, l.y + ph / 2, l.z); pole.setMatrixAt(i, m);
+				m.makeScale(0.45, 0.16, 0.45); m.setPosition(l.x, l.y + ph + 0.05, l.z); head.setMatrixAt(i, m);
+			});
+			pole.frustumCulled = head.frustumCulled = false;
+			group.add(pole, head);
+		}
 		// The lamp heads only glow after dark.
-		out.setNight = v => head.material.color.setHex(v > 0.3 ? 0xffc46b : 0x9aa0a8);
+		out.setNight = v => glowMat.color.setHex(v > 0.3 ? 0xffc46b : 0x9aa0a8);
 	}
 
 	// ----- Piers into the harbour, with yachts moored alongside -----

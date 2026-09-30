@@ -7,6 +7,8 @@ import { naturalHour } from "./atmosphere.js";
 import { buildTerrain, buildTunnel, buildBridge, buildSkirts, TUNNEL_WALL } from "./terrain.js";
 import { placeGeo } from "./placegeo.js";
 import { remnants, remnantGround } from "./remnants.js";
+import { detail } from "./materials.js";
+import { instantiate, hasModel } from "./assets.js";
 
 const THREE = globalThis.THREE;
 
@@ -138,10 +140,13 @@ function instanced(geometry, material, list, shadow){
 // piece between samples is its own quad in one colour (crisp kerb blocks, no blending).
 function ribbon(center, from, to, y, keepFn, colorFn){
 	if(colorFn) return blockRibbon(center, from, to, y, keepFn, colorFn);
-	const n = center.n, pos = [], col = [], idx = [];
+	const n = center.n, pos = [], col = [], idx = [], uv = [];
 	const c = new THREE.Color();
+	// (uv: u across (0 at `from`, 1 at `to`), v along, a tile as long as the ribbon is wide: for road textures.)
+	const tile = Math.abs(from - to) || 1, step = center.step || 1;
 	for(let i = 0; i <= n; i++){
 		const k = i % n;
+		uv.push(0, i * step / tile, 1, i * step / tile);
 		const nx = center.tz[k], nz = -center.tx[k];
 		const ya = y + (center.h ? center.h[k] + from * center.bank[k] : 0), yb = y + (center.h ? center.h[k] + to * center.bank[k] : 0);
 		pos.push(center.x[k] + nx * from, ya, center.z[k] + nz * from, center.x[k] + nx * to, yb, center.z[k] + nz * to);
@@ -155,6 +160,7 @@ function ribbon(center, from, to, y, keepFn, colorFn){
 	const g = new THREE.BufferGeometry();
 	g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
 	g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+	g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
 	g.setIndex(idx);
 	g.computeVertexNormals();
 	return g;
@@ -377,6 +383,11 @@ export function buildWorld(track, opts = {}){
 			tmat = keep(new THREE.MeshLambertMaterial({ color: theme.ground, emissive: 0x0f0f0f, emissiveMap: t }));
 		}
 		if(colorAt){ tmat = keep(tmat.clone()); tmat.color.set(0xffffff); tmat.vertexColors = true; }
+		// Fine grass over it (see materials.js). Its uv repeat is the stripes' too (r128 has one per material): 1.
+		const turf = detail("grass", quality);
+		if(tmat === groundMat) tmat = keep(tmat.clone());
+		tmat.map = turf.texture;
+		if(!turf.tint && !colorAt) tmat.color.set(0xffffff);
 		const tm = new THREE.Mesh(terrain.geometry, tmat);
 		tm.receiveShadow = shadows;
 		tm.frustumCulled = false;
@@ -395,6 +406,10 @@ export function buildWorld(track, opts = {}){
 	if(track.center && theme.road !== undefined){
 		const c = track.center, hw = c.hw;
 		roadMat = keep(new THREE.MeshPhongMaterial({ color: theme.road, emissive: theme.night ? 0x14161c : 0x000000, specular: 0x000000, shininess: 40, side: THREE.DoubleSide }));
+		// Fine tarmac on the road (assets/textures/asphalt.* if there is one, else drawn: materials.js).
+		const tarmac = detail("asphalt", quality);
+		roadMat.map = tarmac.texture;
+		if(!tarmac.tint) roadMat.color.set(0xffffff);
 		const road = new THREE.Mesh(keep(ribbon(c, hw + 0.8, -hw - 0.8, 0.02, c.dup ? i => !c.dup[i] : null)), roadMat);   // (a road used twice is drawn once)
 		road.receiveShadow = shadows;
 		group.add(road);
@@ -765,7 +780,7 @@ export function buildWorld(track, opts = {}){
 	// Floodlights along every circuit. They light up at night (and at dusk on the speedway).
 	let headMat = null, poolMat = null;
 	if(track.center){
-		const c = track.center, hw = c.hw, poles = [], heads = [], pools = [];
+		const c = track.center, hw = c.hw, poles = [], heads = [], pools = [], polesM = [], headsM = [];
 		for(let i = 0; i < c.n; i += 42){
 			const side = (i / 42) % 2 ? 1 : -1;
 			const nx = c.tz[i] * side, nz = -c.tx[i] * side;
@@ -777,14 +792,24 @@ export function buildWorld(track, opts = {}){
 			const gy = Math.max(groundAt(x, z), c.h ? edgeY - 1 : 0), py = edgeY;
 			poles.push({ x, y: gy + 5 + (py - gy) / 2, z, sx: 0.3, sy: 10 + (py - gy), sz: 0.3 });
 			heads.push({ x: x - nx * 1.2, y: py + 10, z: z - nz * 1.2, sx: 1.4, sy: 0.4, sz: 1.4 });
+			// (For the models: a pole one unit tall, stretched up to the head, whose arm reaches out over the road.)
+			polesM.push({ x, y: gy, z, sy: 10 + (py - gy) });
+			headsM.push({ x, y: py + 10, z, ry: Math.atan2(nz, -nx) });
 			// The pool of light lies on the road, tilted with its camber (so it doesn't clip into it).
 			const lat = -side * (hw * 0.7 + 3) + side * off, cy = c.h ? c.h[i] : 0;
 			pools.push({ x: x - nx * (hw * 0.7 + 3), y: cy + lat * bank + 0.07, z: z - nz * (hw * 0.7 + 3), rx: -Math.PI / 2 + Math.atan(bank), ry: Math.atan2(-c.tz[i], c.tx[i]), s: hw * 1.6 });
 		}
 		const unit = keep(new THREE.BoxBufferGeometry(1, 1, 1));
-		group.add(instanced(unit, keep(new THREE.MeshLambertMaterial({ color: 0x3a3f4a })), poles));
 		headMat = keep(new THREE.MeshBasicMaterial({ color: 0xfff1c9 }));
-		group.add(instanced(unit, headMat, heads));
+		// The pole and lamp head models (assets/models/) where they've loaded, else plain boxes. The head's
+		// "glow" part is the game's own material, so it lights up at night like the boxes did.
+		const poleM = hasModel("floodlight-pole", quality) && hasModel("floodlight-head", quality) ? instantiate("floodlight-pole", polesM, { quality }) : null;
+		const headM = poleM ? instantiate("floodlight-head", headsM, { materials: { glow: headMat }, quality }) : null;
+		if(poleM && headM) group.add(poleM, headM);
+		else{
+			group.add(instanced(unit, keep(new THREE.MeshLambertMaterial({ color: 0x3a3f4a })), poles));
+			group.add(instanced(unit, headMat, heads));
+		}
 		const glow = keep(canvasTexture(64, 64, (g) => {
 			const r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
 			r.addColorStop(0, "rgba(255,236,190,0.9)"); r.addColorStop(1, "rgba(255,236,190,0)");

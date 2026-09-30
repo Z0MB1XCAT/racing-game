@@ -1,0 +1,8 @@
+{
+	"models": {
+		"lamp-post": { "file": "models/lamp-post.glb", "scale": "world", "min": "high", "maxTris": 80, "maxKB": 20 },
+		"floodlight-pole": { "file": "models/floodlight-pole.glb", "scale": "game", "maxTris": 40, "maxKB": 10 },
+		"floodlight-head": { "file": "models/floodlight-head.glb", "scale": "game", "maxTris": 80, "maxKB": 10 }
+	},
+	"textures": {}
+}
