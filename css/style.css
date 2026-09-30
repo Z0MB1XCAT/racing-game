@@ -843,3 +843,18 @@ kbd{ font-family: var(--f-display); font-weight: 700; font-size: 13px; padding: 
 	.chat-float[data-mode="results"]{ width: calc(100vw - 32px); }
 	.chat-log{ height: 160px; }
 }
+
+/* ---- FPS counter (Settings > FPS counter; js/gfx.js) ---- */
+.fps-box{
+	position: fixed; left: 16px; bottom: 222px; z-index: 40; pointer-events: none;
+	padding: 6px 10px 7px; min-width: 190px; border-radius: 8px;
+	font: 600 11px/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace; color: rgba(243,245,249,.78);
+	background: rgba(10,13,20,.72); border: 1px solid rgba(255,255,255,.09);
+	box-shadow: 0 6px 18px rgba(0,0,0,.35), 0 1px 0 rgba(255,255,255,.05) inset;
+}
+.fps-box .fps-big{ font-size: 18px; letter-spacing: .02em; color: #7be38a; margin-right: 8px; }
+.fps-box.slow .fps-big{ color: #ffb454; }
+.fps-box .fps-ms{ font-size: 11px; color: rgba(243,245,249,.6); }
+.fps-box .fps-row{ white-space: nowrap; }
+.fps-box .fps-gpu{ color: rgba(243,245,249,.45); max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 640px){ .fps-box{ bottom: auto; top: 54px; left: 8px; } }

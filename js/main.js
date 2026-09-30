@@ -5,6 +5,7 @@ import { makeTracker } from "./progress.js";
 import { buildWorld } from "./world.js";
 import { PLACE_VENUES, loadPlaces, placesLoaded } from "./placegeo.js";
 import { preload as preloadAssets, assetsStamp } from "./assets.js";
+import { Gfx } from "./gfx.js";
 import { ghostSectors } from "./ghosts.js";
 import { makeAtmosphere } from "./atmosphere.js";
 import { makeCar, disposeCar, animateCar, BODIES } from "./cars.js";
@@ -60,13 +61,17 @@ const mobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || (navigat
 
 function quality(){
 	if(S.settings.quality !== "auto") return S.settings.quality;
-	return mobile || (navigator.hardwareConcurrency || 8) <= 4 ? "low" : "high";
+	// Auto: phones and small machines get Fast, and so does any machine that once couldn't hold a steady
+	// frame rate even at the cheapest sharpness (gfx.js saves that; picking a Graphics setting clears it).
+	return mobile || (navigator.hardwareConcurrency || 8) <= 4 || store.load("tierHint", null) === "low" ? "low" : "high";
 }
 
 // ---------- Renderer ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-function applyPixelRatio(){ renderer.setPixelRatio(quality() === "high" ? Math.min(2, window.devicePixelRatio || 1) : 1); }
-applyPixelRatio();
+// Sharpness, shadows and the FPS counter, and holding 60 fps by turning them down when a computer can't keep up (gfx.js).
+const gfx = new Gfx(renderer, { onChange: step => { if(S.world && S.world.setShadows) S.world.setShadows(step.shadows); } });
+function configureGfx(){ gfx.configure({ quality: quality(), adaptive: S.settings.adaptive !== false, counter: !!S.settings.fps }); }
+configureGfx();
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -121,6 +126,8 @@ function showTrack(def, reverse){
 	S.trackKey = entry.key; S.track = entry.track; S.tracker = entry.tracker;
 	S.world = buildWorld(entry.track, { quality: quality() });
 	S.worldStamp = worldStamp(entry.def);
+	gfx.scene();                                                  // (a new track: start measuring afresh)
+	if(S.world.setShadows) S.world.setShadows(gfx.current.shadows);
 	scene.add(S.world.group);
 	scene.fog = S.world.fog;
 	scene.background = S.world.skyColor;
@@ -255,7 +262,9 @@ updateShowcaseTag();
 
 // ---------- Settings ----------
 function saveSettings(){ store.setSettings(S.settings); }
-seg($("setQuality"), S.settings.quality, v => { S.settings.quality = v; saveSettings(); applyQuality(); });
+seg($("setQuality"), S.settings.quality, v => { S.settings.quality = v; store.save("tierHint", null); saveSettings(); applyQuality(); });
+seg($("setAdaptive"), S.settings.adaptive === false ? "0" : "1", v => { S.settings.adaptive = v === "1"; saveSettings(); configureGfx(); });
+seg($("setFps"), S.settings.fps ? "1" : "0", v => { S.settings.fps = v === "1"; saveSettings(); gfx.setCounter(S.settings.fps); });
 seg($("setCamera"), S.settings.camera, v => { S.settings.camera = v; saveSettings(); });
 seg($("setRaceMusic"), S.settings.raceMusic ? "1" : "0", v => { S.settings.raceMusic = v === "1"; saveSettings(); if(S.screen === "race" && S.race && S.race.phase !== "countdown") audio.playMusic(S.settings.raceMusic ? "race" : null); });
 seg($("setShake"), S.settings.shake ? "1" : "0", v => { S.settings.shake = v === "1"; saveSettings(); });
@@ -275,7 +284,7 @@ for(const [id, key, kind] of [["setMusic", "music", "music"], ["setSfx", "sfx", 
 	audio.setLevel(kind, S.settings[key]);
 }
 function applyQuality(){
-	applyPixelRatio();
+	configureGfx();
 	fx.dispose();
 	fx = new Effects(scene, quality());
 	preloadAssets(quality()).then(refreshWorld);     // (models and textures kept for high quality)
@@ -1518,6 +1527,9 @@ function chatMode(){
 }
 function frame(now){
 	requestAnimationFrame(frame);
+	gfx.tick(now);
+	// A computer that can't hold a steady frame rate even at the cheapest sharpness is put on Fast from next time.
+	if(gfx.struggling && quality() === "high" && S.settings.quality === "auto" && store.load("tierHint", null) !== "low") store.save("tierHint", "low");
 	const dt = Math.min(0.1, (now - last) / 1000);
 	last = now;
 	chat.tick(chatMode());
@@ -2408,3 +2420,4 @@ loadWeeklyCard();
 refreshAccount().then(() => garage.refresh(true)).then(() => { $("titleLevel").textContent = garage.level; });
 requestAnimationFrame(frame);
 window.__game = S;   // handy for debugging in the console
+S.gfx = gfx;

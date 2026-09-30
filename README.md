@@ -230,6 +230,14 @@ original did).
     way they really do; further out, they're exactly where the map has them. Streets have lamps that come
     on at night, windows light up after dark, and on **Low** graphics the smallest far-off buildings are
     left out.
+- **Holds 60 fps by itself** (Settings > Hold 60 fps, on by default): the game watches how long each frame
+  takes and, if a computer can't keep up, makes the picture a little less sharp (never the driving), then
+  turns the shadows off and, only if it really has to, sharpens less still. When there's room again it tries
+  the step back up. Where a computer settled is remembered for next time, a machine that can't hold a steady
+  rate even at the cheapest step is put on Fast from then on (in Auto), and a stall (switching tabs, a track
+  being built) is never mistaken for a slow computer. **Settings > FPS counter** shows the frame rate, how
+  long frames take, the current sharpness, shadows, the triangles and draw calls in the scene, and which
+  graphics card the browser found (useful for telling me what a PC has).
 - **Sponsors**: the boards round every track carry made-up sponsors that sound like the real ones
   (ROLAX, PIRATELLI, DXL, PETRAMCO, ZWS, CRYPTIC.COM, SAILFORCE, LEMONOVO, QATAIR, MCS CRUISES, TAG HOUR,
   DUNLOOP, HONDO...), each in its own colours, with the local ones at each track (TAG HOUR and RICHARD
@@ -453,6 +461,7 @@ Once it's on, open **Track editor** from the menu.
 | `js/world.js`, `js/scenery.js` | Sky, road and themes for each track; pits, grandstands, fans, billboards, buildings and trees |
 | `js/landscape.js`, `js/placegeo.js`, `js/places/` | The real surroundings of the F1 tracks (OpenStreetMap, real terrain), placed round the game's road |
 | `js/sponsors.js` | The made-up trackside sponsors and their boards |
+| `js/gfx.js`, `js/adaptive.js` | The renderer's dials (sharpness, shadows), the controller that turns them to hold 60 fps, and the FPS counter |
 | `js/assets.js`, `js/materials.js`, `assets/`, `vendor/` | Models and textures loaded from `assets/manifest.json` (glTF via the vendored r128 loader), placed as instances; the road and ground textures, drawn in code unless a file replaces them |
 | `js/remnants.js` | The rest of a venue's circuit (its other layouts' roads), closed off |
 | `js/race.js` | Race rules: laps, finishing, elimination, ghosts, syncing cars |
@@ -477,6 +486,8 @@ The last two also need puppeteer installed.
 - `node tools/draft-test.mjs daytona` compares slipstream on and off (lap times, gaps, lead changes).
 - `node tools/fetch-osm.mjs [venue ...]` downloads the real surroundings of Monaco, Spa, Monza and Suzuka from OpenStreetMap into `data/osm/`, and `node tools/fetch-dem.mjs [venue ...]` the lie of the land round them into `data/dem/`.
 - `node tools/build-places.mjs` rebuilds `js/places/<venue>.js` (real surroundings, loaded by the game when it needs them) from `data/osm/` and `data/dem/`.
+- `node tools/adaptive-test.mjs` plays the 60 fps controller against simulated computers (strong, weak, crawling, a faster screen, stalls).
+- `node tools/gfx-test.mjs` checks the FPS counter, the game turning itself down on a computer drawing in software, "Hold 60 fps" off, the saved step and Fast, in the real game.
 - `node tools/build-models.mjs` builds the game's own simple models (street lamp, floodlight) into `assets/models/*.glb`.
 - `node tools/check-assets.mjs` checks `assets/manifest.json` against the files (they exist, plain glTF, within their triangle and size budgets).
 - `node tools/asset-test.mjs` plays the game with assets loading, missing, broken and replaced, and checks it copes with each.

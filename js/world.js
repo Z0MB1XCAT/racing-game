@@ -1052,6 +1052,8 @@ export function buildWorld(track, opts = {}){
 
 	return {
 		group, theme, sun, fog, farPlane, occluders, info: extras.info, boards: extras.boards,
+		// The sun's shadows on or off while it's running (the adaptive quality in gfx.js). Only where the world was built with them.
+		setShadows(on){ if(shadows) sun.castShadow = !!on; },
 		// Arrow boards at a fork in a lap that uses the same road twice: ci, the followed car's sample.
 		setRoute(ci){ if(forks.setRoute) forks.setRoute(ci); },
 		forks,
