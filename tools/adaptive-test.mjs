@@ -8,20 +8,26 @@ const ok = (cond, msg) => { console.log("  " + (cond ? "ok  " : "FAIL") + " " + 
 
 // A computer: costs[step] is how long a frame takes to draw at each step (ms). The screen shows a frame at
 // its refresh ticks, so a frame that misses one waits for the next (60 Hz: 16.7 ms, then 33.3 ms).
-function simulate({ costs, hz = 60, seconds = 120, start = 0, noise = 0.06, changeAt = [], hitchEvery = 0, seed = 7 }){
-	const a = new Adaptive(costs.length, { start });
+// The real ladder (js/gfx.js), for the tests that need to know what a step is.
+import { LADDERS } from "../js/ladders.js";
+function simulate({ costs, gpuCosts, hz = 60, seconds = 120, start = 0, noise = 0.06, changeAt = [], hitchEvery = 0, seed = 7, steps }){
+	// costs[step]: the frame's cost in ms (the slower of the processor and the graphics chip); with gpuCosts, the chip's
+	// own time is reported too (as the browser's timer would), and costs is the processor's.
+	const a = new Adaptive(steps || costs.length, { start });
 	let t = 0, step = a.step, rnd = seed, changes = 0, slowTime = 0, total = 0, hitches = 0, costScale = 1;
 	const rand = () => { rnd = (rnd * 1664525 + 1013904223) >>> 0; return rnd / 4294967296; };
 	const tick = 1000 / hz, trace = [];
 	let nextHitch = hitchEvery ? hitchEvery * 1000 : Infinity;
 	while(t < seconds * 1000){
 		for(const [at, scale] of changeAt) if(t >= at * 1000 && costScale !== scale && t < at * 1000 + 50) costScale = scale;
-		const cost = costs[step] * costScale * (1 + (rand() - 0.5) * 2 * noise);
+		const jitter = 1 + (rand() - 0.5) * 2 * noise;
+		const gpuMs = gpuCosts ? gpuCosts[step] * costScale * jitter : null;
+		const cost = (gpuCosts ? Math.max(costs[step] * costScale, gpuMs) : costs[step] * costScale * jitter);
 		let ms = Math.max(tick, Math.ceil(cost / tick) * tick);
 		if(t >= nextHitch){ ms = 320; nextHitch += hitchEvery * 1000; hitches++; }
 		t += ms; total += ms;
 		if(ms > tick * 1.15 && ms < 250) slowTime += ms;
-		const r = a.frame(ms, t);
+		const r = a.frame(ms, t, gpuMs);
 		if(r){ step = r.to; changes++; trace.push([Math.round(t / 1000), r.from + ">" + r.to]); }
 	}
 	return { step, changes, slowShare: slowTime / total, trace, a, hitches };
@@ -72,6 +78,29 @@ console.log("a stall on request (a track being built)");
 	a.stall(t, 3000);
 	for(let i = 0; i < 100; i++){ t += 120; if(a.frame(120, t)) changed = true; }   // (slow frames, but inside the hold)
 	ok(!changed || t > 3000, "frames inside the hold aren't measured");
+}
+console.log("the graphics chip can be timed (the browser says how long it took)");
+{
+	const ladder = LADDERS.high;
+	// A chip that needs 26, 23, 21, 16, 13, 10, 7 ms at each step, with a processor that's never the limit.
+	const gpu = [26, 23, 21, 16, 13, 10, 7], cpu = [5, 5, 5, 5, 5, 5, 5];
+	const r = simulate({ costs: cpu, gpuCosts: gpu, steps: ladder, seconds: 120 });
+	ok(r.step === 3 || r.step === 4, "settles on the first step that holds 60 (step " + r.step + ", 16 ms), no further down");
+	ok(r.trace.length <= 6, "without flailing: " + r.trace.map(x => x.join(" ")).join(", "));
+	// Plenty of room: it climbs on its own timing, without waiting out the long wait or making blind tries.
+	const up = simulate({ costs: [5, 5, 5, 5, 5, 5, 5], gpuCosts: [9, 8, 7, 6, 5, 4, 3], steps: ladder, start: 5, seconds: 60 });
+	ok(up.step === 0, "with lots of room it climbs to the best step in under a minute (step " + up.step + ")");
+	ok(up.a.cpuBound === false, "and doesn't think it's held back by the processor");
+}
+console.log("held back by the processor (slow frames while the graphics chip is nearly idle)");
+{
+	const ladder = LADDERS.high;
+	// The processor takes 30 ms at the best step; glow saves it 3, shadows 6. The chip never takes more than 6 ms.
+	const cpu = [30, 30, 27, 27, 21, 21, 21], gpu = [6, 5.5, 5, 4.5, 4, 3.5, 3];
+	const r = simulate({ costs: cpu, gpuCosts: gpu, steps: ladder, seconds: 90 });
+	ok(r.step >= 2 && r.step <= 4, "it turns off the glow and shadows (which save the processor work), not just the sharpness: step " + r.step);
+	ok(ladder[r.step].scale >= 0.75, "and leaves the picture sharp (sharpness " + Math.round(ladder[r.step].scale * 100) + "%), which wouldn't have helped");
+	ok(r.a.cpuBound, "it knows the processor is the limit");
 }
 console.log("a computer that crawls (every frame over 250 ms, like a few frames a second)");
 {

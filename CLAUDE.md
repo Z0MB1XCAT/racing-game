@@ -65,6 +65,7 @@ on purpose; `npm run setup` recreates them. If the server is already running, do
 | `place-plot.mjs <venue> [m] [frac]` | a map of a venue's surroundings as the game has them, with the circuit |
 | `adaptive-test.mjs` | the 60 fps controller (`js/adaptive.js`) against simulated computers, no browser |
 | `gfx-test.mjs` | FPS counter, adaptive sharpness on a software-drawn (slow) browser, Hold 60 fps off, saved step, Fast |
+| `vendor-post.mjs` | rebuilds `vendor/three-r128/postprocessing.js` (bloom and pass chaining from three r128's examples) |
 | `check-assets.mjs` | `assets/manifest.json` vs the files: they exist, plain glTF, within their triangle/size budgets |
 | `asset-test.mjs` | the game with assets loading, missing, broken, replaced and on Low: it must cope with each |
 | `build-models.mjs` | builds the simple models in `assets/models/` from code (replace any with a better one of the same name) |

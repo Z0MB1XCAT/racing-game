@@ -231,13 +231,25 @@ original did).
     on at night, windows light up after dark, and on **Low** graphics the smallest far-off buildings are
     left out.
 - **Holds 60 fps by itself** (Settings > Hold 60 fps, on by default): the game watches how long each frame
-  takes and, if a computer can't keep up, makes the picture a little less sharp (never the driving), then
-  turns the shadows off and, only if it really has to, sharpens less still. When there's room again it tries
-  the step back up. Where a computer settled is remembered for next time, a machine that can't hold a steady
-  rate even at the cheapest step is put on Fast from then on (in Auto), and a stall (switching tabs, a track
-  being built) is never mistaken for a slow computer. **Settings > FPS counter** shows the frame rate, how
-  long frames take, the current sharpness, shadows, the triangles and draw calls in the scene, and which
-  graphics card the browser found (useful for telling me what a PC has).
+  takes and, if a computer can't keep up, steps down a ladder (`js/ladders.js`): a little less sharpness (never
+  the driving), the glow off, the rear-view mirror redrawn every 2nd, 3rd, then 6th frame (it's a whole second
+  drawing of the scene: nearly half of what's drawn on Monaco), shadows off, the forests thinned to 85%, 70%,
+  55%, 40% (trees are most of what's drawn on Spa, Monza and Suzuka), and more sharpness last. When there's
+  room again it climbs back. Where the browser can time the graphics chip, it's used: a chip with room goes
+  straight back up (worked out from its sharpness, no blind tries), and a processor that's the limit isn't
+  "fixed" by blurring the picture. Where a computer settled is remembered for next time, a machine that can't
+  hold a steady rate even at the cheapest step is put on Fast from then on (in Auto), and a stall (switching
+  tabs, a track being built) is never mistaken for a slow computer. **Settings > FPS counter** shows the frame
+  rate, frame time, the current step, the graphics chip's time against the game's own code, triangles, draw
+  calls and which graphics card the browser found (useful for telling me what a PC has).
+- **Lighting** (Pretty, and the first steps of the ladder): a **glow** round bright lights (night windows,
+  floodlights, headlights, neon, the sun), drawn only at dusk and night and at a quarter of the resolution; a
+  finishing pass with FXAA edge smoothing, a gentle colour grade (a touch more contrast and colour, golden
+  highlights when the sun is low, cooler shadows, darker corners) and dithering so skies don't band; a new
+  **sky** (a sun or moon disc with a glow, soft clouds that thicken with the weather, dithered); **steady
+  shadows** (the shadow map follows the car in whole texels, so edges don't crawl); building walls a little
+  darker at the foot (baked in, free to draw); and white road lines dimmed at night (unlit lines would glow like
+  neon). The cars are drawn exactly as before; only the bright glow reaches them.
 - **Sponsors**: the boards round every track carry made-up sponsors that sound like the real ones
   (ROLAX, PIRATELLI, DXL, PETRAMCO, ZWS, CRYPTIC.COM, SAILFORCE, LEMONOVO, QATAIR, MCS CRUISES, TAG HOUR,
   DUNLOOP, HONDO...), each in its own colours, with the local ones at each track (TAG HOUR and RICHARD
@@ -461,7 +473,8 @@ Once it's on, open **Track editor** from the menu.
 | `js/world.js`, `js/scenery.js` | Sky, road and themes for each track; pits, grandstands, fans, billboards, buildings and trees |
 | `js/landscape.js`, `js/placegeo.js`, `js/places/` | The real surroundings of the F1 tracks (OpenStreetMap, real terrain), placed round the game's road |
 | `js/sponsors.js` | The made-up trackside sponsors and their boards |
-| `js/gfx.js`, `js/adaptive.js` | The renderer's dials (sharpness, shadows), the controller that turns them to hold 60 fps, and the FPS counter |
+| `js/gfx.js`, `js/adaptive.js`, `js/ladders.js` | The renderer's dials, the controller that turns them to hold 60 fps, the ladder of steps, the GPU timer and the FPS counter |
+| `js/post.js` | The glow and finishing pass (bloom, FXAA, colour grade, vignette, dither) |
 | `js/assets.js`, `js/materials.js`, `assets/`, `vendor/` | Models and textures loaded from `assets/manifest.json` (glTF via the vendored r128 loader), placed as instances; the road and ground textures, drawn in code unless a file replaces them |
 | `js/remnants.js` | The rest of a venue's circuit (its other layouts' roads), closed off |
 | `js/race.js` | Race rules: laps, finishing, elimination, ghosts, syncing cars |
@@ -486,6 +499,7 @@ The last two also need puppeteer installed.
 - `node tools/draft-test.mjs daytona` compares slipstream on and off (lap times, gaps, lead changes).
 - `node tools/fetch-osm.mjs [venue ...]` downloads the real surroundings of Monaco, Spa, Monza and Suzuka from OpenStreetMap into `data/osm/`, and `node tools/fetch-dem.mjs [venue ...]` the lie of the land round them into `data/dem/`.
 - `node tools/build-places.mjs` rebuilds `js/places/<venue>.js` (real surroundings, loaded by the game when it needs them) from `data/osm/` and `data/dem/`.
+- `node tools/vendor-post.mjs` rebuilds `vendor/three-r128/postprocessing.js` (the glow parts of three.js r128's examples, in one file).
 - `node tools/adaptive-test.mjs` plays the 60 fps controller against simulated computers (strong, weak, crawling, a faster screen, stalls).
 - `node tools/gfx-test.mjs` checks the FPS counter, the game turning itself down on a computer drawing in software, "Hold 60 fps" off, the saved step and Fast, in the real game.
 - `node tools/build-models.mjs` builds the game's own simple models (street lamp, floodlight) into `assets/models/*.glb`.

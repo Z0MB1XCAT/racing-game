@@ -69,7 +69,7 @@ function quality(){
 // ---------- Renderer ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
 // Sharpness, shadows and the FPS counter, and holding 60 fps by turning them down when a computer can't keep up (gfx.js).
-const gfx = new Gfx(renderer, { onChange: step => { if(S.world && S.world.setShadows) S.world.setShadows(step.shadows); } });
+const gfx = new Gfx(renderer, { onChange: step => { if(S.world && S.world.setShadows){ S.world.setShadows(step.shadows); S.world.setDensity(step.density); } } });
 function configureGfx(){ gfx.configure({ quality: quality(), adaptive: S.settings.adaptive !== false, counter: !!S.settings.fps }); }
 configureGfx();
 renderer.setSize(innerWidth, innerHeight);
@@ -79,10 +79,13 @@ $("stage").appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(90, innerWidth / innerHeight, 0.3, 1000);
 scene.add(camera);
+gfx.attach(scene, camera);
 let fx = new Effects(scene, quality());
 const hud = new Hud();
 addEventListener("resize", () => {
 	renderer.setSize(innerWidth, innerHeight);
+	gfx.resize();
+	gfx.stall(1500);
 	camera.aspect = innerWidth / innerHeight;
 	camera.updateProjectionMatrix();
 });
@@ -126,8 +129,8 @@ function showTrack(def, reverse){
 	S.trackKey = entry.key; S.track = entry.track; S.tracker = entry.tracker;
 	S.world = buildWorld(entry.track, { quality: quality() });
 	S.worldStamp = worldStamp(entry.def);
-	gfx.scene();                                                  // (a new track: start measuring afresh)
-	if(S.world.setShadows) S.world.setShadows(gfx.current.shadows);
+	gfx.newTrack();                                               // (a new track: start measuring afresh)
+	if(S.world.setShadows){ S.world.setShadows(gfx.current.shadows); S.world.setDensity(gfx.current.density); }
 	scene.add(S.world.group);
 	scene.fog = S.world.fog;
 	scene.background = S.world.skyColor;
@@ -1310,8 +1313,8 @@ function renderMirror(){
 		mirror.quad.material.map = mirror.rt.texture;
 		mirror.quad.material.needsUpdate = true;
 	}
-	// Slower machines refresh the mirror every other frame.
-	if(quality() === "high" || (mirror.tick++ & 1) === 0){
+	// Slower machines refresh the mirror less often (the quality ladder in js/ladders.js says how often).
+	if((mirror.tick++ % (gfx.current.mirror || 1)) === 0){
 		const car = S.race.me, p = car.model.position, dir = car.model.rotation.y;
 		const fx_ = Math.sin(dir), fz = Math.cos(dir);
 		mirror.cam.aspect = glass.width / glass.height;
@@ -1321,11 +1324,15 @@ function renderMirror(){
 		mirror.cam.position.set(p.x - fx_ * 0.4, 1.7 + p.y, p.z - fz * 0.4);
 		mirror.cam.lookAt(p.x - fx_ * 30, 0.7 + behind, p.z - fz * 30);
 		car.model.visible = false;
+		// (Things too small or too far to matter in a small rear-view glass aren't drawn in it: the crowd, the far trees and hills.)
+		const skip = S.world ? S.world.noMirror : [];
+		for(const o of skip) o.visible = false;
 		renderer.shadowMap.autoUpdate = false;
 		renderer.setRenderTarget(mirror.rt);
 		renderer.render(scene, mirror.cam);
 		renderer.setRenderTarget(null);
 		renderer.shadowMap.autoUpdate = true;
+		for(const o of skip) o.visible = true;
 		car.model.visible = true;
 	}
 	const bottom = innerHeight - glass.bottom;
@@ -1540,7 +1547,8 @@ function frame(now){
 		fx.update(dt);
 		updateSky(r, rp_t(), dt);
 		if(S.world) S.world.update(dt, camera.position);
-		renderer.render(scene, camera);
+		gfx.render(S.world && S.world.look);
+		gfx.endFrame();
 		document.body.classList.remove("mirror-on");
 		return;
 	}
@@ -1608,8 +1616,9 @@ function frame(now){
 	if(r) updateSky(r, r.raceTime, dt);
 	if(S.world) S.world.setRoute(focus && focus.ci !== undefined ? focus.ci : -1);
 	if(S.world) S.world.update(dt, focus ? focus.model.position : (S.showcase && camMode === "showcase" ? S.showcase.position : null), r ? camera.position : null);
-	renderer.render(scene, camera);
+	gfx.render(S.world && S.world.look);
 	renderMirror();
+	gfx.endFrame();
 }
 
 // ---------- Online ----------

@@ -23,9 +23,14 @@ export function canvasTexture(w, h, draw){
 // Material slots: 0 walls with windows, 1 plain colour, 2 billboards.
 const WIN = 0, PLAIN = 1, ADS = 2;
 class Builder {
-	constructor(){ this.pos = []; this.nor = []; this.col = []; this.uv = []; this.idx = [[], [], []]; this.c = new THREE.Color(); }
-	// One flat polygon (3 or 4 points, counter-clockwise seen from the front).
-	poly(pts, color, slot = PLAIN, uvs){
+	constructor(){
+		this.pos = []; this.nor = []; this.col = []; this.uv = []; this.idx = [[], [], []]; this.c = new THREE.Color();
+		// Walls with windows are a little darker at the foot and lighter towards the top, as if the ground and the
+		// street shaded them (baked into the vertex colours: free when drawing). 1 = none; box({ ao }) sets one wall.
+		this.aoWalls = 0.76;
+	}
+	// One flat polygon (3 or 4 points, counter-clockwise seen from the front). shade: a brightness (0..1) for each point.
+	poly(pts, color, slot = PLAIN, uvs, shade){
 		const base = this.pos.length / 3;
 		const [a, b, c] = pts;
 		const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
@@ -33,7 +38,8 @@ class Builder {
 		const l = Math.hypot(nx, ny, nz) || 1; nx /= l; ny /= l; nz /= l;
 		this.c.set(color);
 		pts.forEach((p, k) => {
-			this.pos.push(p[0], p[1], p[2]); this.nor.push(nx, ny, nz); this.col.push(this.c.r, this.c.g, this.c.b);
+			const sh = shade ? shade[k] : 1;
+			this.pos.push(p[0], p[1], p[2]); this.nor.push(nx, ny, nz); this.col.push(this.c.r * sh, this.c.g * sh, this.c.b * sh);
 			this.uv.push(uvs ? uvs[k * 2] : 0, uvs ? uvs[k * 2 + 1] : 0);
 		});
 		this.idx[slot].push(base, base + 1, base + 2);
@@ -53,8 +59,8 @@ class Builder {
 			if(o.skip && o.skip.includes(name)) return;
 			const pts = [P(ax, y0, az), P(bx, y0, bz), P(bx, y1, bz), P(ax, y1, az)];
 			if(o.win){
-				const [cw, ch] = o.win, u = len / cw;
-				this.poly(pts, color, WIN, [0, y0 / ch, u, y0 / ch, u, y1 / ch, 0, y1 / ch]);
+				const [cw, ch] = o.win, u = len / cw, k = o.ao ?? this.aoWalls;
+				this.poly(pts, color, WIN, [0, y0 / ch, u, y0 / ch, u, y1 / ch, 0, y1 / ch], [k, k, 1, 1]);
 			}else this.poly(pts, color);
 		};
 		side(-hw, hd, hw, hd, w, "front");     // +z
@@ -91,7 +97,7 @@ class Builder {
 		for(let i = 0; i < p.length; i++){
 			const a = p[i], b = p[(i + 1) % p.length], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
 			const q = [[a[0], y0, a[1]], [b[0], y0, b[1]], [b[0], y1, b[1]], [a[0], y1, a[1]]];
-			if(win){ const [cw, ch] = win; this.poly(q, color, WIN, [u / cw, 0, (u + len) / cw, 0, (u + len) / cw, h / ch, u / cw, h / ch]); }
+			if(win){ const [cw, ch] = win, k = this.aoWalls; this.poly(q, color, WIN, [u / cw, 0, (u + len) / cw, 0, (u + len) / cw, h / ch, u / cw, h / ch], [k, k, 1, 1]); }
 			else this.poly(q, color);
 			u += len;
 		}
@@ -727,7 +733,9 @@ export function buildScenery(track, theme, ctx){
 			mesh.frustumCulled = false;
 			return mesh;
 		};
-		group.add(mk(body, SHIRTS), mk(head, SKIN));
+		const crowd = [mk(body, SHIRTS), mk(head, SKIN)];
+		for(const m of crowd) m.userData.noMirror = true;      // (too small to matter in the rear-view mirror)
+		group.add(...crowd);
 	}
 
 	// --- Trees, only where their branches stay well clear of the road and of everything else.
@@ -962,8 +970,17 @@ function buildRealCity(geo, { track, theme, B, G, sp, place, c, hw, n, rand, gro
 	}
 }
 
+// A list in a random order (the same every time: rand is seeded), so any first part of it is an even spread.
+export function shuffled(list, rand){
+	const a = list.slice();
+	for(let i = a.length - 1; i > 0; i--){ const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+	return a;
+}
 function buildTrees(kind, list, theme, { group, keep, shadows, rand, occ }){
 	if(!list.length) return;
+	// In a random order, so that drawing only the first part of a forest (world.setDensity, when a computer
+	// can't keep up) thins it evenly. Every part of a tree (trunk, crown) uses the same order.
+	list = shuffled(list, rand);
 	const trunkMat = keep(new THREE.MeshLambertMaterial({ color: 0x6b4a2f }));
 	const crownMat = keep(new THREE.MeshLambertMaterial({ color: 0xffffff }));
 	const vary = (hex, amt) => { const col = new THREE.Color(hex); const hsl = {}; col.getHSL(hsl); col.setHSL(hsl.h + (rand() - 0.5) * 0.04, hsl.s, Math.max(0, Math.min(1, hsl.l + (rand() - 0.5) * amt))); return col.getHex(); };
@@ -977,6 +994,7 @@ function buildTrees(kind, list, theme, { group, keep, shadows, rand, occ }){
 		});
 		mesh.castShadow = mesh.receiveShadow = shadows;
 		mesh.frustumCulled = false;   // r128 culls instances by the first one's bounds
+		mesh.userData.lod = items.length;      // (how many there are: world.setDensity draws a share of them)
 		group.add(mesh);
 	};
 	let trunkH;

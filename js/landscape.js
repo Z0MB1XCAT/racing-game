@@ -7,6 +7,7 @@
 import { inPoly } from "./placegeo.js";
 import { roadField } from "./roadfield.js";
 import { instantiate } from "./assets.js";
+import { shuffled } from "./scenery.js";
 const THREE = globalThis.THREE;
 
 // Colours by the kind of place (P.town).
@@ -408,8 +409,9 @@ export function buildLandscape(geo, ctx){
 	};
 	const clumpMat = keep(new THREE.MeshLambertMaterial({ color: 0xffffff }));
 	const green = { pine: 0x24532e, round: 0x3d7f2c, palm: 0x2f7d3a };
-	for(const [k, list] of Object.entries(farList)){
-		if(!list.length) continue;
+	for(const [k, list0] of Object.entries(farList)){
+		if(!list0.length) continue;
+		const list = shuffled(list0, rand);      // (random order: thinning by drawing only the first part is even)
 		const mesh = new THREE.InstancedMesh(clumpGeo[k], clumpMat, list.length);
 		const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), sc = new THREE.Vector3(), col = new THREE.Color(), hsl = {};
 		list.forEach((t, i) => {
@@ -420,6 +422,8 @@ export function buildLandscape(geo, ctx){
 		});
 		mesh.frustumCulled = false;
 		mesh.receiveShadow = shadows;
+		mesh.userData.noMirror = true;            // (far forest: not needed in the rear-view mirror)
+		mesh.userData.lod = list.length;
 		group.add(mesh);
 		out.clumps += list.length;
 	}

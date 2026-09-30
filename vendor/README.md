@@ -13,4 +13,11 @@ The glTF / GLB model loader that goes with three.js **r128**, the version the ga
 - Not included on purpose: the Draco and KTX2 decoders. Models and textures must be plain
   (uncompressed) glTF/GLB with PNG/JPEG/WebP textures (see `assets/README.md`).
 
-If the game ever moves to another three.js version, replace this file with the matching one.
+## three-r128/postprocessing.js
+
+The glow (bloom) and pass-chaining parts of three.js r128's examples (EffectComposer, RenderPass, ShaderPass,
+MaskPass, UnrealBloomPass, CopyShader, LuminosityHighPassShader), joined in one file by
+`node tools/vendor-post.mjs` from the npm `three@0.128.0` package. MIT, Â© three.js authors. Loaded after
+`three.min.js`; used by `js/post.js`.
+
+If the game ever moves to another three.js version, replace these files with the matching ones.

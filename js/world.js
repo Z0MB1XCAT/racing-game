@@ -185,21 +185,54 @@ function blockRibbon(center, from, to, y, keepFn, colorFn){
 	return g;
 }
 
+// The sky dome: a gradient from the horizon colour up to the zenith colour, with the sun (or the moon at
+// night) as a disc with a glow round it, and soft clouds that come and go with the weather. paintSky gives
+// it the colours; world.js's apply() gives it the sun, the night and the cloud cover.
+// (Drawn last, at the far plane: then the graphics chip only shades the sky you can see, not all of it
+// under the ground and the buildings.)
+const SKY_VERT = `varying vec3 vDir; void main(){ vDir = position; vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }`;
+const SKY_FRAG = `
+	uniform vec3 uTop, uBottom, uSunDir, uSunColor;
+	uniform float uSun, uNight, uCloud, uTime;
+	varying vec3 vDir;
+	float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+	float noise(vec2 p){
+		vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+		return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+	}
+	float fbm(vec2 p){ float a = 0.5, s = 0.0; for(int i = 0; i < 3; i++){ s += a * noise(p); p *= 2.03; a *= 0.5; } return s; }
+	void main(){
+		vec3 d = normalize(vDir);
+		float h = clamp(d.y * 1.6 + 0.05, 0.0, 1.0);
+		vec3 col = mix(uBottom, uTop, pow(h, 0.8));
+		// The sun, or the moon: a small bright disc and a wide glow.
+		float s = max(dot(d, normalize(uSunDir)), 0.0);
+		col += uSunColor * (smoothstep(0.9991, 0.9996, s) * 1.6 + pow(s, 72.0) * 0.5 + pow(s, 7.0) * 0.13) * uSun;
+		// Clouds: noise on a flat layer overhead, thinning out towards the horizon.
+		vec2 uv = d.xz / max(d.y + 0.14, 0.06) * 0.5 + uTime * vec2(0.0045, 0.0018);
+		float c = fbm(uv * 1.7);
+		float edge = 1.0 - clamp(uCloud, 0.0, 1.0) * 0.72;
+		float cl = smoothstep(edge - 0.1, edge + 0.2, c) * smoothstep(0.0, 0.2, d.y);
+		vec3 cloudCol = mix(vec3(1.0), uBottom * 1.15 + 0.08, 0.3) * mix(1.0, 0.42, uNight);
+		cloudCol *= 1.0 - 0.3 * smoothstep(0.55, 0.95, c);                   // darker where they're thick
+		col = mix(col, cloudCol, cl * (0.86 - 0.3 * uNight));
+		col += uSunColor * pow(s, 9.0) * cl * 0.22 * uSun;                   // a bright edge near the sun
+		col += (hash(gl_FragCoord.xy) - 0.5) / 255.0;                         // (dither: no bands in the gradient)
+		gl_FragColor = vec4(col, 1.0);
+	}`;
 function sky(top, bottom, radius){
-	const g = new THREE.SphereBufferGeometry(radius, 24, 12);
-	g.setAttribute("color", new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 3), 3));
-	const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false }));
-	paintSky(mesh, new THREE.Color(top), new THREE.Color(bottom), radius);
+	const g = new THREE.SphereBufferGeometry(radius, 32, 16);
+	const mesh = new THREE.Mesh(g, new THREE.ShaderMaterial({
+		uniforms: { uTop: { value: new THREE.Color(top) }, uBottom: { value: new THREE.Color(bottom) }, uSunDir: { value: new THREE.Vector3(0.4, 0.8, -0.3).normalize() },
+			uSunColor: { value: new THREE.Color(0xffffff) }, uSun: { value: 0.8 }, uNight: { value: 0 }, uCloud: { value: 0.2 }, uTime: { value: 0 } },
+		vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, side: THREE.BackSide, fog: false, depthWrite: false
+	}));
+	mesh.renderOrder = 10;
 	return mesh;
 }
-function paintSky(mesh, a, b, radius){
-	const p = mesh.geometry.attributes.position, col = mesh.geometry.attributes.color, c = new THREE.Color();
-	for(let i = 0; i < p.count; i++){
-		const t = Math.max(0, Math.min(1, p.getY(i) / radius * 1.6 + 0.05));
-		c.copy(b).lerp(a, Math.pow(t, 0.8));
-		col.setXYZ(i, c.r, c.g, c.b);
-	}
-	col.needsUpdate = true;
+function paintSky(mesh, a, b){
+	const u = mesh.material.uniforms;
+	u.uTop.value.copy(a); u.uBottom.value.copy(b);
 }
 
 // ---------- Time of day ----------
@@ -286,6 +319,20 @@ export function buildWorld(track, opts = {}){
 		sun.shadow.bias = -0.0005;
 	}
 	const sunOffset = new THREE.Vector3(180, 320, -120);
+	// Steady shadows: the shadow map follows the car, and if it moved a fraction of a texel at a time the
+	// shadow edges would crawl. So the light's view is kept on whole texels: (x, y, z) is moved along the
+	// light's own right and up directions to the nearest texel.
+	const lRight = new THREE.Vector3(), lUp = new THREE.Vector3(), lFwd = new THREE.Vector3(), Y_UP = new THREE.Vector3(0, 1, 0);
+	function snapToTexels(x, y, z, out){
+		lFwd.copy(sunOffset).normalize().negate();
+		lRight.crossVectors(lFwd, Y_UP).normalize();
+		lUp.crossVectors(lRight, lFwd);
+		const c = sun.shadow.camera, texel = (c.right - c.left) / sun.shadow.mapSize.x;
+		const px = x * lRight.x + y * lRight.y + z * lRight.z, py = x * lUp.x + y * lUp.y + z * lUp.z;
+		const dx = Math.round(px / texel) * texel - px, dy = Math.round(py / texel) * texel - py;
+		return out.set(x + lRight.x * dx + lUp.x * dy, y + lRight.y * dx + lUp.y * dy, z + lRight.z * dx + lUp.z * dy);
+	}
+	const snapped = new THREE.Vector3();
 
 	// Ground.
 	const groundSize = (mDist + 800) * 2;
@@ -401,7 +448,7 @@ export function buildWorld(track, opts = {}){
 	ground.receiveShadow = shadows;
 	group.add(ground);
 
-	let roadMat = null, remnantSides = [];
+	let roadMat = null, roadLines = null, remnantSides = [];
 	// Road, edge lines, kerbs, start line, grid boxes (circuits only; the Classic look has none).
 	if(track.center && theme.road !== undefined){
 		const c = track.center, hw = c.hw;
@@ -414,6 +461,7 @@ export function buildWorld(track, opts = {}){
 		road.receiveShadow = shadows;
 		group.add(road);
 		const lineMat = keep(new THREE.MeshBasicMaterial({ color: 0xe9edf2, side: THREE.DoubleSide, fog: true }));
+		roadLines = lineMat;       // (dimmed after dark: unlit white lines would glow like neon)
 		const keepL = k => track.keep[0][k], keepR = k => track.keep[1][k];
 		group.add(new THREE.Mesh(keep(ribbon(c, hw - 0.5, hw - 0.8, 0.035, keepL)), lineMat));
 		group.add(new THREE.Mesh(keep(ribbon(c, -hw + 0.8, -hw + 0.5, 0.035, keepR)), lineMat));
@@ -875,7 +923,9 @@ export function buildWorld(track, opts = {}){
 			if(theme.mountains === "peaks") caps.push({ x: cx + d * Math.sin(a), y: h * 0.62, z: cz + d * Math.cos(a), sx: r * 0.38, sy: h * 0.38, sz: r * 0.38, ry: rand() * 6 });
 		}
 		const cone = keep(new THREE.ConeBufferGeometry(1, 1, 7)); cone.translate(0, 0.5, 0);
-		group.add(instanced(cone, keep(new THREE.MeshLambertMaterial({ color: theme.mountainColor })), list));
+		const hills = instanced(cone, keep(new THREE.MeshLambertMaterial({ color: theme.mountainColor })), list);
+		hills.userData.noMirror = true;           // (too far to show in the rear-view mirror)
+		group.add(hills);
 		if(caps.length) group.add(instanced(cone, keep(new THREE.MeshLambertMaterial({ color: 0xf5f8fb })), caps));
 	}
 
@@ -948,7 +998,8 @@ export function buildWorld(track, opts = {}){
 	const GREY_TOP = new THREE.Color(0x6c7682), GREY_BOTTOM = new THREE.Color(0xa3acb5), GREY_FOG = new THREE.Color(0x9aa3ad);
 	const skyColor = new THREE.Color(skyBottom);
 	const now = { hour: naturalHour(theme), cloud: 0.08, rain: 0 };
-	const look = { night: palettes[theme.night ? "night" : "day"].night, dim: 0, rain: 0, wet: 0, lights: 0 };
+	const look = { night: palettes[theme.night ? "night" : "day"].night, dim: 0, rain: 0, wet: 0, lights: 0, warm: 0 };
+	const sunTint = new THREE.Color();
 	let wet = 0, flash = 0, flashTimer = 3, applyTimer = 0, lastKey = "";
 	let onThunder = null;
 	const tA = new THREE.Color(), tB = new THREE.Color(), tF = new THREE.Color();
@@ -978,10 +1029,20 @@ export function buildWorld(track, opts = {}){
 		const arc = day ? (now.hour - 6) / 12 * Math.PI : 1.1;
 		const up = Math.max(0.16, Math.sin(Math.max(0.2, Math.min(Math.PI - 0.2, arc))));
 		sunOffset.set(Math.cos(arc) * 300, 70 + up * 330, -120);
+		// The sky shows the sun (or moon) where the light comes from; the grade warms up when the light is golden.
+		sunTint.set(p.sunColor);
+		look.warm = Math.max(0, Math.min(1, (sunTint.r - sunTint.b) * 1.8)) * (1 - 0.6 * now.cloud);
+		if(skyMesh){
+			const u = skyMesh.material.uniforms;
+			u.uSunDir.value.copy(sunOffset).normalize(); u.uSunColor.value.copy(sunTint);
+			u.uSun.value = Math.min(1.2, sun.intensity / 0.7) * (1 - 0.75 * now.cloud);
+			u.uNight.value = p.night; u.uCloud.value = 0.15 + 0.85 * now.cloud;
+		}
 		if(!shadows){ sun.position.copy(sunOffset); sun.target.position.set(0, 0, 0); }
 		// Lights: floodlights and headlights come on as it gets dark, or in heavy weather.
 		const dim = Math.max(p.night, now.cloud * 0.35 + now.rain * 0.3);
 		look.night = p.night; look.dim = dim; look.rain = now.rain;
+		if(roadLines) roadLines.color.setHex(0xe9edf2).multiplyScalar(1 - 0.34 * p.night);
 		look.lights = Math.max(theme.lights ? Math.max(p.night, 0.35) : 0, Math.min(1, (dim - 0.25) / 0.5));
 		if(poolMat) poolMat.opacity = 0.3 * look.lights;
 		if(headMat) headMat.color.set(mixHex(0x8d939e, 0xfff1c9, Math.min(1, look.lights * 1.5)));
@@ -1050,10 +1111,16 @@ export function buildWorld(track, opts = {}){
 		forks.setRoute = ci => { for(const f of forks){ f.onB.visible = ci >= 0 && near(ci, f.a, f.D); f.onA.visible = ci >= 0 && near(ci, f.b, f.D); } };
 	}
 
+	// What the rear-view mirror doesn't draw (see renderMirror in main.js), and the forests that can be thinned.
+	const noMirror = [], lod = [];
+	group.traverse(o => { if(o.userData && o.userData.noMirror) noMirror.push(o); if(o.userData && o.userData.lod) lod.push(o); });
+
 	return {
-		group, theme, sun, fog, farPlane, occluders, info: extras.info, boards: extras.boards,
+		group, theme, sun, fog, farPlane, occluders, info: extras.info, boards: extras.boards, noMirror,
 		// The sun's shadows on or off while it's running (the adaptive quality in gfx.js). Only where the world was built with them.
 		setShadows(on){ if(shadows) sun.castShadow = !!on; },
+		// Draw only this share (0..1) of the trees (they were built in a random order, so it thins evenly).
+		setDensity(d){ for(const m of lod) m.count = Math.max(1, Math.round(m.userData.lod * d)); },
 		// Arrow boards at a fork in a lap that uses the same road twice: ci, the followed car's sample.
 		setRoute(ci){ if(forks.setRoute) forks.setRoute(ci); },
 		forks,
@@ -1113,10 +1180,11 @@ export function buildWorld(track, opts = {}){
 				p.needsUpdate = true;
 				rainLines.position.set(ox, oy, oz);
 			}
-			if(skyMesh && focus) skyMesh.position.set(focus.x, 0, focus.z);
+			if(skyMesh){ skyMesh.material.uniforms.uTime.value += dt; if(focus) skyMesh.position.set(focus.x, 0, focus.z); }
 			if(shadows && focus){
-				sun.target.position.set(focus.x, focus.y || 0, focus.z);
-				sun.position.set(focus.x + sunOffset.x, sunOffset.y + (focus.y || 0), focus.z + sunOffset.z);
+				snapToTexels(focus.x, focus.y || 0, focus.z, snapped);
+				sun.target.position.copy(snapped);
+				sun.position.set(snapped.x + sunOffset.x, snapped.y + sunOffset.y, snapped.z + sunOffset.z);
 			}
 			if(snow && focus){
 				const p = snow.geometry.attributes.position;
