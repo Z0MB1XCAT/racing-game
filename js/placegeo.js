@@ -117,11 +117,21 @@ function makeWarp(track, S){
 	};
 }
 
-// null if this track has no real surroundings (or they haven't loaded yet).
+// null if this track has no real surroundings (or they haven't loaded yet). Built once per track (the warp
+// grid and the ground raster are the slow parts, and showing a track again shouldn't pay for them again).
+const made = new WeakMap();
 export function placeGeo(track){
 	const def = track.def;
 	const P = def && def.pts && track.mapScale && PLACES[def.layoutOf || def.id];   // (a venue's other layouts share its surroundings)
 	if(!P) return null;
+	const old = made.get(track);
+	if(old && old.P === P) return old;
+	const geo = makePlaceGeo(track, P);
+	if(geo) made.set(track, geo);
+	return geo;
+}
+function makePlaceGeo(track, P){
+	const def = track.def;
 	const S = track.mapScale;
 	// The old venues (Jeddah, Daytona) keep their surroundings exactly where the map has them.
 	const warp = P.land ? makeWarp(track, S) : null;
@@ -173,7 +183,19 @@ export function placeGeo(track){
 	// Lagoons and basins (outer ring, then holes).
 	// (Where the map has the whole landscape, lakes and ponds are drawn at their own level, not sea level:
 	// only the sea counts here.)
-	const waterAtMetres = (e, n) => !P.land && P.water.some(([outer, ...holes]) => inPoly(outer, e, n) && !holes.some(h => inPoly(h, e, n)));
+	// (Each basin's box first: a point outside it can't be in it, and most points are.)
+	const basins = P.land ? [] : P.water.map(([outer, ...holes]) => {
+		let e0 = Infinity, e1 = -Infinity, n0 = Infinity, n1 = -Infinity;
+		for(const [e, n] of outer){ e0 = Math.min(e0, e); e1 = Math.max(e1, e); n0 = Math.min(n0, n); n1 = Math.max(n1, n); }
+		return { outer, holes, e0, e1, n0, n1 };
+	});
+	const waterAtMetres = (e, n) => {
+		for(const b of basins){
+			if(e < b.e0 || e > b.e1 || n < b.n0 || n > b.n1) continue;
+			if(inPoly(b.outer, e, n) && !b.holes.some(h => inPoly(h, e, n))) return true;
+		}
+		return false;
+	};
 	const isWater = (x, z) => { const [e, n] = toMetres(x, z); return waterAtMetres(e, n) || seaAtMetres(e, n); };
 	const ring = r => r.map(([e, n]) => toWorld(e, n));
 	// Ground cover (P.land: forest, fields, car parks...) in world units, looked up by a grid of

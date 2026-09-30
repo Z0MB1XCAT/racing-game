@@ -384,7 +384,7 @@ export function buildWorld(track, opts = {}){
 	let harbour = null;
 	if(track.def && track.def.harbour && track.center && track.center.h){
 		const c = track.center, n = c.n, [f0, f1] = track.def.harbour, rev = !!track.reverse;
-		const nearRemnant = (x, z, r) => { let hit = false; if(rem.space) rem.space.near(x, z, r, p => { if(!hit && Math.hypot(p.x - x, p.z - z) < r) hit = true; }); return hit; };
+		const nearRemnant = (x, z, r) => !!(rem.space && rem.space.within(x, z, r));
 		const a = Math.floor((rev ? 1 - f1 : f0) * n), b = Math.floor((rev ? 1 - f0 : f1) * n), side = rev ? -1 : 1, off = c.hw + 9;
 		const quay = [];
 		for(let i = a; i <= b; i += 2){
@@ -423,12 +423,7 @@ export function buildWorld(track, opts = {}){
 	// line up to the metre).
 	if(geo){
 		const c = track.center, clear = c.hw + 10;
-		const byRoad = (x, z) => {
-			let near = false;
-			c.hash.near(x, z, clear, j => { if(!near && Math.hypot(c.x[j] - x, c.z[j] - z) < clear) near = true; });
-			if(!near && rem.space) rem.space.near(x, z, clear, p => { if(!near && Math.hypot(p.x - x, p.z - z) < clear) near = true; });
-			return near;
-		};
+		const byRoad = (x, z) => c.hash.within(x, z, clear) || !!(rem.space && rem.space.within(x, z, clear));
 		// (Monaco's harbour beside the track stays water too.)
 		isWater = (x, z) => !byRoad(x, z) && (geo.isWater(x, z) || !!(harbour && harbour.inside(x, z)));
 	}

@@ -101,10 +101,12 @@ function simplify(pts, tol){
 }
 
 // Grid lookup of centreline samples by position.
+// (Cells are keyed by a number, not a string: this is asked millions of times when a world is built.)
+const cellKey = (cx, cz) => (cx + 32768) * 65536 + (cz + 32768);
 function makeHash(xs, zs, cell){
 	const map = new Map();
 	for(let i = 0; i < xs.length; i++){
-		const k = Math.floor(xs[i] / cell) + "," + Math.floor(zs[i] / cell);
+		const k = cellKey(Math.floor(xs[i] / cell), Math.floor(zs[i] / cell));
 		if(!map.has(k)) map.set(k, []);
 		map.get(k).push(i);
 	}
@@ -115,9 +117,21 @@ function makeHash(xs, zs, cell){
 			const d0 = Math.floor((z - r) / cell), d1 = Math.floor((z + r) / cell);
 			for(let cx = c0; cx <= c1; cx++)
 				for(let cz = d0; cz <= d1; cz++){
-					const list = map.get(cx + "," + cz);
+					const list = map.get(cellKey(cx, cz));
 					if(list) for(const i of list) fn(i);
 				}
+		},
+		// Is any sample closer than r to (x, z)? The same as asking near() and measuring, without the callbacks.
+		within(x, z, r){
+			const r2 = r * r;
+			const c0 = Math.floor((x - r) / cell), c1 = Math.floor((x + r) / cell);
+			const d0 = Math.floor((z - r) / cell), d1 = Math.floor((z + r) / cell);
+			for(let cx = c0; cx <= c1; cx++)
+				for(let cz = d0; cz <= d1; cz++){
+					const list = map.get(cellKey(cx, cz));
+					if(list) for(let q = 0; q < list.length; q++){ const i = list[q], dx = xs[i] - x, dz = zs[i] - z; if(dx * dx + dz * dz < r2) return true; }
+				}
+			return false;
 		}
 	};
 }

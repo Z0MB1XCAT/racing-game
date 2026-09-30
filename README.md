@@ -510,6 +510,7 @@ The last two also need puppeteer installed.
 - `node tools/build-models.mjs` builds the game's own simple models (street lamp, floodlight) into `assets/models/*.glb`.
 - `node tools/check-assets.mjs` checks `assets/manifest.json` against the files (they exist, plain glTF, within their triangle and size budgets).
 - `node tools/asset-test.mjs` plays the game with assets loading, missing, broken and replaced, and checks it copes with each.
+- `node tools/preview-test.mjs` checks what picking a track in a menu does: the click returns at once with a "Loading ..." chip, a quick run of picks builds only the last, and a race started straight after a pick isn't rebuilt under.
 - `node tools/place-plot.mjs <venue> [metres across] [lap fraction]` draws a map of a venue's surroundings as the game has them, with the circuit.
 - `node tools/route-layouts.mjs [layout ...]` traces the other layouts (Monaco Formula E, Monza Oval, Suzuka East...) through the OpenStreetMap roads in `data/osm/*-roads.json` into `data/circuits/<layout>.geojson`.
 - `node tools/build-circuits.mjs` rebuilds `js/circuits.js` from `data/circuits/` (real layouts and elevation).

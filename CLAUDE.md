@@ -68,6 +68,7 @@ on purpose; `npm run setup` recreates them. If the server is already running, do
 | `vendor-post.mjs` | rebuilds `vendor/three-r128/postprocessing.js` (bloom and pass chaining from three r128's examples) |
 | `check-assets.mjs` | `assets/manifest.json` vs the files: they exist, plain glTF, within their triangle/size budgets |
 | `asset-test.mjs` | the game with assets loading, missing, broken, replaced and on Low: it must cope with each |
+| `preview-test.mjs` | picking a track in a menu: click returns at once with a loading chip, quick picks build only the last, no rebuild under a race |
 | `build-models.mjs` | builds the simple models in `assets/models/` from code (replace any with a better one of the same name) |
 | `screenshot.mjs <url> [label]` (repo root) | one screenshot into `temporary screenshots/` |
 

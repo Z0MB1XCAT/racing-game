@@ -123,6 +123,7 @@ function getTrack(def, reverse){
 const worldStamp = def => (def && placesLoaded(venueOf(def.id)) ? 1 : 0) + "/" + assetsStamp();
 
 function showTrack(def, reverse){
+	cancelPreview();
 	const entry = getTrack(def, reverse);
 	if(S.trackKey === entry.key && S.world && S.worldStamp === worldStamp(entry.def)) return entry;
 	if(S.world){ scene.remove(S.world.group); S.world.dispose(); }
@@ -142,11 +143,25 @@ function showTrack(def, reverse){
 	return entry;
 }
 
+// Picking a track in a menu: the card and the labels change at once and a chip says what's loading, then the
+// preview is built a moment later. (Building a circuit's world takes a fraction of a second to a second or more, and
+// the page can't do anything else while it runs.) A quick run of picks builds only the last one, and anything that
+// shows a track straight away (starting a race, going back) cancels the wait.
+let previewTimer = 0;
+function cancelPreview(){ clearTimeout(previewTimer); previewTimer = 0; $("trackLoading").hidden = true; }
+function previewTrack(def, reverse){
+	cancelPreview();
+	if(S.world && S.trackKey === trackKey(def, reverse) && S.worldStamp === worldStamp(def)) return;     // (already on show)
+	$("trackLoadingText").textContent = "Loading " + def.name;
+	$("trackLoading").hidden = false;
+	previewTimer = setTimeout(() => showTrack(def, reverse), 120);
+}
+
 // The real surroundings of the circuits (js/places/) and the models and textures (assets/) load in the
 // background. When they arrive while a track is on show in the menus, it's built again with them (never
 // mid-race).
 function refreshWorld(){
-	if(!S.track || !S.world || S.race || !S.track.def || S.worldStamp === worldStamp(S.track.def)) return;
+	if(previewTimer || !S.track || !S.world || S.race || !S.track.def || S.worldStamp === worldStamp(S.track.def)) return;
 	S.trackKey = null;
 	showTrack(S.track.def, S.track.reverse);
 }
@@ -434,7 +449,7 @@ function refreshSetup(){
 		$("setupGo").firstElementChild.textContent = "Start championship";
 		botStep.render();
 		renderLayoutSeg($("setupLayout"), S.setup.trackId, pickSetupLayout);
-		if(r[0]) showTrack(r[0], S.setup.reverse && !r[0].code);
+		if(r[0]) previewTrack(r[0], S.setup.reverse && !r[0].code);
 		return;
 	}
 	$("setupGo").disabled = false;
@@ -451,7 +466,7 @@ function refreshSetup(){
 	document.querySelector('[data-for="bots laps"]').hidden = S.setup.mode === "trial" || S.setup.gameMode === "elim";
 	if(S.setup.gameMode === "elim" && S.setup.bots < 1) S.setup.bots = 1;
 	botStep.render();
-	showTrack(def, S.setup.reverse);
+	previewTrack(def, S.setup.reverse);
 	if(S.setup.mode === "trial") loadBoard(def);
 }
 async function loadBoard(def){
@@ -1889,7 +1904,7 @@ function renderLobby(room){
 		go.disabled = false;
 		$("lobbyStatus").textContent = room.phase === "race" ? "A race is on. You'll join the next one." : "Waiting for the host to start";
 	}
-	if(isChamp && rounds[0]) showTrack(trackById(rounds[0]), st.reverse); else showTrack(def, st.reverse);
+	if(isChamp && rounds[0]) previewTrack(trackById(rounds[0]), st.reverse); else previewTrack(def, st.reverse);
 }
 $("addBot").addEventListener("click", () => {
 	const room = S.room;
@@ -2074,7 +2089,7 @@ async function loadLaps(){
 	const key = trackKey(def, boards.reverse);
 	$("boardTrackName").textContent = def.name + (boards.reverse ? " reversed" : "");
 	$("boardTrackPlace").textContent = [def.place, def.realLength].filter(Boolean).join(" · ") || "Lap record";
-	showTrack(def, boards.reverse);
+	previewTrack(def, boards.reverse);
 	const body = $("lapBody");
 	const mine = store.getBest(key);
 	let rows = [];
@@ -2136,7 +2151,7 @@ async function loadWeeklyBoard(){
 	$("wkPlace").textContent = "This week · " + wk.id;
 	$("wkEnds").textContent = "New track in " + timeLeft(wk.end - Date.now());
 	$("wkLastName").textContent = prev.def.name + (prev.reverse ? " reversed" : "");
-	showTrack(wk.def, wk.reverse);
+	previewTrack(wk.def, wk.reverse);
 	const body = $("wkBody");
 	const mine = store.getBest("weekly:" + wk.id);
 	if(!onlineAvailable()){

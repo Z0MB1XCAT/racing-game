@@ -10,12 +10,13 @@ const built = new Map();
 const other = def => { if(!built.has(def.id)) built.set(def.id, buildTrack(def, false)); return built.get(def.id); };
 
 // A grid of points for "anything within r of (x, z)?".
+const cellKey = (cx, cz) => (cx + 32768) * 65536 + (cz + 32768);     // (a number, not a string: it's asked millions of times)
 function pointGrid(cell){
 	const map = new Map(), pts = [];
 	return {
 		pts,
 		add(x, z, y, tx, tz, tag){
-			const k = Math.floor(x / cell) + "," + Math.floor(z / cell);
+			const k = cellKey(Math.floor(x / cell), Math.floor(z / cell));
 			if(!map.has(k)) map.set(k, []);
 			const p = { x, z, y, tx, tz, tag };
 			map.get(k).push(p); pts.push(p);
@@ -23,7 +24,17 @@ function pointGrid(cell){
 		near(x, z, r, fn){
 			for(let cx = Math.floor((x - r) / cell); cx <= Math.floor((x + r) / cell); cx++)
 				for(let cz = Math.floor((z - r) / cell); cz <= Math.floor((z + r) / cell); cz++)
-					for(const p of map.get(cx + "," + cz) || []) fn(p);
+					for(const p of map.get(cellKey(cx, cz)) || []) fn(p);
+		},
+		// Is any point closer than r to (x, z)?
+		within(x, z, r){
+			const r2 = r * r;
+			for(let cx = Math.floor((x - r) / cell); cx <= Math.floor((x + r) / cell); cx++)
+				for(let cz = Math.floor((z - r) / cell); cz <= Math.floor((z + r) / cell); cz++){
+					const list = map.get(cellKey(cx, cz));
+					if(list) for(let q = 0; q < list.length; q++){ const p = list[q], dx = p.x - x, dz = p.z - z; if(dx * dx + dz * dz < r2) return true; }
+				}
+			return false;
 		}
 	};
 }
