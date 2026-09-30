@@ -58,7 +58,9 @@ function prepareModel(name, def, gltf){
 		meshes.push({ geometry: g, material: mats.get(o.material), matrix: o.matrixWorld.clone() });
 	});
 	if(!meshes.length) throw new Error("no meshes in " + def.file);
-	return { name, def, meshes, tris: Math.round(tris) };
+	// How big it is and where its base is, so code can fit one to a road or stand it on the ground.
+	const box = new THREE.Box3().setFromObject(root), size = box.getSize(new THREE.Vector3());
+	return { name, def, meshes, tris: Math.round(tris), size, base: box.min.y };
 }
 
 function loadModel(name, def){
@@ -77,6 +79,7 @@ function loadTexture(name, def){
 			t.encoding = THREE.LinearEncoding;
 			t.wrapS = t.wrapT = THREE.RepeatWrapping;
 			t.anisotropy = 8;
+			if(def.repeat) t.repeat.set(def.repeat[0], def.repeat[1] ?? def.repeat[0]);      // (how many times it tiles across a surface: see assets/README.md)
 			resolve(t);
 		}, undefined, e => { warn(name, e); resolve(null); });
 	});
@@ -114,6 +117,8 @@ export const assetsStamp = () => (state.ready ? 1 : 0) + ":" + state.loaded;
 const usable = (m, quality) => !!m && !(m.def.min === "high" && quality === "low");
 export const hasModel = (name, quality = "high") => usable(state.models.get(name), quality);
 export const texture = name => state.textures.get(name) || null;
+// A loaded model's size as { x, y, z } in its own units (null if it isn't loaded), for fitting it to something.
+export const modelSize = name => { const m = state.models.get(name); return m ? m.size : null; };
 export const textureDef = name => state.defs.textures[name] || null;
 // What's loaded, for the tests: { models: { name: triangles }, textures: [names] }.
 export function assetInfo(){
@@ -139,8 +144,9 @@ export function instantiate(name, list, { S = 1, materials = {}, shadows = false
 		const mesh = new THREE.InstancedMesh(part.geometry, materials[part.material.name] || part.material, list.length);
 		list.forEach((it, i) => {
 			e.set(0, it.ry || 0, 0); q.setFromEuler(e);
-			p.set(it.x, it.y || 0, it.z);
 			const s = (it.s ?? 1) * k;
+			// (Stood on the ground by its own base, unless the manifest says "ground": false.)
+			p.set(it.x, (it.y || 0) - (m.def.ground === false ? 0 : m.base * s * (it.sy ?? 1)), it.z);
 			sc.set((it.sx ?? 1) * s, (it.sy ?? 1) * s, (it.sz ?? 1) * s);
 			place.compose(p, q, sc);
 			full.multiplyMatrices(place, part.matrix);

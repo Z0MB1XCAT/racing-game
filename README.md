@@ -261,7 +261,11 @@ original did).
   wait for High quality; a missing or broken file just means the game draws its own version, so an asset
   can never break a race. Today: fine tarmac grain and rubbered racing lines on every road, a grass texture
   on the F1 tracks' ground, and models for the floodlights (all tracks) and the street lamps (Monaco and
-  Monza, High quality). Swap in better ones of the same name to upgrade them. `assets/README.md` says how.
+  Monza, High quality). On High quality the start gantry is a model too, and each circuit gets
+  life along it: marshal posts with flags and cones at the outside of the tight corners, flags along the pit
+  roof and paddock tents behind the garages (from the free Kenney Racing Kit, CC0). The ground isn't one flat
+  colour any more: meadows, forest floor and farmland go lighter, darker and drier in broad patches. The cars
+  are untouched. Swap in better models of the same name to upgrade them. `assets/README.md` says how.
 - Skid marks, sparks, tyre smoke, three cameras and four car bodies (looks only).
 - **R** puts your car back on the track if you get stuck. If a crash knocks you outside
   the walls, it happens automatically.
@@ -471,6 +475,7 @@ Once it's on, open **Track editor** from the menu.
 | `js/trackgen.js` | Turns a circuit into walls, kerbs, checkpoints and a racing line |
 | `js/circuits.js`, `js/terrain.js` | Real F1 circuit data (generated); hills, the Monaco tunnel and the Suzuka bridge |
 | `js/world.js`, `js/scenery.js` | Sky, road and themes for each track; pits, grandstands, fans, billboards, buildings and trees |
+| `js/trackside.js` | Marshal posts, flags, cones and paddock tents from the models in `assets/` (skipped if they aren't loaded) |
 | `js/landscape.js`, `js/placegeo.js`, `js/places/` | The real surroundings of the F1 tracks (OpenStreetMap, real terrain), placed round the game's road |
 | `js/sponsors.js` | The made-up trackside sponsors and their boards |
 | `js/gfx.js`, `js/adaptive.js`, `js/ladders.js` | The renderer's dials, the controller that turns them to hold 60 fps, the ladder of steps, the GPU timer and the FPS counter |
@@ -538,6 +543,9 @@ The last two also need puppeteer installed.
   (see `data/osm/` and `data/circuits/`).
   A few towers OpenStreetMap doesn't have were placed from satellite imagery, with heights
   estimated from their shadows.
-- `vendor/three-r128/GLTFLoader.js`: the glTF loader from three.js r128 (MIT, © three.js authors).
+- `assets/models/kenney/`: models from the [Racing Kit](https://www.kenney.nl/assets/racing-kit) by Kenney
+  (CC0; licence note in the folder). Only some are used so far (the start gantry, marshal posts, cones,
+  flags and tents); the rest of the kit sits there ready for grandstands and pit buildings.
+- `vendor/three-r128/GLTFLoader.js` (and the post-processing scripts beside it): from three.js r128 (MIT, © three.js authors).
 - Licensed under **GPL-3.0**, the same as the original (see [LICENSE](LICENSE)). If you share
   your version, keep it open source and keep this credit.

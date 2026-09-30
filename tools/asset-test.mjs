@@ -11,6 +11,10 @@
 //   low       : a "min": "high" model isn't fetched on Low quality
 import puppeteer from "puppeteer";
 import { deflateSync } from "node:zlib";
+import { readFileSync } from "node:fs";
+
+// Every model the real manifest lists (so adding one doesn't break the counts below).
+const MODELS = Object.keys(JSON.parse(readFileSync(new URL("../assets/manifest.json", import.meta.url), "utf8")).models);
 
 // A tiny solid-colour PNG (2 x 2), made here so the test needs no image file.
 function png(r, g, b){
@@ -51,7 +55,8 @@ async function run(name, { intercept, quality, track = "spa" }){
 		});
 		// (A model that's loaded but marked "min": "high" isn't handed out for a Low world.)
 		const lampLow = a.instantiate("lamp-post", [{ x: 0, z: 0 }], { quality: "low" }), lampHigh = a.instantiate("lamp-post", [{ x: 0, z: 0 }], { quality: "high" });
-		return { info: a.assetInfo(), glowParts, boxLights, roadMap, roadColor, terrainMap, lampLow: !!lampLow, lampHigh: !!lampHigh };
+		const ts = g.world.info && g.world.info.trackside;
+		return { info: a.assetInfo(), trackside: ts ? { posts: ts.posts, flags: ts.flags, tents: ts.tents, cones: ts.cones } : null, glowParts, boxLights, roadMap, roadColor, terrainMap, lampLow: !!lampLow, lampHigh: !!lampHigh };
 	});
 	await p.close();
 	return { ...res, errors, warns };
@@ -60,7 +65,8 @@ async function run(name, { intercept, quality, track = "spa" }){
 // ---- normal
 {
 	const r = await run("normal", { quality: "high" });
-	ok(Object.keys(r.info.models).length === 3, "all three models loaded: " + JSON.stringify(r.info.models));
+	ok(MODELS.every(m => m in r.info.models), "every model in the manifest loaded (" + MODELS.length + "): " + Object.keys(r.info.models).length);
+	ok("gantry" in r.info.models && r.trackside && r.trackside.posts > 0 && r.trackside.flags > 0, "the start gantry and the trackside props are there: " + JSON.stringify(r.trackside));
 	ok(r.glowParts > 0, "the floodlights are the model (" + r.glowParts + " glowing lamp parts)");
 	ok(r.roadMap > 0, "the road has a tarmac texture (" + r.roadMap + " px)");
 	ok(r.terrainMap, "the ground has a grass texture");
@@ -72,14 +78,22 @@ async function run(name, { intercept, quality, track = "spa" }){
 	const r = await run("no-manifest", { intercept: u => /assets\/manifest\.json/.test(u) ? { status: 404, body: "" } : null });
 	ok(Object.keys(r.info.models).length === 0 && r.info.ready, "nothing loaded, and the game knows it's done");
 	ok(r.glowParts === 0 && r.boxLights > 0, "the floodlights are the game's own boxes (" + r.boxLights + ")");
+	ok(r.trackside && r.trackside.posts + r.trackside.flags + r.trackside.tents + r.trackside.cones === 0, "no trackside props, and nothing breaks: " + JSON.stringify(r.trackside));
 	ok(r.roadMap > 0, "the road still has its drawn tarmac");
 	ok(r.errors.length === 0, "no page errors" + (r.errors.length ? ": " + r.errors[0] : ""));
 }
 // ---- one junk model
 {
 	const r = await run("bad-model", { quality: "high", intercept: u => /models\/lamp-post\.glb/.test(u) ? { status: 200, contentType: "model/gltf-binary", body: Buffer.from("this is not a model") } : null, track: "monza" });
-	ok(!("lamp-post" in r.info.models) && Object.keys(r.info.models).length === 2, "the junk one didn't load, the other two did: " + JSON.stringify(r.info.models));
+	ok(!("lamp-post" in r.info.models) && Object.keys(r.info.models).length === MODELS.length - 1, "the junk one didn't load, the rest did: " + Object.keys(r.info.models).length + " of " + MODELS.length);
 	ok(r.warns.some(w => /lamp-post/.test(w)), "it said so in the console once");
+	ok(r.errors.length === 0, "no page errors" + (r.errors.length ? ": " + r.errors[0] : ""));
+}
+// ---- a junk model the trackside needs: no marshal posts, but the rest of the trackside and the gantry are fine
+{
+	const r = await run("bad-post", { quality: "high", intercept: u => /models\/kenney\/bannerTowerRed\.glb/.test(u) ? { status: 200, contentType: "model/gltf-binary", body: Buffer.from("this is not a model") } : null, track: "monza" });
+	ok(r.trackside && r.trackside.posts === 0 && r.trackside.tents > 0, "no marshal posts, tents still there: " + JSON.stringify(r.trackside));
+	ok("gantry" in r.info.models && !("marshal-post-red" in r.info.models), "the gantry loaded, the junk post didn't");
 	ok(r.errors.length === 0, "no page errors" + (r.errors.length ? ": " + r.errors[0] : ""));
 }
 // ---- a texture in the manifest

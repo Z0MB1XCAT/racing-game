@@ -40,9 +40,22 @@ The models that are used today, and where:
 |---|---|
 | `lamp-post` | street lamps in Monaco and Monza (`js/landscape.js`); High quality only (Low keeps the old two-box lamp) |
 | `floodlight-pole`, `floodlight-head` | the floodlights round every circuit (`js/world.js`). The pole is one unit tall and is stretched up to the head. |
+| `gantry` | the start/finish gantry over the line (`js/world.js`): its width and height are read from the model (`modelSize`), and the banner hangs at its height |
+| `marshal-post-red`, `marshal-post-green`, `cone`, `flag-red`, `flag-green`, `flag-checkers` | marshal posts with a flag and three cones at the outside of the tight corners, and flags along the pit roof (`js/trackside.js`); High quality only |
+| `tent`, `tent-closed`, `tent-long` | paddock tents behind the pit garages (`js/trackside.js`); High quality only |
 
-`tools/build-models.mjs` builds these three from code, so there's a real file to load. Replace any of
-them with a better one of the same name and the game uses it.
+`tools/build-models.mjs` builds the lamp and floodlight models from code, so there's a real file to load.
+Replace any of them with a better one of the same name and the game uses it.
+
+The files in `models/kenney/` are from the [Kenney Racing Kit](https://www.kenney.nl/assets/racing-kit)
+(CC0, licence note in the folder). The manifest maps game names onto them (`"gantry"` is
+`kenney/overheadLights.glb`), and the ones it doesn't list yet (grandstands, pit garages, a billboard,
+rails, trees) are there to be used. The game only downloads what the manifest lists.
+
+- `ground`: models are dropped so their lowest point sits on the ground (kit models don't all start there);
+  `"ground": false` keeps the model's own origin (the floodlight head is meant to float).
+- `modelSize("name")` (in `js/assets.js`) says how big a loaded model is in game units, so a place can fit
+  itself to whatever model it gets.
 
 ## Textures (PNG / JPEG / WebP)
 
@@ -55,6 +68,11 @@ Two names are used, both for fine detail under the colours the tracks already ha
 - **`asphalt`**: the road. The image's left edge is one side of the road, its right edge the other, and it
   repeats along the road once per road width. It should tile seamlessly from top to bottom.
 - **`grass`**: the ground on the F1 tracks. It repeats every 10 game units and should tile seamlessly both ways.
+  An optional `"repeat": [x, y]` multiplies how often a texture tiles.
+
+No photo textures are used today. A photographic tarmac (ambientCG, CC0) was tried and looked flatter than the
+game's own drawn tarmac with its rubbered racing lines, so the road keeps the drawn one. Try yours in the
+game before keeping it.
 
 `tint`: `true` (default) multiplies the track's own colour by the texture, so a near-white texture just
 adds grain and patches and the track keeps the look its theme gives it; `false` shows the texture's own

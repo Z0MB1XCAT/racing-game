@@ -2,7 +2,17 @@
 	"models": {
 		"lamp-post": { "file": "models/lamp-post.glb", "scale": "world", "min": "high", "maxTris": 80, "maxKB": 20 },
 		"floodlight-pole": { "file": "models/floodlight-pole.glb", "scale": "game", "maxTris": 40, "maxKB": 10 },
-		"floodlight-head": { "file": "models/floodlight-head.glb", "scale": "game", "maxTris": 80, "maxKB": 10 }
+		"floodlight-head": { "file": "models/floodlight-head.glb", "scale": "game", "ground": false, "maxTris": 80, "maxKB": 10 },
+		"gantry": { "file": "models/kenney/overheadLights.glb", "scale": "game", "maxTris": 450, "maxKB": 30 },
+		"marshal-post-red": { "file": "models/kenney/bannerTowerRed.glb", "scale": "game", "min": "high", "maxTris": 450, "maxKB": 40 },
+		"marshal-post-green": { "file": "models/kenney/bannerTowerGreen.glb", "scale": "game", "min": "high", "maxTris": 450, "maxKB": 40 },
+		"cone": { "file": "models/kenney/pylon.glb", "scale": "game", "min": "high", "maxTris": 120, "maxKB": 10 },
+		"tent": { "file": "models/kenney/tent.glb", "scale": "game", "min": "high", "maxTris": 120, "maxKB": 12 },
+		"tent-closed": { "file": "models/kenney/tentClosed.glb", "scale": "game", "min": "high", "maxTris": 140, "maxKB": 12 },
+		"tent-long": { "file": "models/kenney/tentLong.glb", "scale": "game", "min": "high", "maxTris": 120, "maxKB": 12 },
+		"flag-red": { "file": "models/kenney/flagRed.glb", "scale": "game", "min": "high", "maxTris": 200, "maxKB": 20 },
+		"flag-green": { "file": "models/kenney/flagGreen.glb", "scale": "game", "min": "high", "maxTris": 200, "maxKB": 20 },
+		"flag-checkers": { "file": "models/kenney/flagCheckers.glb", "scale": "game", "min": "high", "maxTris": 200, "maxKB": 20 }
 	},
 	"textures": {}
 }

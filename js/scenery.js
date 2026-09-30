@@ -9,6 +9,7 @@
 import { TUNNEL_WALL } from "./terrain.js";
 import { inPoly } from "./placegeo.js";
 import { buildLandscape } from "./landscape.js";
+import { buildTrackside } from "./trackside.js";
 import { AD_COLS, AD_ROWS, AD_MONTE_CARLO, AD_MONACO_GP, drawSponsors, sponsorsFor, bridgeSponsor } from "./sponsors.js";
 const THREE = globalThis.THREE;
 
@@ -353,6 +354,7 @@ export function buildScenery(track, theme, ctx){
 	// --- Pit building: garages with team stripes, glass hospitality floor above, pit lane in front.
 	const TEAM = [0xff8000, 0xdc0000, 0x1e41ff, 0x00d2be, 0x006f62, 0x0090ff, 0x005aff, 0x6692ff, 0xb6babd, 0x52e252, 0x2a2e38];
 	let garages = 0;
+	const garageFrames = [];      // where each garage stands (for the flags and tents that go with them: trackside.js)
 	for(let i = s0 + 4; i <= s1 - 4; i += 7){
 		const f = sp.at(i, pitSide, hw + 7);
 		const [cx, cz] = f.local(0, -4.5);
@@ -374,6 +376,7 @@ export function buildScenery(track, theme, ctx){
 		place({ x: cx, z: cz, ry: f.ry, hw: 3.6, hd: 4.5, y0: 0, y1: 8.4 });
 		sp.take(cx, cz, 5.5, "pits");
 		garages++;
+		garageFrames.push(f);
 	}
 	// Race control tower at the end of the pit building.
 	if(garages > 4){
@@ -494,6 +497,9 @@ export function buildScenery(track, theme, ctx){
 			if(placed > 3) banks++;
 		}
 	}
+
+	// --- Life along the track from the models in assets/: marshal posts, flags, cones and paddock tents (none if they aren't loaded).
+	const trackside = buildTrackside({ track, sp, hw, G, group, rand, pitSide, garages: garageFrames, quality: ctx.quality, place });
 
 	// --- Billboards along the straights, just behind the barriers.
 	const ads = sponsorsFor(track.def && track.def.theme), boards = [];
@@ -757,7 +763,7 @@ export function buildScenery(track, theme, ctx){
 		buildTrees(kind, tl, theme, { group, keep, shadows, rand, occ: treeOcc });
 	}
 
-	api.info = { straight: [s0, s1], garages, mainStand, cornerStands: chosen.length, fans: people.length, bridge: !!bridge, buildings: used.size + (land ? land.buildings : 0), ...(land ? { trees: land.trees, clumps: land.clumps } : {}) };
+	api.info = { trackside, straight: [s0, s1], garages, mainStand, cornerStands: chosen.length, fans: people.length, bridge: !!bridge, buildings: used.size + (land ? land.buildings : 0), ...(land ? { trees: land.trees, clumps: land.clumps } : {}) };
 	api.wheels = land ? land.wheels : [];
 	api.boards = boards;   // (where the billboards are: for tools/spot-shots.mjs)
 	api.corners = chosen;

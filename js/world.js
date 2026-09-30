@@ -8,7 +8,7 @@ import { buildTerrain, buildTunnel, buildBridge, buildSkirts, TUNNEL_WALL } from
 import { placeGeo } from "./placegeo.js";
 import { remnants, remnantGround } from "./remnants.js";
 import { detail } from "./materials.js";
-import { instantiate, hasModel } from "./assets.js";
+import { instantiate, hasModel, modelSize } from "./assets.js";
 
 const THREE = globalThis.THREE;
 
@@ -48,6 +48,25 @@ function landColours(theme, town){
 		sand: 0xd8c79f, gravel: 0xb9b09f, dirt: 0x9c8466, water: null, pool: null
 	};
 }
+
+// Broad patches of lighter, darker and drier ground, so a meadow or a forest floor isn't one flat colour: value noise
+// at two scales (about 70 and 22 units across), 0..1.
+const hash2 = (x, z) => { const v = Math.sin(x * 127.1 + z * 311.7) * 43758.5453; return v - Math.floor(v); };
+function smoothNoise(x, z){
+	const ix = Math.floor(x), iz = Math.floor(z), fx = x - ix, fz = z - iz, u = fx * fx * (3 - 2 * fx), w = fz * fz * (3 - 2 * fz);
+	const a = hash2(ix, iz), b = hash2(ix + 1, iz), c = hash2(ix, iz + 1), d = hash2(ix + 1, iz + 1);
+	return a + (b - a) * u + (c - a) * w + (a - b - c + d) * u * w;
+}
+const patchNoise = (x, z) => smoothNoise(x / 70, z / 70) * 0.7 + smoothNoise(x / 22 + 40, z / 22 + 17) * 0.3;
+const _pc = new THREE.Color(), _hsl = {};
+// A ground colour (hex) varied by the patches at (x, z): drier and lighter where the noise is high, deeper and darker where low.
+function patched(hex, x, z, amount = 1){
+	const n = (patchNoise(x, z) - 0.5) * 2 * amount;         // about -1..1
+	_pc.setHex(hex).getHSL(_hsl);
+	_pc.setHSL(_hsl.h - n * 0.028, _hsl.s * (1 - 0.14 * Math.max(0, n)), Math.max(0, Math.min(1, _hsl.l * (1 + 0.16 * n))));
+	return _pc.getHex();
+}
+const PATCHY = { forest: 0.8, scrub: 1, grass: 1, orchard: 0.9, farm: 1.2, pitch: 0.4 };
 
 // Merge many boxes into one mesh (one draw call). Each item: {x, y, z, w, h, d, ry, color}
 function mergedBoxes(items){
@@ -419,7 +438,7 @@ export function buildWorld(track, opts = {}){
 	if(track.elevated){
 		// The real ground cover, where the venue has it (forest floor, meadows, fields, car parks...).
 		const cover = geo && geo.P.land ? landColours(theme, geo.P.town) : null;
-		const colorAt = cover ? (x, z) => { const k = geo.landAt(x, z) || (geo.fillAt && geo.fillAt(x, z)); return k ? cover[k] : null; } : null;
+		const colorAt = cover ? (x, z) => { const k = geo.landAt(x, z) || (geo.fillAt && geo.fillAt(x, z)); return k ? (PATCHY[k] ? patched(cover[k], x, z, PATCHY[k]) : cover[k]) : null; } : null;
 		terrain = buildTerrain(track, { isSea: isWater, uvOrigin: { x: cx - groundSize / 2, z: cz + groundSize / 2 }, extra: remGround.extra, bounds: b, colorAt, color: theme.ground,
 			demAt: geo && geo.demAt, margin: demMargin, low: quality === "low" });
 		keep(terrain.geometry);
@@ -499,11 +518,19 @@ export function buildWorld(track, opts = {}){
 			post(-hw - 1.6, eR),
 			{ x: 0, y: beamY, z: START_Z, w: hw * 2 + 3.7, h: 1.2, d: 0.6, color: 0x1a1d25 }
 		]);
-		const gm = new THREE.Mesh(keep(gantry), keep(new THREE.MeshLambertMaterial({ vertexColors: true })));
-		gm.position.y = h0;
-		group.add(gm);
+		// The gantry model (assets/models/kenney/overheadLights: an arch with its lights), sized to span the road, when it's
+		// loaded and the start isn't banked (its two legs stand level); otherwise the boxes above.
+		const gSize = modelSize("gantry"), gSpan = hw * 2 + 3.7;
+		const gModel = gSize && Math.abs(bank0) < 0.02 && hasModel("gantry", quality) ? instantiate("gantry", [{ x: 0, y: h0, z: START_Z, s: gSpan / gSize.x }], { quality }) : null;
+		let bannerY = beamY + h0;
+		if(gModel){ group.add(gModel); bannerY = h0 + gSize.y * (gSpan / gSize.x) * 0.72; }
+		else{
+			const gm = new THREE.Mesh(keep(gantry), keep(new THREE.MeshLambertMaterial({ vertexColors: true })));
+			gm.position.y = h0;
+			group.add(gm);
+		}
 		const banner = new THREE.Mesh(keep(new THREE.PlaneBufferGeometry(hw * 2 + 3, 1)), keep(new THREE.MeshBasicMaterial({ map: chk, side: THREE.DoubleSide })));
-		banner.position.set(0, beamY + h0, START_Z - 0.32);
+		banner.position.set(0, bannerY, START_Z - 0.32);
 		group.add(banner);
 		// Grid slots.
 		const slots = GRID.slice(0, 10).map(g => ({ x: g.x, y: 0.05 + heightAt(g.x, g.y + 1.25), z: g.y + 1.25, sx: 1.4, sy: 1, sz: 0.14, rz: tilt }));
