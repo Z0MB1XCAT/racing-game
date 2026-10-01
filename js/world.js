@@ -2,11 +2,12 @@
 // Nothing here affects driving; walls are drawn where the physics walls are.
 import { GRID } from "./physics.js";
 import { START_Z, seededRandom } from "./trackgen.js";
-import { buildScenery, canvasTexture } from "./scenery.js";
+import { buildScenerySteps, canvasTexture } from "./scenery.js";
 import { naturalHour } from "./atmosphere.js";
-import { buildTerrain, buildTunnel, buildBridge, buildSkirts, TUNNEL_WALL } from "./terrain.js";
-import { placeGeo } from "./placegeo.js";
-import { remnants, remnantGround } from "./remnants.js";
+import { buildTerrainSteps, buildTunnel, buildBridge, buildSkirts, TUNNEL_WALL } from "./terrain.js";
+import { placeGeoSteps } from "./placegeo.js";
+import { slice, drain } from "./steps.js";
+import { remnantsSteps, remnantGround } from "./remnants.js";
 import { detail } from "./materials.js";
 import { instantiate, hasModel, modelSize } from "./assets.js";
 
@@ -284,7 +285,10 @@ function paletteAt(p, hour){
 	return out;
 }
 
-export function buildWorld(track, opts = {}){
+export function buildWorld(track, opts = {}){ return drain(buildWorldSteps(track, opts)); }
+// The same, in slices (steps.js): `yield` wherever a pause is safe, when the time slice is up. opts.sink, if given, is
+// handed the list of what was built (sink.disposables) so a build that's given up halfway can be cleared away.
+export function* buildWorldSteps(track, opts = {}){
 	const theme = THEMES[(track.def && track.def.theme) || "classic"] || THEMES.classic;
 	const quality = opts.quality || "high";
 	const shadows = quality === "high";
@@ -293,19 +297,22 @@ export function buildWorld(track, opts = {}){
 	const disposables = [];
 	const updaters = [];
 	const keep = x => (disposables.push(x), x);
+	if(opts.sink) opts.sink.disposables = disposables;
 
 	// The rest of the venue's circuit (its other layouts' roads), closed off (remnants.js). The world
 	// is made big enough for all of it.
-	const rem = remnants(track);
+	const rem = yield* remnantsSteps(track);
 	track.remnantSpace = rem.space;
 	track.remnants = rem.list;
+	if(slice.over()) yield "remnants";
 	const remGround = remnantGround(track, rem), b = remGround.bounds;
+	if(slice.over()) yield "remnant ground";
 	const cx = (b.minX + b.maxX) / 2, cz = (b.minZ + b.maxZ) / 2;
 	const radius = Math.max(b.maxX - b.minX, b.maxZ - b.minZ) / 2 + 30;
 	// Real surroundings (js/places/): the real coastline, lagoons and marina, buildings, forests, and
 	// where the venue has it, the real lie of the land, which reaches further out (so the far hills
 	// stand beyond it).
-	const geo = track.center ? placeGeo(track) : null;
+	const geo = track.center ? yield* placeGeoSteps(track) : null;
 	const demMargin = geo && geo.demAt ? 560 : 240;
 	const mDist = Math.max(track.mountainDist, radius + demMargin + (geo && geo.demAt ? 120 : -90));
 	const farPlane = Math.max(1000, mDist + 900);
@@ -352,6 +359,7 @@ export function buildWorld(track, opts = {}){
 		return out.set(x + lRight.x * dx + lUp.x * dy, y + lRight.y * dx + lUp.y * dy, z + lRight.z * dx + lUp.z * dy);
 	}
 	const snapped = new THREE.Vector3();
+	if(slice.over()) yield "sky and light";
 
 	// Ground.
 	const groundSize = (mDist + 800) * 2;
@@ -379,6 +387,7 @@ export function buildWorld(track, opts = {}){
 		seaEdge = { ux, uy, edge: edge + 25 };
 	}
 	const isSea = seaEdge ? (x, z) => { const [mx, my] = track.toMap(x, z); return mx * seaEdge.ux + my * seaEdge.uy > seaEdge.edge; } : null;
+	if(slice.over()) yield "sea";
 	// A harbour beside part of the lap (Monaco's Port Hercule, from the tunnel exit round Tabac and
 	// the Swimming Pool): water from a quay beside the road out to the open sea.
 	let harbour = null;
@@ -413,8 +422,11 @@ export function buildWorld(track, opts = {}){
 		};
 		// Its extent, for the water surface.
 		const bb = track.bounds, box = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
-		for(let x = bb.minX - 300; x <= bb.maxX + 300; x += 8) for(let z = bb.minZ - 300; z <= bb.maxZ + 300; z += 8) if(inside(x, z)){
-			box.minX = Math.min(box.minX, x); box.maxX = Math.max(box.maxX, x); box.minZ = Math.min(box.minZ, z); box.maxZ = Math.max(box.maxZ, z);
+		for(let x = bb.minX - 300; x <= bb.maxX + 300; x += 8){
+			if(slice.over()) yield "harbour";
+			for(let z = bb.minZ - 300; z <= bb.maxZ + 300; z += 8) if(inside(x, z)){
+				box.minX = Math.min(box.minX, x); box.maxX = Math.max(box.maxX, x); box.minZ = Math.min(box.minZ, z); box.maxZ = Math.max(box.maxZ, z);
+			}
 		}
 		harbour = { quay, inside, side, box };
 	}
@@ -431,10 +443,11 @@ export function buildWorld(track, opts = {}){
 	// Elevated circuits get rolling ground built from the road's own heights.
 	let terrain = null;
 	if(track.elevated){
+		if(geo && geo.P.land) yield* geo.landRasterSteps();       // (what the ground is made of, worked out ahead, in slices)
 		// The real ground cover, where the venue has it (forest floor, meadows, fields, car parks...).
 		const cover = geo && geo.P.land ? landColours(theme, geo.P.town) : null;
 		const colorAt = cover ? (x, z) => { const k = geo.landAt(x, z) || (geo.fillAt && geo.fillAt(x, z)); return k ? (PATCHY[k] ? patched(cover[k], x, z, PATCHY[k]) : cover[k]) : null; } : null;
-		terrain = buildTerrain(track, { isSea: isWater, uvOrigin: { x: cx - groundSize / 2, z: cz + groundSize / 2 }, extra: remGround.extra, bounds: b, colorAt, color: theme.ground,
+		terrain = yield* buildTerrainSteps(track, { isSea: isWater, uvOrigin: { x: cx - groundSize / 2, z: cz + groundSize / 2 }, extra: remGround.extra, bounds: b, colorAt, color: theme.ground,
 			demAt: geo && geo.demAt, margin: demMargin, low: quality === "low" });
 		keep(terrain.geometry);
 		let tmat = groundMat;
@@ -454,6 +467,7 @@ export function buildWorld(track, opts = {}){
 		tm.frustumCulled = false;
 		group.add(tm);
 	}
+	if(slice.over()) yield "ground";
 	const groundAt = terrain ? terrain.groundAt : () => 0;
 	const heightAt = track.heightAt || (() => 0);
 	const ground = new THREE.Mesh(keep(new THREE.PlaneBufferGeometry(groundSize, groundSize)), groundMat);
@@ -474,6 +488,7 @@ export function buildWorld(track, opts = {}){
 		const road = new THREE.Mesh(keep(ribbon(c, hw + 0.8, -hw - 0.8, 0.02, c.dup ? i => !c.dup[i] : null)), roadMat);   // (a road used twice is drawn once)
 		road.receiveShadow = shadows;
 		group.add(road);
+		if(slice.over()) yield "road";
 		const lineMat = keep(new THREE.MeshBasicMaterial({ color: 0xe9edf2, side: THREE.DoubleSide, fog: true }));
 		roadLines = lineMat;       // (dimmed after dark: unlit white lines would glow like neon)
 		const keepL = k => track.keep[0][k], keepR = k => track.keep[1][k];
@@ -481,7 +496,9 @@ export function buildWorld(track, opts = {}){
 		group.add(new THREE.Mesh(keep(ribbon(c, -hw + 0.8, -hw + 0.5, 0.035, keepR)), lineMat));
 
 		const kerbMat = keep(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+		if(slice.over()) yield "road lines";
 		for(const k of track.kerbs){
+			if(slice.over()) yield "kerbs";
 			if(k.end - k.start < 6) continue;
 			const inRange = i => i >= k.start - 3 && i <= k.end + 3;
 			const [ka, kb] = theme.kerb || [0xe23b3b, 0xf4f6fa];
@@ -535,6 +552,7 @@ export function buildWorld(track, opts = {}){
 		// across it wherever it joins the track.
 		const blocks = [], sides = [];
 		for(const r of rem.list){
+			if(slice.over()) yield "closed roads";
 			const rc = r.center, n = rc.n, piece = i => r.draw[i] && r.draw[(i + 1) % n];
 			group.add(new THREE.Mesh(keep(ribbon(rc, hw + 0.8, -hw - 0.8, -0.03, piece)), roadMat));
 			const open = i => r.open[i] && r.open[(i + 1) % n];
@@ -569,6 +587,7 @@ export function buildWorld(track, opts = {}){
 		});
 	}
 
+	if(slice.over()) yield "start line";
 	// Walls.
 	const wallItems = [];
 	const wallH = theme.wallH || 1.2;
@@ -592,6 +611,7 @@ export function buildWorld(track, opts = {}){
 	})();
 	let tyre = 0;
 	for(const [x1, z1, x2, z2, wside, i1, i2] of track.wallSegs){
+		if(slice.over()) yield "walls";
 		const len = Math.hypot(x2 - x1, z2 - z1);
 		// The road sample a point part way along the segment belongs to (for its height).
 		const n = track.center ? track.center.n : 1, span = i1 === undefined ? 0 : ((i2 - i1) % n + n) % n;
@@ -619,12 +639,14 @@ export function buildWorld(track, opts = {}){
 	const wallMesh = new THREE.Mesh(keep(track.elevated ? wallStrips(track, wallItems, wallH, heightAt) : mergedBoxes(wallItems)), keep(new THREE.MeshLambertMaterial({ vertexColors: true })));
 	wallMesh.castShadow = wallMesh.receiveShadow = shadows;
 	group.add(wallMesh);
+	if(slice.over()) yield "wall mesh";
 	// Painted run-off outside the slow corners (theme.runoff colours): a band beyond the barrier,
 	// left out wherever it would reach another piece of road.
 	if(theme.runoff && track.center){
 		const c = track.center, n = c.n, curv = c.curv, cols = theme.runoff;
 		let k = 0;
 		for(const kb of track.kerbs){
+			if(slice.over()) yield "run-off";
 			if(kb.end - kb.start < 6) continue;
 			let tight = 0;
 			for(let i = kb.start; i <= kb.end; i++) tight = Math.max(tight, Math.abs(curv[i % n]));
@@ -647,6 +669,7 @@ export function buildWorld(track, opts = {}){
 				keep(new THREE.MeshLambertMaterial({ vertexColors: true, emissive: theme.night ? 0x111111 : 0, side: THREE.DoubleSide }))));
 		}
 	}
+	if(slice.over()) yield "catch fence";
 	// Catch fencing on top of the barriers (Monaco): posts, two rails and see-through mesh.
 	if(theme.catchFence && track.center && track.elevated){
 		const t = track.features && track.features.tunnel, n = track.center.n;
@@ -677,6 +700,7 @@ export function buildWorld(track, opts = {}){
 		group.add(new THREE.Mesh(keep(track.elevated ? wallStrips(track, strip, 0.1, heightAt) : mergedBoxes(strip)), keep(new THREE.MeshBasicMaterial({ vertexColors: true }))));
 	}
 
+	if(slice.over()) yield "before scenery";
 	// Trees, grandstands, pits, billboards, buildings (see scenery.js).
 	const scenery = track.scenery || [];
 	// Spots for buildings and trees along the closed roads too (the same spread as the track's own).
@@ -688,7 +712,7 @@ export function buildWorld(track, opts = {}){
 			extraSpots.push({ x: rc.x[i] + rc.tz[i] * off * side, z: rc.z[i] - rc.tx[i] * off * side, off: off - rc.hw, i: -1, side, r: rr(), r2: rr(), face: Math.atan2(-rc.tz[i] * side, rc.tx[i] * side) });
 		}
 	}
-	const extras = buildScenery(track, theme, { group, keep, shadows, quality, rand, groundAt, harbour, geo, isWater, extraSpots });
+	const extras = yield* buildScenerySteps(track, theme, { group, keep, shadows, quality, rand, groundAt, harbour, geo, isWater, extraSpots });
 	const occluders = extras.occluders;
 	updaters.push(...extras.updaters);
 	if(theme.trees === "classic"){
@@ -700,12 +724,14 @@ export function buildWorld(track, opts = {}){
 		const smat = keep(new THREE.MeshLambertMaterial({ color: 0xff0000 }));
 		group.add(instanced(sign, smat, (track.signs || []).map(s => ({ x: s.x, y: s.y, z: s.z, rx: Math.PI / 2, ry: s.rot })), shadows));
 	}
+	if(slice.over()) yield "after scenery";
 	const roomFor = (x, z, m) => !extras.clearOfRoad || extras.clearOfRoad(x, z, m);
 	if(track.features && track.features.tunnel){
 		const t = buildTunnel(track, track.features.tunnel, keep);
 		for(const m of t.meshes){ m.receiveShadow = shadows; group.add(m); }
 		for(const o of t.occluders) occluders.add(o);
 	}
+	if(slice.over()) yield "tunnel done";
 	if(terrain && track.center){
 		// Retaining walls where the road stands above the ground beside it (left open under the bridge deck).
 		const br = track.features && track.features.bridge, n = track.center.n;
@@ -749,6 +775,7 @@ export function buildWorld(track, opts = {}){
 			group.add(m);
 		}
 	}
+	if(slice.over()) yield "skirts done";
 	if(track.features && track.features.bridge && terrain){
 		const br = buildBridge(track, track.features.bridge, groundAt, keep);
 		if(br.items.length){
@@ -762,6 +789,7 @@ export function buildWorld(track, opts = {}){
 		for(const o of br.occluders) occluders.add(o);
 	}
 
+	if(slice.over()) yield "bridge done";
 	// Real water (the sea, lagoons, the marina) across the whole ground patch: the ground only
 	// dips below it where the map says there's water.
 	// (Inland venues with no coast, like Spa, have none: their ponds are drawn where they are.)
@@ -773,6 +801,7 @@ export function buildWorld(track, opts = {}){
 		group.add(new THREE.Mesh(wg, keep(new THREE.MeshLambertMaterial({ color: sea.color, emissive: theme.night ? 0x061634 : 0x0a2a4a }))));
 	}
 
+	if(slice.over()) yield "water done";
 	// The harbour's water, with a stone quay wall down to it.
 	if(harbour && terrain){
 		// One flat sheet at sea level: the ground is dipped under it in the harbour and stays
@@ -798,6 +827,7 @@ export function buildWorld(track, opts = {}){
 		group.add(new THREE.Mesh(keep(qg), keep(new THREE.MeshLambertMaterial({ color: 0xbfb4a0, side: THREE.DoubleSide }))));
 	}
 
+	if(slice.over()) yield "harbour water done";
 	// Where there's a roof overhead (the tunnel, under the bridge deck), and how high: rain
 	// doesn't fall there, and it sounds like you're under cover. Cells of 2 x 2 units.
 	const roofs = new Map(), RC = 2;
@@ -822,6 +852,7 @@ export function buildWorld(track, opts = {}){
 	}
 	const roofAt = (x, z) => roofs.get(Math.floor(x / RC) + "," + Math.floor(z / RC));
 
+	if(slice.over()) yield "roofs done";
 	// Sea beyond one side of the circuit, in real compass terms.
 	if(seaEdge){
 		const { ux, uy, edge } = seaEdge, px = -uy, py = ux;
@@ -847,6 +878,7 @@ export function buildWorld(track, opts = {}){
 		group.add(lake);
 	}
 
+	if(slice.over()) yield "sea done";
 	// Floodlights along every circuit. They light up at night (and at dusk on the speedway).
 	let headMat = null, poolMat = null;
 	if(track.center){
@@ -928,6 +960,7 @@ export function buildWorld(track, opts = {}){
 		bigWheel(spot.x, spot.z, spot.face, 18);
 	}
 
+	if(slice.over()) yield "floodlights done";
 	// Mountains around the edge.
 	if(theme.mountains === "cubes"){
 		const list = [];
@@ -951,6 +984,7 @@ export function buildWorld(track, opts = {}){
 		if(caps.length) group.add(instanced(cone, keep(new THREE.MeshLambertMaterial({ color: 0xf5f8fb })), caps));
 	}
 
+	if(slice.over()) yield "mountains done";
 	// Falling snow that follows the camera.
 	let snow = null;
 	if(theme.snowfall && quality !== "low"){
@@ -979,6 +1013,7 @@ export function buildWorld(track, opts = {}){
 		rainLines.visible = false;
 		group.add(rainLines);
 	}
+	if(slice.over()) yield "weather done";
 	// Cloud cover: a soft layer high overhead.
 	const cloudTex = keep(canvasTexture(256, 256, (g, w, h) => {
 		g.fillStyle = "rgba(0,0,0,0)"; g.fillRect(0, 0, w, h);
@@ -1013,6 +1048,7 @@ export function buildWorld(track, opts = {}){
 	stars.visible = false;
 	group.add(stars);
 
+	if(slice.over()) yield "sky extras done";
 	// ----- Atmosphere: time of day and weather -----
 	const palettes = palettesFor(theme, skyTop, skyBottom);
 	const baseRoad = roadMat ? roadMat.color.clone() : null;

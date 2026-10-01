@@ -5,6 +5,7 @@
 import { layoutsOf } from "./tracks.js";
 import { buildTrack } from "./trackgen.js";
 import { CIRCUITS } from "./circuits.js";
+import { slice, drain } from "./steps.js";
 
 const built = new Map();
 const other = def => { if(!built.has(def.id)) built.set(def.id, buildTrack(def, false)); return built.get(def.id); };
@@ -42,7 +43,16 @@ function pointGrid(cell){
 // [{ center (x, z, tx, tz, h, bank, n: like a track's), draw[i] (the piece from i to i+1 is road),
 //    open[i] (not overlapping any other road: gets edge lines), ends: [{ i }] (barriers) }]
 // plus space: the drawn points, for keeping scenery off them. Empty for tracks with no other layouts.
-export function remnants(track){
+const made = new WeakMap();       // (what a track's remnants are never changes: worked out once per track)
+export function remnants(track){ return drain(remnantsSteps(track)); }
+// The same, in slices: see steps.js.
+export function* remnantsSteps(track){
+	if(made.has(track)) return made.get(track);
+	const r = yield* buildRemnants(track);
+	made.set(track, r);
+	return r;
+}
+function* buildRemnants(track){
 	const def = track.def, c = track.center;
 	const none = { list: [], space: null };
 	if(!def || !c || !c.h || !track.mapScale || !CIRCUITS[def.id]) return none;
@@ -71,6 +81,7 @@ export function remnants(track){
 	};
 	const list = [];
 	for(const d of others){
+		if(slice.over()) yield "remnants: layout";
 		const o = other(d), oc = o.center, sO = o.mapScale, baseO = CIRCUITS[d.id].base || 0, n = oc.n;
 		// Its centreline in this track's world (both are laid out from the same real-world origin).
 		const x = new Float64Array(n), z = new Float64Array(n), h = new Float32Array(n), bank = new Float32Array(n);

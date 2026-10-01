@@ -60,6 +60,49 @@ console.log("a quick run of picks");
 	ok(errors.length === 0, "no page errors" + (errors.length ? ": " + errors[0] : ""));
 	await p.close();
 }
+console.log("the page stays alive while a preview builds");
+{
+	const { p, errors } = await open();
+	// Visit two tracks first so the one-off costs (shader programs, each venue's closed roads) are paid.
+	for(const id of ["monza", "spa"]){ await pick(p, id); await wait(4500); }
+	// The longest gap between two frames while Monza is built again: a build in one piece (as it used to be) is 700 ms or more.
+	await p.evaluate(() => { window.__gap = 0; let last = performance.now(); const tick = () => { const t = performance.now(); window.__gap = Math.max(window.__gap, t - last); last = t; requestAnimationFrame(tick); }; requestAnimationFrame(tick); });
+	await pick(p, "monza"); await wait(4500);
+	const gap = await p.evaluate(() => window.__gap);
+	ok(gap < 250, "the longest gap between frames is " + Math.round(gap) + " ms");
+	ok((await state(p)).key === "monza", "and it did build Monza");
+	ok(errors.length === 0, "no page errors" + (errors.length ? ": " + errors[0] : ""));
+	await p.close();
+}
+console.log("a pick while another is being built");
+{
+	const { p, errors } = await open();
+	const before = (await state(p)).worlds;
+	await pick(p, "spa"); await wait(450);               // (the build has started: 120 ms, then slices)
+	ok(await chip(p) !== null && (await state(p)).worlds === before, "Spa is still being built, the old world is still up");
+	await pick(p, "suzuka"); await wait(5000);
+	const s = await state(p);
+	ok(s.key === "suzuka", "it ends on the last pick (" + s.key + ")");
+	ok(s.worlds === before + 1, "the half-built one was dropped, only Suzuka's was shown (" + (s.worlds - before) + " worlds)");
+	ok(await chip(p) === null, "the chip has gone");
+	ok(errors.length === 0, "no page errors" + (errors.length ? ": " + errors[0] : ""));
+	await p.close();
+}
+console.log("starting a race while a preview is being built");
+{
+	const { p, errors } = await open();
+	await pick(p, "spa"); await wait(450);
+	await p.evaluate(() => document.getElementById("setupGo").click());
+	await wait(2500);
+	const a = await state(p);
+	ok(a.screen === "race" && a.key === "spa", "the race is on Spa (" + a.screen + ", " + a.key + ")");
+	ok(await chip(p) === null, "no chip over the race");
+	await wait(3000);
+	const b = await state(p);
+	ok(b.worlds === a.worlds, "the half-built preview didn't land on the race (" + a.worlds + " -> " + b.worlds + ")");
+	ok(errors.length === 0, "no page errors" + (errors.length ? ": " + errors[0] : ""));
+	await p.close();
+}
 console.log("starting a race straight after a pick");
 {
 	const { p, errors } = await open();

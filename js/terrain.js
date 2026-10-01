@@ -1,12 +1,15 @@
 // Ground, tunnels and bridges for circuits with real elevation (the F1 tracks).
 // All looks: the handling stays flat, exactly as always.
+import { slice, drain } from "./steps.js";
 const THREE = globalThis.THREE;
 
 // A heightfield around the circuit. Under and beside the road it sits just below the
 // road surface; further out it rolls into hills made from the road's own heights, and
 // fades to the base level far away. Where two roads cross at different heights (a
 // bridge) the ground follows the lower one.
-export function buildTerrain(track, opts = {}){
+export function buildTerrain(track, opts = {}){ return drain(buildTerrainSteps(track, opts)); }
+// (The same, in slices: see steps.js.)
+export function* buildTerrainSteps(track, opts = {}){
 	const c = track.center, hw = c.hw, n = c.n;
 	// (opts.bounds: a bigger area, when there's more road than the track's own: see remnants.js.)
 	// (opts.demAt: the real lie of the land, where the venue has it: the ground reaches further out then.)
@@ -39,6 +42,7 @@ export function buildTerrain(track, opts = {}){
 	// venue's circuit): the ground is shaped round all of it.
 	const extra = opts.extra || [];
 	for(let i = 0; i < n + extra.length; i++){
+		if(slice.over()) yield "terrain: road";
 		const e = i >= n ? extra[i - n] : null;
 		const x = e ? e.x : c.x[i], z = e ? e.z : c.z[i], h = e ? e.h : c.h[i], tx = e ? e.tx : c.tx[i], tz = e ? e.tz : c.tz[i], bank = e ? e.bank : c.bank[i];
 		const r = i % 3 === 0 ? R : ROAD;
@@ -65,6 +69,7 @@ export function buildTerrain(track, opts = {}){
 	// easing into the real ground over DEM_EASE beyond the band beside the road.
 	const DEM_EASE = 45;
 	for(let k = 0; k < W * D; k++){
+		if((k & 1023) === 0 && slice.over()) yield "terrain: heights";
 		const gx = k % W, gz = Math.floor(k / W);
 		const px = x0 + gx * cell, pz = z0 + gz * cell;
 		let hill = (sumH[k] + base * W0) / (sumW[k] + W0) - 0.4;
@@ -93,6 +98,7 @@ export function buildTerrain(track, opts = {}){
 	const smooth = new Float32Array(heights);
 	for(let pass = 0; pass < 2; pass++){
 		for(let gz = 1; gz < nz; gz++) for(let gx = 1; gx < nx; gx++){
+			if(gx === 1 && slice.over()) yield "terrain: smooth";
 			const k = gz * W + gx;
 			if(near[k] < ROAD) continue;
 			smooth[k] = (heights[k] * 4 + heights[k - 1] + heights[k + 1] + heights[k - W] + heights[k + W]) / 8;
@@ -100,17 +106,21 @@ export function buildTerrain(track, opts = {}){
 		heights.set(smooth);
 	}
 	const pos = new Float32Array(W * D * 3), uv = new Float32Array(W * D * 2);
+	// Same texture mapping as the flat ground plane, so the stripes line up where they meet.
+	const o = opts.uvOrigin || { x: 0, z: 0 };
 	for(let gz = 0; gz <= nz; gz++) for(let gx = 0; gx <= nx; gx++){
+		if(gx === 0 && slice.over()) yield "terrain: positions";
 		const k = gz * W + gx, x = x0 + gx * cell, z = z0 + gz * cell;
-		pos.set([x, heights[k], z], k * 3);
-		// Same texture mapping as the flat ground plane, so the stripes line up where they meet.
-		const o = opts.uvOrigin || { x: 0, z: 0 };
-		uv.set([(x - o.x) / 10, (o.z - z) / 10], k * 2);
+		pos[k * 3] = x; pos[k * 3 + 1] = heights[k]; pos[k * 3 + 2] = z;
+		uv[k * 2] = (x - o.x) / 10; uv[k * 2 + 1] = (o.z - z) / 10;
 	}
-	const idx = [];
-	for(let gz = 0; gz < nz; gz++) for(let gx = 0; gx < nx; gx++){
-		const a = gz * W + gx, bb = a + 1, cc = a + W, d = cc + 1;
-		idx.push(a, cc, bb, bb, cc, d);
+	const idx = new (W * D > 65535 ? Uint32Array : Uint16Array)(nx * nz * 6);
+	for(let gz = 0, q = 0; gz < nz; gz++){
+		if(slice.over()) yield "terrain: triangles";
+		for(let gx = 0; gx < nx; gx++){
+			const a = gz * W + gx, bb = a + 1, cc = a + W, d = cc + 1;
+			idx[q++] = a; idx[q++] = cc; idx[q++] = bb; idx[q++] = bb; idx[q++] = cc; idx[q++] = d;
+		}
 	}
 	const geo = new THREE.BufferGeometry();
 	geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
@@ -118,16 +128,18 @@ export function buildTerrain(track, opts = {}){
 	// opts.colorAt(x, z): the ground's colour there (forest floor, fields, car parks: the real ground
 	// cover), fading to plain ground (opts.color) at the edges of the patch so it meets the ground beyond.
 	if(opts.colorAt){
-		const col = new Float32Array(W * D * 3), plain = new THREE.Color(opts.color), k2 = new THREE.Color();
+		const col = new Float32Array(W * D * 3), plain = new THREE.Color(opts.color), k2 = new THREE.Color(), kc = new THREE.Color();
 		for(let gz = 0; gz <= nz; gz++) for(let gx = 0; gx <= nx; gx++){
+			if((gx & 31) === 0 && slice.over()) yield "terrain: colours";
 			const k = gz * W + gx, got = opts.colorAt(x0 + gx * cell, z0 + gz * cell);
 			k2.copy(plain);
-			if(got !== null && got !== undefined) k2.lerp(new THREE.Color(got), Math.max(0, Math.min(1, Math.min(gx, gz, nx - gx, nz - gz) / 8 - 0.5)));
-			col.set([k2.r, k2.g, k2.b], k * 3);
+			if(got !== null && got !== undefined) k2.lerp(kc.set(got), Math.max(0, Math.min(1, Math.min(gx, gz, nx - gx, nz - gz) / 8 - 0.5)));
+			col[k * 3] = k2.r; col[k * 3 + 1] = k2.g; col[k * 3 + 2] = k2.b;
 		}
 		geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
 	}
-	geo.setIndex(idx);
+	geo.setIndex(new THREE.BufferAttribute(idx, 1));
+	if(slice.over()) yield "terrain: normals";
 	geo.computeVertexNormals();
 	// Height of the ground at (x, z).
 	function groundAt(x, z){

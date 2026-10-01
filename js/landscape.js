@@ -8,6 +8,7 @@ import { inPoly } from "./placegeo.js";
 import { roadField } from "./roadfield.js";
 import { instantiate } from "./assets.js";
 import { shuffled } from "./scenery.js";
+import { slice } from "./steps.js";
 const THREE = globalThis.THREE;
 
 // Colours by the kind of place (P.town).
@@ -52,7 +53,7 @@ function orientedBox(pts){
 }
 const hash = (x, z) => { const v = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453; return v - Math.floor(v); };
 
-export function buildLandscape(geo, ctx){
+export function* buildLandscapeSteps(geo, ctx){
 	const { track, theme, B, G, sp, place, c, n, rand, group, keep, shadows, low, buildTrees } = ctx;
 	const { P, S } = geo;
 	const town = P.town || "town";
@@ -84,6 +85,7 @@ export function buildLandscape(geo, ctx){
 	const marks = [];
 	let bi = 0;
 	for(const b of P.buildings){
+		if(slice.over()) yield "buildings";
 		let pts = geo.solid(b.p);
 		if(pts.length < 3) continue;
 		// (On low quality, the little buildings well away from the track are left out.)
@@ -148,6 +150,7 @@ export function buildLandscape(geo, ctx){
 		out.buildings++;
 	}
 
+	if(slice.over()) yield "landscape: buildings";
 	// ----- Real grandstands: stepped seating (full of fans) facing the nearest road, a back wall and a roof -----
 	function stepped(box, h){
 		const cs = Math.cos(box.ry), sn = Math.sin(box.ry), vx = sn, vz = cs;              // (local z: across the stand)
@@ -171,8 +174,10 @@ export function buildLandscape(geo, ctx){
 		B.box({ x: rx, z: rz, y: topY + 2.8, w: box.w + 0.4, d: box.d + 0.8, h: 0.35, ry: box.ry, color: 0xe9edf2, top: 0xf4f6fa, bottom: true });
 	}
 
+	if(slice.over()) yield "landscape: stands";
 	// ----- Landmarks (Monaco) -----
 	for(const { b, pts, cx, cz, top, y0, box } of marks){
+		if(slice.over()) yield "landmarks";
 		if(b.m === "casino"){
 			// Belle Époque: cream stone, a green copper roof, twin towers on the side facing the sea.
 			B.prism(pts, y0, top - y0, 0xefe3c4, [winCell[0] * 1.4, winCell[1] * 1.3], 0x6fa596);
@@ -225,6 +230,7 @@ export function buildLandscape(geo, ctx){
 		}
 	}
 
+	if(slice.over()) yield "landscape: landmarks";
 	// ----- Water (ponds, lakes, fountains): flat, where the ground there is flat enough -----
 	for(const a of P.land || []){
 		if(a.k !== "water" && a.k !== "pool") continue;
@@ -236,11 +242,13 @@ export function buildLandscape(geo, ctx){
 		B.flat(pts, g1 + 0.06, a.k === "pool" ? 0x3aa7d8 : 0x3f7fa6);
 	}
 
+	if(slice.over()) yield "landscape: water";
 	// ----- Streets: asphalt following the ground, lamp posts in the towns -----
 	const lamps = [];
 	const lampGap = town === "city" ? 16 : town === "town" ? 22 : 0;
 	const street = 0x4a4d53;
 	for(const r of P.roads){
+		if(slice.over()) yield "streets";
 		const pts = geo.ring(r.p), wv = Math.max(1.4, r.w * S);
 		for(let i = 0; i < pts.length - 1; i++){
 			const [ax, az] = pts[i], [bx, bz] = pts[i + 1], len = Math.hypot(bx - ax, bz - az);
@@ -263,6 +271,7 @@ export function buildLandscape(geo, ctx){
 		}
 	}
 	for(const r of P.rails || []){
+		if(slice.over()) yield "rails";
 		const pts = geo.ring(r), wv = Math.max(1, 4.5 * S);
 		for(let i = 0; i < pts.length - 1; i++){
 			const [ax, az] = pts[i], [bx, bz] = pts[i + 1], len = Math.hypot(bx - ax, bz - az);
@@ -301,6 +310,7 @@ export function buildLandscape(geo, ctx){
 		out.setNight = v => glowMat.color.setHex(v > 0.3 ? 0xffc46b : 0x9aa0a8);
 	}
 
+	if(slice.over()) yield "landscape: streets";
 	// ----- Piers into the harbour, with yachts moored alongside -----
 	const seaY = G(1e7, 1e7) + 0.02, yachts = [];
 	for(const pr of P.piers){
@@ -327,12 +337,14 @@ export function buildLandscape(geo, ctx){
 		B.box({ x: y.x, z: y.z, y: seaY - G(y.x, y.z) + 0.65, w: w * 0.7, d: y.L * 0.45, h: 0.6, ry: y.ry, color: 0xe3e8ee, top: 0x2c3440 });
 	}
 
+	if(slice.over()) yield "landscape: piers";
 	// ----- Big wheels (Suzuka's amusement park) -----
 	for(const w of P.wheels || []){
 		const [x, z] = geo.toWorld(...w.at);
 		out.wheels.push({ x, z, r: w.d * S / 2 });
 	}
 
+	if(slice.over()) yield "landscape: wheels";
 	// ----- Trees -----
 	// Forests: close to the track, proper trees (trunks and all) a few metres apart; further off,
 	// bigger clumps of canopy, which is all you see of a forest from a distance.
@@ -348,8 +360,10 @@ export function buildLandscape(geo, ctx){
 	// (geo.fillAt: Suzuka's wooded hills), forest.
 	const woodAt = (x, z) => { const k = geo.landAt(x, z); if(k) return DENSE[k] ? k : null; return geo.fillAt && geo.fillAt(x, z) === "forest" ? "forest" : null; };
 	const bb = track.bounds, pad = 700, X0 = bb.minX - pad, X1 = bb.maxX + pad, Z0 = bb.minZ - pad, Z1 = bb.maxZ + pad;
-	const plantPass = (gap, wantNear) => {
-		for(let x = X0 + gap / 2; x < X1; x += gap) for(let z = Z0 + gap / 2; z < Z1; z += gap){
+	const plantPass = function*(gap, wantNear){
+		for(let x = X0 + gap / 2; x < X1; x += gap){
+			if(slice.over()) yield "trees: pass";
+			for(let z = Z0 + gap / 2; z < Z1; z += gap){
 			if(wantNear ? nNear >= maxNear : nFar >= maxFar) return;
 			const px = x + (hash(x, z) - 0.5) * gap * 0.8, pz = z + (hash(z, x) - 0.5) * gap * 0.8;
 			const dist = field.dist(px, pz);
@@ -366,9 +380,10 @@ export function buildLandscape(geo, ctx){
 			sp.take(px, pz, r * 0.5, "trees");
 			const t = { x: px, y: G(px, pz), z: pz, s, ry: hash(px, pz * 5) * 6, r, k: hash(px * 7, pz) };
 			if(wantNear){ nearList[k].push(t); nNear++; } else { farList[k].push(t); nFar++; }
+			}
 		}
 	};
-	plantPass(nearGap, true);
+	yield* plantPass(nearGap, true);
 	// The map's own trees: single trees in parks and streets, and rows of trees.
 	const single = (x, z, s) => {
 		if(field.dist(x, z) - c.hw < 3.4 * s + 7 && sp.edge(x, z, 6) < 3.4 * s + 0.8) return;
@@ -390,16 +405,22 @@ export function buildLandscape(geo, ctx){
 	// Far off, the clumps are spread over all the woods there are, however much: further apart (and
 	// bigger, so the canopy stays closed) where there's a lot (the area sampled every 12 units).
 	let woodArea = 0;
-	for(let x = X0; x < X1; x += 12) for(let z = Z0; z < Z1; z += 12){
-		if(field.dist(x, z) < NEAR) continue;
-		const w = woodAt(x, z);
-		if(w) woodArea += 144 * (w === "forest" ? 1 : 0.4);
+	for(let x = X0; x < X1; x += 12){
+		if(slice.over()) yield "trees: woods";
+		for(let z = Z0; z < Z1; z += 12){
+			if(field.dist(x, z) < NEAR) continue;
+			const w = woodAt(x, z);
+			if(w) woodArea += 144 * (w === "forest" ? 1 : 0.4);
+		}
 	}
 	const gapFar = Math.max(farGap, Math.sqrt(woodArea / maxFar) * 1.05);
 	farScale = gapFar / farGap;
-	plantPass(gapFar, false);
+	yield* plantPass(gapFar, false);
 	const occ = ctx.treeOccluders;
-	for(const [k, list] of Object.entries(nearList)) if(list.length) buildTrees(k, list, theme, { group, keep, shadows, rand, occ });
+	for(const [k, list] of Object.entries(nearList)) if(list.length){
+		if(slice.over()) yield "trees: build";
+		buildTrees(k, list, theme, { group, keep, shadows, rand, occ });
+	}
 	out.trees = nNear;
 	// Clumps: canopy only, no trunks, no shadows (they're far off).
 	const clumpGeo = {
@@ -410,6 +431,7 @@ export function buildLandscape(geo, ctx){
 	const clumpMat = keep(new THREE.MeshLambertMaterial({ color: 0xffffff }));
 	const green = { pine: 0x24532e, round: 0x3d7f2c, palm: 0x2f7d3a };
 	for(const [k, list0] of Object.entries(farList)){
+		if(slice.over()) yield "trees: clumps";
 		if(!list0.length) continue;
 		const list = shuffled(list0, rand);      // (random order: thinning by drawing only the first part is even)
 		const mesh = new THREE.InstancedMesh(clumpGeo[k], clumpMat, list.length);

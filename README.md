@@ -476,6 +476,7 @@ Once it's on, open **Track editor** from the menu.
 | `js/circuits.js`, `js/terrain.js` | Real F1 circuit data (generated); hills, the Monaco tunnel and the Suzuka bridge |
 | `js/world.js`, `js/scenery.js` | Sky, road and themes for each track; pits, grandstands, fans, billboards, buildings and trees |
 | `js/trackside.js` | Marshal posts, flags, cones and paddock tents from the models in `assets/` (skipped if they aren't loaded) |
+| `js/steps.js` | Time slicing for the world builders: they are generators that pause every few milliseconds, so picking a track in a menu builds its preview between frames instead of freezing the page |
 | `js/landscape.js`, `js/placegeo.js`, `js/places/` | The real surroundings of the F1 tracks (OpenStreetMap, real terrain), placed round the game's road |
 | `js/sponsors.js` | The made-up trackside sponsors and their boards |
 | `js/gfx.js`, `js/adaptive.js`, `js/ladders.js` | The renderer's dials, the controller that turns them to hold 60 fps, the ladder of steps, the GPU timer and the FPS counter |
@@ -510,7 +511,7 @@ The last two also need puppeteer installed.
 - `node tools/build-models.mjs` builds the game's own simple models (street lamp, floodlight) into `assets/models/*.glb`.
 - `node tools/check-assets.mjs` checks `assets/manifest.json` against the files (they exist, plain glTF, within their triangle and size budgets).
 - `node tools/asset-test.mjs` plays the game with assets loading, missing, broken and replaced, and checks it copes with each.
-- `node tools/preview-test.mjs` checks what picking a track in a menu does: the click returns at once with a "Loading ..." chip, a quick run of picks builds only the last, and a race started straight after a pick isn't rebuilt under.
+- `node tools/preview-test.mjs` checks what picking a track in a menu does: the click returns at once with a "Loading ..." chip, the page keeps drawing frames while the preview builds, a quick run of picks (or a pick mid-build) builds only the last, and a race started after a pick isn't rebuilt under.
 - `node tools/place-plot.mjs <venue> [metres across] [lap fraction]` draws a map of a venue's surroundings as the game has them, with the circuit.
 - `node tools/route-layouts.mjs [layout ...]` traces the other layouts (Monaco Formula E, Monza Oval, Suzuka East...) through the OpenStreetMap roads in `data/osm/*-roads.json` into `data/circuits/<layout>.geojson`.
 - `node tools/build-circuits.mjs` rebuilds `js/circuits.js` from `data/circuits/` (real layouts and elevation).

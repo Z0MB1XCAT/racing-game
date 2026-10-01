@@ -10,6 +10,7 @@
 
 import { CIRCUITS } from "./circuits.js";
 import { roadField } from "./roadfield.js";
+import { slice, drain } from "./steps.js";
 
 // Venues with real surroundings. Each venue's file is loaded when it's first wanted.
 export const PLACE_VENUES = ["jeddah", "daytona", "monaco", "spa", "monza", "suzuka"];
@@ -32,7 +33,7 @@ export function inPoly(ring, x, y){
 
 // How real surroundings near the road move to fit the game's road (see the top). A grid of
 // offsets over the area round the track, looked up in between.
-function makeWarp(track, S){
+function* makeWarp(track, S){
 	const def = track.def, c = track.center, n = c.n;
 	if(!def.pts || !c) return null;
 	// The real centreline in world units, finely spaced.
@@ -97,6 +98,7 @@ function makeWarp(track, S){
 	const gx = new Float32Array(W * D), gz = new Float32Array(W * D);
 	const field = roadField(track);
 	for(let j = 0; j < D; j++) for(let i = 0; i < W; i++){
+		if(i === 0 && slice.over()) yield "warp";
 		const x = x0 + i * G, z = z0 + j * G;
 		// (Only where the road is within reach.)
 		if(field.dist(x, z) > reach + 12) continue;
@@ -120,21 +122,23 @@ function makeWarp(track, S){
 // null if this track has no real surroundings (or they haven't loaded yet). Built once per track (the warp
 // grid and the ground raster are the slow parts, and showing a track again shouldn't pay for them again).
 const made = new WeakMap();
-export function placeGeo(track){
+export function placeGeo(track){ return drain(placeGeoSteps(track)); }
+// (The same, in slices: see steps.js.)
+export function* placeGeoSteps(track){
 	const def = track.def;
 	const P = def && def.pts && track.mapScale && PLACES[def.layoutOf || def.id];   // (a venue's other layouts share its surroundings)
 	if(!P) return null;
 	const old = made.get(track);
 	if(old && old.P === P) return old;
-	const geo = makePlaceGeo(track, P);
+	const geo = yield* makePlaceGeo(track, P);
 	if(geo) made.set(track, geo);
 	return geo;
 }
-function makePlaceGeo(track, P){
+function* makePlaceGeo(track, P){
 	const def = track.def;
 	const S = track.mapScale;
 	// The old venues (Jeddah, Daytona) keep their surroundings exactly where the map has them.
-	const warp = P.land ? makeWarp(track, S) : null;
+	const warp = P.land ? yield* makeWarp(track, S) : null;
 	// Metres east/north -> world x, z (and back).
 	const toMap0 = (e, n) => track.fromMap(e * S, n * S);
 	const toWorld = warp ? (e, n) => { const [x, z] = toMap0(e, n); return warp.move(x, z); } : toMap0;
@@ -203,10 +207,12 @@ function makePlaceGeo(track, P){
 	const RANK = { water: 10, pool: 9, paved: 8, pitch: 7, sand: 6, gravel: 6, dirt: 5, forest: 4, scrub: 3, orchard: 3, farm: 2, grass: 2, ind: 1, res: 1 };
 	let areas = null;
 	const LC = 24, lgrid = new Map();
-	function landAreas(){
+	function landAreas(){ return areas || drain(landAreasSteps()); }
+	function* landAreasSteps(){
 		if(areas) return areas;
 		areas = [];
 		for(const a of P.land || []){
+			if(slice.over()) yield "land areas";
 			if(!RANK[a.k]) continue;
 			const outer = ring(a.p), holes = (a.h || []).map(ring);
 			let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
@@ -236,14 +242,16 @@ function makePlaceGeo(track, P){
 	// what the ground is at any spot there is then just a look-up.
 	const KINDS = [null, ...Object.keys(RANK)], RC = 3;
 	let raster = null;
-	function landRaster(){
+	function landRaster(){ return raster || drain(landRasterSteps()); }
+	function* landRasterSteps(){
 		if(raster) return raster;
-		landAreas();
+		yield* landAreasSteps();
 		const b = track.bounds, pad = 720, x0 = b.minX - pad, z0 = b.minZ - pad;
 		const W = Math.ceil((b.maxX - b.minX + pad * 2) / RC) + 1, D = Math.ceil((b.maxZ - b.minZ + pad * 2) / RC) + 1;
 		const g = new Uint8Array(W * D);
 		// Lowest rank first, so the more particular areas are painted over the others.
 		for(const a of areas.slice().sort((p, q) => p.rank - q.rank)){
+			if(slice.over()) yield "land raster";
 			const code = KINDS.indexOf(a.k), rings = [a.outer, ...a.holes];
 			const j0 = Math.max(0, Math.ceil((a.box[1] - z0) / RC)), j1 = Math.min(D - 1, Math.floor((a.box[3] - z0) / RC));
 			const xs = [];
@@ -291,7 +299,7 @@ function makePlaceGeo(track, P){
 		return Math.hypot(b - a, d - c2) / 12 > P.fill ? "forest" : "farm";
 	} : null;
 	return {
-		P, S, toWorld, toMetres, isWater, ring, landAt, landAreas, demAt, fillAt,
+		P, S, toWorld, toMetres, isWater, ring, landAt, landAreas, landRasterSteps, demAt, fillAt,
 		// A building's outline moved as one piece (by the offset at its middle), so it keeps its shape.
 		solid(r){
 			if(!warp) return ring(r);

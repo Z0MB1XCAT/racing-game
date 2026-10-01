@@ -2,3 +2,4 @@ original/
 temporary screenshots/
 node_modules/
 tools/three.min.cjs
+tools/_*.mjs

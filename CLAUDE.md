@@ -81,6 +81,12 @@ script or its data and rebuild.
   step: models and textures are plain files in `assets/` (see `assets/README.md`), loaded by `js/assets.js`.
   Every use of an asset must have a drawn-in-code fallback, so a missing file never breaks the game.
   Tabs for indentation. Comments are short, plain English, and explain why.
+- The world builders (`buildWorldSteps` in `js/world.js`, and the terrain, place geometry, scenery, landscape and
+  remnants builders under it) are generators, so a menu preview can be built a few milliseconds at a time between
+  frames (`js/steps.js`). In any loop that can run long, add `if(slice.over()) yield "where";`; call a builder
+  with `yield*`, and from outside use its plain wrapper (`buildWorld`, `buildTerrain`, `placeGeo`, `remnants`),
+  which runs it to the end. A build must come out the same either way. `slice.log = []` records how long each
+  stretch between pauses took, to find the ones that need another pause.
 - The F1 tracks are real data: centrelines (bacinger/f1-circuits), heights from real altitudes,
   camber only on corners that really have it (`camber` in `tools/build-circuits.mjs`, with the
   corner's direction), every F1 venue's surroundings from OpenStreetMap (and the real terrain round

@@ -8,7 +8,8 @@
 
 import { TUNNEL_WALL } from "./terrain.js";
 import { inPoly } from "./placegeo.js";
-import { buildLandscape } from "./landscape.js";
+import { buildLandscapeSteps } from "./landscape.js";
+import { slice } from "./steps.js";
 import { buildTrackside } from "./trackside.js";
 import { AD_COLS, AD_ROWS, AD_MONTE_CARLO, AD_MONACO_GP, drawSponsors, sponsorsFor, bridgeSponsor } from "./sponsors.js";
 const THREE = globalThis.THREE;
@@ -277,7 +278,7 @@ function crowdMaterial(uniforms, color){
 
 // ---------- Build ----------
 // ctx: { group, keep(disposable), shadows, quality, rand }
-export function buildScenery(track, theme, ctx){
+export function* buildScenerySteps(track, theme, ctx){
 	const { group, keep, shadows, rand } = ctx;
 	const occ = new Occluders();
 	const updaters = [];
@@ -351,6 +352,7 @@ export function buildScenery(track, theme, ctx){
 	for(let i = 0; i < n; i++) turning += c.curv[i];
 	const pitSide = track.def && track.def.kind === "oval" ? (turning > 0 ? 1 : -1) : roomOn(-1) >= roomOn(1) ? -1 : 1;
 
+	if(slice.over()) yield "scenery: start straight";
 	// --- Pit building: garages with team stripes, glass hospitality floor above, pit lane in front.
 	const TEAM = [0xff8000, 0xdc0000, 0x1e41ff, 0x00d2be, 0x006f62, 0x0090ff, 0x005aff, 0x6692ff, 0xb6babd, 0x52e252, 0x2a2e38];
 	let garages = 0;
@@ -389,14 +391,16 @@ export function buildScenery(track, theme, ctx){
 		}
 	}
 
+	if(slice.over()) yield "scenery: pits";
 	// --- Grandstands: stepped seating facing the track, a roof, and fans in the seats.
 	const ROWS = 7, ROW_D = 1.3, ROW_H = 0.72, SEG = 8;
 	// opts.rows: how many rows of seats. opts.level: build the seating up from the ground level at
 	// its front (for a stand on a slope, like the embankment behind a banked oval).
-	function stand(from, to, s, group, opts = {}){
+	function* stand(from, to, s, group, opts = {}){
 		const rows = opts.rows || ROWS;
 		let made = 0;
 		for(let i = from; i <= to; i += SEG){
+			if(slice.over()) yield "scenery: stand";
 			const f = sp.at(i, s, hw + 3.2);
 			const depth = rows * ROW_D + 0.6;
 			const [cx, cz] = f.local(0, -depth / 2);
@@ -436,13 +440,21 @@ export function buildScenery(track, theme, ctx){
 		for(const b of geo.P.buildings){
 			if(b.k !== "stand") continue;
 			const pts = geo.ring(b.p);
+			let px0 = Infinity, px1 = -Infinity, pz0 = Infinity, pz1 = -Infinity;
+			for(const [x, z] of pts){ px0 = Math.min(px0, x); px1 = Math.max(px1, x); pz0 = Math.min(pz0, z); pz1 = Math.max(pz1, z); }
 			for(const side of [1, -1]){
+				if(slice.over()) yield "scenery: real stands";
 				const cov = new Uint8Array(n);
 				let count = 0, any = -1;
-				// (The game's road is wider than the real one, so look across a band beside it.)
-				for(let i = 0; i < n; i++) for(let off = hw + 1; off <= hw + 30; off += 3){
-					const f = sp.at(i, side, off);
-					if(inPoly(pts, f.x, f.z)){ cov[i] = 1; count++; any = i; break; }
+				// (The game's road is wider than the real one, so look across a band beside it. The outline's box first:
+				// most of the road is nowhere near it. The position is sp.at's.)
+				for(let i = 0; i < n; i++){
+					const ox = c.tz[i] * side, oz = -c.tx[i] * side;
+					for(let off = hw + 1; off <= hw + 30; off += 3){
+						const x = c.x[i] + ox * off, z = c.z[i] + oz * off;
+						if(x < px0 || x > px1 || z < pz0 || z > pz1) continue;
+						if(inPoly(pts, x, z)){ cov[i] = 1; count++; any = i; break; }
+					}
 				}
 				if(count < 40) continue;
 				// The covered stretch can run across the start line: walk out both ways from inside it.
@@ -450,12 +462,12 @@ export function buildScenery(track, theme, ctx){
 				while(cov[sp.wrap(from - 1)] && any - from < n) from--;
 				while(cov[sp.wrap(to + 1)] && to - from < n) to++;
 				const rows = Math.max(ROWS, Math.min(24, Math.round(b.h * geo.S / ROW_H)));
-				realStands += stand(from, to, side, "realstand", { rows, level: true });
+				realStands += yield* stand(from, to, side, "realstand", { rows, level: true });
 			}
 		}
 		if(realStands) geo.standsBuilt = true;
 	}
-	const mainStand = realStands ? realStands : stand(Math.max(s0 + 6, -40), Math.min(s1 - 6, 56), -pitSide, "main");
+	const mainStand = realStands ? realStands : yield* stand(Math.max(s0 + 6, -40), Math.min(s1 - 6, 56), -pitSide, "main");
 	// Corner stands on the outside of the tightest corners.
 	const corners = [];
 	for(let i = 0; i < n; i += 3){
@@ -471,8 +483,9 @@ export function buildScenery(track, theme, ctx){
 		if(chosen.length >= (theme.grandstand ?? 2)) break;
 		if(!farFrom(k.i, [0], 90) || !farFrom(k.i, chosen, 140)) continue;
 		const outside = c.curv[k.i] > 0 ? -1 : 1;
-		if(stand(k.i - 20, k.i + 20, outside, "corner" + k.i) >= 2) chosen.push(k.i);
+		if((yield* stand(k.i - 20, k.i + 20, outside, "corner" + k.i)) >= 2) chosen.push(k.i);
 	}
+	if(slice.over()) yield "scenery: stands";
 	// Fans standing on the grass behind a fence at other corners.
 	if(theme.fans !== false){
 		let banks = 0;
@@ -498,9 +511,11 @@ export function buildScenery(track, theme, ctx){
 		}
 	}
 
+	if(slice.over()) yield "scenery: corner fans";
 	// --- Life along the track from the models in assets/: marshal posts, flags, cones and paddock tents (none if they aren't loaded).
 	const trackside = buildTrackside({ track, sp, hw, G, group, rand, pitSide, garages: garageFrames, quality: ctx.quality, place });
 
+	if(slice.over()) yield "scenery: trackside";
 	// --- Billboards along the straights, just behind the barriers.
 	const ads = sponsorsFor(track.def && track.def.theme), boards = [];
 	for(let i = 0; i < n; i += 9){
@@ -519,6 +534,7 @@ export function buildScenery(track, theme, ctx){
 		sp.take(bx, bz, 4.2, "ads");
 	}
 
+	if(slice.over()) yield "scenery: billboards";
 	// --- A bridge over a straight, away from the start.
 	let bridge = null;
 	const from = Math.floor(n * (0.25 + rand() * 0.2));
@@ -565,6 +581,7 @@ export function buildScenery(track, theme, ctx){
 		place({ x: mid.x, z: mid.z, ry: mid.ry, hw: 1.3, hd: span / 2, y0: deckY, y1: deckY + 2.1 });
 	}
 
+	if(slice.over()) yield "scenery: bridge";
 	// --- Monaco: the tunnel runs under the Fairmont hotel. The hotel stands over the mouth and
 	// the first half of the tunnel, reaching back inland on a podium, with the red Monte-Carlo
 	// banner over the entrance, a white curved stair tower beside it and a fence along the sea
@@ -651,6 +668,7 @@ export function buildScenery(track, theme, ctx){
 		}
 	}
 
+	if(slice.over()) yield "scenery: tunnel hotel";
 	// --- City blocks (Monaco, Jeddah) from the scenery spots near the road.
 	const spots = [...(track.scenery || []), ...(ctx.extraSpots || [])].sort((a, b) => a.off - b.off);
 	const used = new Set();
@@ -659,10 +677,11 @@ export function buildScenery(track, theme, ctx){
 	// The real landscape (forests, fields, towns: Monaco, Spa, Monza, Suzuka) or the real city (Jeddah, Daytona).
 	const treeOcc = { add: o => { const g = G(o.x, o.z); o.y0 += g; o.y1 += g; occ.add(o); } };
 	let land = null;
-	if(ctx.geo && ctx.geo.P.land) land = buildLandscape(ctx.geo, { track, theme, B, G, sp, place, c, n, rand, group, keep, shadows, isWater: ctx.isWater, low, buildTrees, treeOccluders: treeOcc, people, fill });
-	else if(ctx.geo) buildRealCity(ctx.geo, { track, theme, B, G, sp, place, c, hw, n, rand, group, keep, shadows, extraTrees, isWater: ctx.isWater, low, updaters });
+	if(ctx.geo && ctx.geo.P.land) land = yield* buildLandscapeSteps(ctx.geo, { track, theme, B, G, sp, place, c, n, rand, group, keep, shadows, isWater: ctx.isWater, low, buildTrees, treeOccluders: treeOcc, people, fill });
+	else if(ctx.geo) yield* buildRealCitySteps(ctx.geo, { track, theme, B, G, sp, place, c, hw, n, rand, group, keep, shadows, extraTrees, isWater: ctx.isWater, low, updaters });
 	else if(bdef){
 		for(const s of spots){
+			if(slice.over()) yield "city blocks";
 			if(s.off > 46 || s.r > bdef.density) continue;
 			const tall = bdef.night ? 22 + s.r2 * 70 : bdef.tall ? bdef.tall[0] + s.r2 * bdef.tall[1] : 9 + s.r2 * 18;
 			const w = 9 + s.r * 9, d = 8 + s.r2 * 7;
@@ -699,6 +718,7 @@ export function buildScenery(track, theme, ctx){
 		}
 	}
 
+	if(slice.over()) yield "scenery: land";
 	// Merge everything built so far into one mesh.
 	if(!B.empty){
 		const glass = bdef && bdef.night ? "#1c2230" : "#6f8aa6";
@@ -723,6 +743,7 @@ export function buildScenery(track, theme, ctx){
 		group.add(mesh);
 	}
 
+	if(slice.over()) yield "scenery: merge";
 	// --- Fans.
 	if(people.length){
 		const body = keep(new THREE.BoxBufferGeometry(0.36, 0.72, 0.26)); body.translate(0, 0.36, 0);
@@ -744,6 +765,7 @@ export function buildScenery(track, theme, ctx){
 		group.add(...crowd);
 	}
 
+	if(slice.over()) yield "scenery: fans";
 	// --- Trees, only where their branches stay well clear of the road and of everything else.
 	// (Where the map has the real forests and trees, they're all there is: see landscape.js.)
 	const kind = theme.trees;
@@ -778,7 +800,7 @@ export function buildScenery(track, theme, ctx){
 // the streets with their lamps, parks and palms, the beach, piers with moored yachts, the
 // landmark mosques, and footbridges over the track. Anything that would touch the road, or
 // something already placed, is left out.
-function buildRealCity(geo, { track, theme, B, G, sp, place, c, hw, n, rand, group, keep, shadows, extraTrees, isWater, low, updaters }){
+function* buildRealCitySteps(geo, { track, theme, B, G, sp, place, c, hw, n, rand, group, keep, shadows, extraTrees, isWater, low, updaters }){
 	const { P, S } = geo, W = geo.ring;
 	const glow = new Builder();                       // things that shine at night (plain colours)
 	glow.ground = G;
@@ -797,6 +819,7 @@ function buildRealCity(geo, { track, theme, B, G, sp, place, c, hw, n, rand, gro
 	// Buildings.
 	let bi = 0;
 	for(const b of P.buildings){
+		if(slice.over()) yield "city: buildings";
 		const pts = W(b.p);
 		if(pts.length < 3 || !clearOf(pts, 2.5) || roadInside(pts)) continue;
 		const [cx, cz] = centre(pts);
@@ -827,20 +850,24 @@ function buildRealCity(geo, { track, theme, B, G, sp, place, c, hw, n, rand, gro
 	// land well back from the track with low blocks, lit up after dark.
 	if(theme.cityFill){
 		const b = track.bounds, step = low ? 15 : 11;
-		for(let x = b.minX - 220; x <= b.maxX + 220; x += step) for(let z = b.minZ - 220; z <= b.maxZ + 220; z += step){
-			const px = x + (rand() - 0.5) * step * 0.5, pz = z + (rand() - 0.5) * step * 0.5;
-			if(rand() < 0.3 || sp.edge(px, pz, 52) < 50 || (isWater && isWater(px, pz))) continue;
-			const wv = 4.5 + rand() * 5, dv = 4.5 + rand() * 5, r = Math.hypot(wv, dv) / 2;
-			if(!sp.free(px, pz, r, "fill")) continue;
-			const h = (7 + rand() * 12 + (rand() < 0.08 ? 20 + rand() * 30 : 0)) * S;
-			B.box({ x: px, z: pz, w: wv, d: dv, h, ry: 0.05 * (rand() - 0.5), color: PALE[Math.floor(rand() * PALE.length)], win: [1.6, 1.1], top: 0xb8b0a2 });
-			sp.take(px, pz, r, "fill");
+		for(let x = b.minX - 220; x <= b.maxX + 220; x += step){
+			if(slice.over()) yield "city: fill";
+			for(let z = b.minZ - 220; z <= b.maxZ + 220; z += step){
+				const px = x + (rand() - 0.5) * step * 0.5, pz = z + (rand() - 0.5) * step * 0.5;
+				if(rand() < 0.3 || sp.edge(px, pz, 52) < 50 || (isWater && isWater(px, pz))) continue;
+				const wv = 4.5 + rand() * 5, dv = 4.5 + rand() * 5, r = Math.hypot(wv, dv) / 2;
+				if(!sp.free(px, pz, r, "fill")) continue;
+				const h = (7 + rand() * 12 + (rand() < 0.08 ? 20 + rand() * 30 : 0)) * S;
+				B.box({ x: px, z: pz, w: wv, d: dv, h, ry: 0.05 * (rand() - 0.5), color: PALE[Math.floor(rand() * PALE.length)], win: [1.6, 1.1], top: 0xb8b0a2 });
+				sp.take(px, pz, r, "fill");
+			}
 		}
 	}
 
 	// Streets: asphalt with pavements, and lamp posts along them.
 	const lamps = [];
 	for(const r of P.roads){
+		if(slice.over()) yield "city: streets";
 		const pts = W(r.p), wv = r.w * S;
 		for(let i = 0; i < pts.length - 1; i++){
 			const [ax, az] = pts[i], [bx, bz] = pts[i + 1], len = Math.hypot(bx - ax, bz - az);
@@ -876,6 +903,7 @@ function buildRealCity(geo, { track, theme, B, G, sp, place, c, hw, n, rand, gro
 
 	// Parks and lawns, with palms; the beach.
 	for(const pk of P.parks){
+		if(slice.over()) yield "city: parks";
 		const pts = W(pk);
 		if(pts.length < 3 || roadInside(pts)) continue;
 		const [cx, cz] = centre(pts);

@@ -2,7 +2,8 @@
 import { TRACKS, LAYOUTS, trackById, venueOf, layoutsOf } from "./tracks.js";
 import { buildTrack } from "./trackgen.js";
 import { makeTracker } from "./progress.js";
-import { buildWorld } from "./world.js";
+import { buildWorld, buildWorldSteps } from "./world.js";
+import { runSliced, slice } from "./steps.js";
 import { PLACE_VENUES, loadPlaces, placesLoaded } from "./placegeo.js";
 import { preload as preloadAssets, assetsStamp } from "./assets.js";
 import { Gfx } from "./gfx.js";
@@ -122,48 +123,119 @@ function getTrack(def, reverse){
 // (assets.js). A world built under an older stamp is built again the next time its track is shown.
 const worldStamp = def => (def && placesLoaded(venueOf(def.id)) ? 1 : 0) + "/" + assetsStamp();
 
-function showTrack(def, reverse){
-	cancelPreview();
-	const entry = getTrack(def, reverse);
-	if(S.trackKey === entry.key && S.world && S.worldStamp === worldStamp(entry.def)) return entry;
-	if(S.world){ scene.remove(S.world.group); S.world.dispose(); }
+// The world on show goes off the scene (the next one is about to take its place); it's handed back to be cleared away
+// once the new one is up (see installWorld).
+function retireWorld(){
+	const old = S.world;
+	if(old){ scene.remove(old.group); S.world = null; }
+	return old;
+}
+// Puts a built world on show: the part of showTrack after the build. `old` is the world it replaces.
+// The old one's materials are cleared away only after the new one has been drawn: the graphics chip's shader programs
+// are shared between worlds while some material still uses them, and are thrown away (and compiled again, which
+// takes a noticeable moment) the instant none does.
+function installWorld(entry, world, stamp, gradual, old = retireWorld()){
+	if(old) setTimeout(() => old.dispose(), 500);
 	S.trackKey = entry.key; S.track = entry.track; S.tracker = entry.tracker;
-	S.world = buildWorld(entry.track, { quality: quality() });
-	S.worldStamp = worldStamp(entry.def);
+	S.world = world;
+	S.worldStamp = stamp;
 	gfx.newTrack();                                               // (a new track: start measuring afresh)
-	if(S.world.setShadows){ S.world.setShadows(gfx.current.shadows); S.world.setDensity(gfx.current.density); }
-	scene.add(S.world.group);
-	scene.fog = S.world.fog;
-	scene.background = S.world.skyColor;
-	camera.far = S.world.farPlane;
+	if(world.setShadows){ world.setShadows(gfx.current.shadows); world.setDensity(gfx.current.density); }
+	if(gradual) revealGradually(world.group);
+	scene.add(world.group);
+	scene.fog = world.fog;
+	scene.background = world.skyColor;
+	camera.far = world.farPlane;
 	camera.updateProjectionMatrix();
 	renderer.shadowMap.enabled = quality() === "high";
 	fx.clear();
 	placeShowcase();
+}
+// The first frame of a new world sends all of its geometry to the graphics chip, which stalls a slow chip for a
+// moment. So the big pieces (the ground, the walls, the buildings) show up over the next few frames instead.
+function revealGradually(group){
+	const big = [];
+	for(const o of group.children){
+		const n = o.visible && o.isMesh && o.geometry && o.geometry.attributes.position ? o.geometry.attributes.position.count : 0;
+		if(n >= 20000){ o.visible = false; big.push([o, n]); }
+	}
+	const next = () => {
+		let budget = 120000;
+		while(big.length && budget > 0){ const [o, n] = big.shift(); o.visible = true; budget -= n; }
+		if(big.length) requestAnimationFrame(next);
+	};
+	if(big.length) requestAnimationFrame(next);
+}
+// Builds the world for a track and puts it on show, all at once.
+function showTrack(def, reverse){
+	cancelPreview();
+	const entry = getTrack(def, reverse);
+	if(S.trackKey === entry.key && S.world && S.worldStamp === worldStamp(entry.def)) return entry;
+	const stamp = worldStamp(entry.def);
+	const old = retireWorld();
+	installWorld(entry, buildWorld(entry.track, { quality: quality() }), stamp, false, old);
 	return entry;
 }
 
 // Picking a track in a menu: the card and the labels change at once and a chip says what's loading, then the
-// preview is built a moment later. (Building a circuit's world takes a fraction of a second to a second or more, and
-// the page can't do anything else while it runs.) A quick run of picks builds only the last one, and anything that
-// shows a track straight away (starting a race, going back) cancels the wait.
-let previewTimer = 0;
-function cancelPreview(){ clearTimeout(previewTimer); previewTimer = 0; $("trackLoading").hidden = true; }
-function previewTrack(def, reverse){
+// preview is built a moment later, a few milliseconds at a time between frames (steps.js), so the page stays alive
+// while it is. The world already on show stays until the new one is ready. A quick run of picks builds only the
+// last one, and anything that shows a track straight away (starting a race, going back) calls the build off.
+let previewTimer = 0;       // the wait before a build starts
+let preview = null;         // a build under way: { job, sink }
+let wanted = null;          // what the menu asked for last: { key, stamp }
+function cancelPreview(){
+	clearTimeout(previewTimer); previewTimer = 0;
+	if(preview){
+		preview.job.cancel();
+		for(const d of preview.sink.disposables || []) if(d && d.dispose) d.dispose();     // (what it had made so far)
+		preview = null;
+	}
+	wanted = null;
+	$("trackLoading").hidden = true;
+}
+function previewTrack(def, reverse, { quiet = false } = {}){
+	const key = trackKey(def, reverse), stamp = worldStamp(def);
+	if(wanted && wanted.key === key && wanted.stamp === stamp) return;          // (already on its way)
 	cancelPreview();
-	if(S.world && S.trackKey === trackKey(def, reverse) && S.worldStamp === worldStamp(def)) return;     // (already on show)
-	$("trackLoadingText").textContent = "Loading " + def.name;
-	$("trackLoading").hidden = false;
-	previewTimer = setTimeout(() => showTrack(def, reverse), 120);
+	if(S.world && S.trackKey === key && S.worldStamp === stamp) return;         // (already on show)
+	wanted = { key, stamp };
+	if(!quiet){
+		$("trackLoadingText").textContent = "Loading " + def.name;
+		$("trackLoading").hidden = false;
+	}
+	previewTimer = setTimeout(() => {
+		previewTimer = 0;
+		const entry = getTrack(def, reverse), sink = {};
+		const job = runSliced(buildWorldSteps(entry.track, { quality: quality(), sink }), {
+			onSlice: () => gfx.stall(1500),                       // (a build in slices isn't a slow computer)
+			onDone: world => {
+				// The textures go to the graphics chip a few at a time first (the 2048-wide billboard texture alone takes a
+				// frame to upload), then the world is put on show.
+				const textures = (preview.sink.disposables || []).filter(d => d && d.isTexture);
+				preview = { job: runSliced((function*(){ for(const t of textures){ renderer.initTexture(t); if(slice.over()) yield "textures"; } })(), {
+					onSlice: () => gfx.stall(1500),
+					onDone: () => {
+						preview = null; wanted = null;
+						installWorld(entry, world, stamp, true);
+						$("trackLoading").hidden = true;
+						refreshWorld();                                   // (if models or surroundings arrived meanwhile)
+					},
+					onError: e => { console.error(e); preview = null; wanted = null; showTrack(def, reverse); }
+				}), sink: preview.sink };
+			},
+			onError: e => { console.error(e); preview = null; wanted = null; showTrack(def, reverse); }
+		});
+		preview = { job, sink };
+	}, quiet ? 0 : 120);
 }
 
 // The real surroundings of the circuits (js/places/) and the models and textures (assets/) load in the
 // background. When they arrive while a track is on show in the menus, it's built again with them (never
 // mid-race).
 function refreshWorld(){
-	if(previewTimer || !S.track || !S.world || S.race || !S.track.def || S.worldStamp === worldStamp(S.track.def)) return;
-	S.trackKey = null;
-	showTrack(S.track.def, S.track.reverse);
+	if(wanted || !S.track || !S.world || S.race || !S.track.def || S.worldStamp === worldStamp(S.track.def)) return;
+	previewTrack(S.track.def, S.track.reverse, { quiet: true });
 }
 for(const v of PLACE_VENUES) loadPlaces(v).then(refreshWorld);
 preloadAssets(quality()).then(refreshWorld);
