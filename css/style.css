@@ -722,6 +722,8 @@ kbd{ font-family: var(--f-display); font-weight: 700; font-size: 13px; padding: 
 	font-weight: 600; font-size: 15px; box-shadow: var(--elev-3); animation: pop .35s var(--spring) both;
 }
 
+#voiceSettings{ display: contents; }
+#voiceSettings[hidden]{ display: none; }
 /* What the race engineer and the commentators are saying (js/audio.js onCaption, main.js). Radio is green, commentary blue. */
 .voice-cap{
 	--vc: var(--green);

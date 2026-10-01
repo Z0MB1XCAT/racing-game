@@ -293,7 +293,7 @@
 					<div class="bigtv-track" id="tvNextTrack">Monza</div>
 					<div class="bigtv-sub" id="tvNextSub"></div>
 					<p class="bigtv-status" id="tvStatus" role="status"><i class="tl-kerb" aria-hidden="true"></i><span>Waiting for the host to start the race</span></p>
-					<p class="bigtv-sound" id="tvSound" hidden>Click anywhere to turn the sound on, for the commentary.</p>
+					<p class="bigtv-sound" id="tvSound" hidden>Click anywhere to turn the sound on.</p>
 				</div>
 				<ol class="bigtv-roster" id="tvRoster" aria-label="Drivers"></ol>
 			</div>
@@ -716,6 +716,7 @@
 			<div class="opt-row"><label for="setMusic">Music</label><input class="range" id="setMusic" type="range" min="0" max="1" step="0.05"></div>
 			<div class="opt-row"><span class="opt-label">Music in races</span>
 				<div class="seg" id="setRaceMusic" role="radiogroup" aria-label="Music in races"><button data-v="1">On</button><button data-v="0">Off</button></div></div>
+			<div id="voiceSettings" hidden>
 			<div class="opt-row"><label for="setVoice">Voices</label><input class="range" id="setVoice" type="range" min="0" max="1" step="0.05"></div>
 			<div class="opt-row"><span class="opt-label">Team radio</span>
 				<div class="seg" id="setRadio" role="radiogroup" aria-label="Team radio"><button data-v="full">Full</button><button data-v="important">Key moments</button><button data-v="off">Off</button></div></div>
@@ -725,6 +726,7 @@
 				<div class="seg" id="setSubs" role="radiogroup" aria-label="Subtitles"><button data-v="1">On</button><button data-v="0">Off</button></div></div>
 			<p class="opt-help">Your race engineer talks to you on the radio, and two commentators call the race. Subtitles show what they say.</p>
 			<button class="go-btn ghost" id="hearVoices"><span>Hear the voices</span></button>
+			</div>
 			<div class="opt-row"><span class="opt-label">Rear-view mirror</span>
 				<div class="seg" id="setMirror" role="radiogroup" aria-label="Rear-view mirror"><button data-v="1">On</button><button data-v="0">Off</button></div></div>
 			<div class="opt-row"><span class="opt-label">Camera shake</span>

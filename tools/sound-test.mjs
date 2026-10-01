@@ -1,10 +1,13 @@
-// Plays a short race in a real browser and listens to the mix: the recorded effects and the voices load, the engineer and
-// the commentators speak (the subtitles say what), the level is never clipped or silent, and the sound survives.
+// Plays a short race in a real browser and listens to the mix: the recorded effects load, the level is never clipped or
+// silent, and the sound survives. The voices are switched off in the game (VOICES_ENABLED in js/config.js), so by
+// default this checks they stay out of sight: no settings, no subtitles, no voice file fetched. With --voices it turns
+// them on (?voices) and checks the engineer and the commentators speak, with subtitles.
 // Needs node serve.mjs running.
-//   node tools/sound-test.mjs [trackId]
+//   node tools/sound-test.mjs [trackId] [--voices]
 import puppeteer from "puppeteer";
 
-const track = process.argv[2] || "figure8";
+const voices = process.argv.includes("--voices");
+const track = process.argv.slice(2).find(a => !a.startsWith("--")) || "figure8";
 const b = await puppeteer.launch({ headless: "new", args: ["--autoplay-policy=no-user-gesture-required", "--use-gl=angle", "--ignore-gpu-blocklist"] });
 const p = await b.newPage();
 const errors = [], problems = [];
@@ -12,7 +15,9 @@ const ok = (cond, msg) => { console.log("  " + (cond ? "ok  " : "FAIL") + " " + 
 p.on("pageerror", e => errors.push(e.message));
 p.on("console", m => { if((m.type() === "warn" || m.type() === "error") && !/tailwind|apple-mobile|Failed to load resource/.test(m.text())) errors.push("console: " + m.text()); });
 await p.setViewport({ width: 1280, height: 720 });
-await p.goto("http://localhost:3000/", { waitUntil: "networkidle0" });
+const fetched = [];
+p.on("request", r => { if(/\/assets\/voice\//.test(r.url())) fetched.push(r.url()); });
+await p.goto("http://localhost:3000/" + (voices ? "?voices" : ""), { waitUntil: "networkidle0" });
 await p.click("#btnBots"); await new Promise(r => setTimeout(r, 500));
 await p.evaluate(id => document.querySelector(`#setupTracks [data-id="${id}"]`).click(), track);
 await new Promise(r => setTimeout(r, 2500));
@@ -41,15 +46,22 @@ for(let i = 0; i < 100; i++){
 }
 const res = await p.evaluate(async () => {
 	const a = await import("/js/audio.js");
-	return { caps: window.__caps, lev: window.__lev, loaded: a._test.loaded(), state: a.soundState() };
+	return { caps: window.__caps, lev: window.__lev, loaded: a._test.loaded(), state: a.soundState(), voiceRows: document.getElementById("voiceSettings").hidden };
 });
 console.log("what was said:");
 const seen = new Set();
 for(const c of res.caps){ const k = c.kind + c.text; if(seen.has(k)) continue; seen.add(k); console.log(`    ${c.kind === "radio" ? "RADIO" : c.who.slice(0, 5).toUpperCase().padEnd(5)}  ${c.text}`); }
 ok(res.loaded.sfx, "the recorded effects loaded");
 ok(res.state === "running", "the sound is running (" + res.state + ")");
-ok(res.caps.some(c => c.kind === "radio"), "the engineer spoke on the radio");
-ok(res.caps.some(c => c.kind === "cast"), "the commentators spoke");
+if(voices){
+	ok(res.caps.some(c => c.kind === "radio"), "the engineer spoke on the radio");
+	ok(res.caps.some(c => c.kind === "cast"), "the commentators spoke");
+}else{
+	ok(res.caps.length === 0, "no subtitles appeared (" + res.caps.length + ")");
+	ok(fetched.length === 0, "no voice file was fetched" + (fetched.length ? ": " + fetched[0] : ""));
+	ok(!res.loaded.voice, "the voice machinery was never even built");
+	ok(res.voiceRows === true, "the voice settings are hidden");
+}
 const peak = Math.max(0, ...res.lev.map(l => l.peak)), loud = res.lev.filter(l => l.rms > 0.003).length;
 ok(res.lev.every(l => Number.isFinite(l.peak) && Number.isFinite(l.rms)), "no broken values in the mix");
 ok(peak <= 1.0, "never clipped (loudest peak " + peak.toFixed(2) + ")");

@@ -13,6 +13,11 @@ export const FIREBASE_CONFIG = {
 // back the menu button, the editor page and "Your tracks" in the track lists.
 export const EDITOR_ENABLED = false;
 
+// The race engineer on the team radio and the two commentators are finished but switched off for now: no settings,
+// no subtitles, nothing downloaded. Set this to true to bring them back, or add ?voices to the address to try them
+// (js/radio.js, js/commentary.js, js/voice.js, assets/voice/).
+export const VOICES_ENABLED = false;
+
 // Optional accounts, so stats follow a player between devices. Guests can still play.
 export const ACCOUNTS = {
 	bvs: true,                       // "bvs-12345" + password (Firebase Email/Password sign-in)
@@ -30,7 +35,7 @@ export const ACCOUNTS = {
 
 // Bump this (and version.json) whenever you push an update. Players on an older copy are
 // told to refresh, and the lobby shows who needs to.
-export const VERSION = "2026.10.01-2";
+export const VERSION = "2026.10.01-3";
 
 export const GAME_NAME = "Online Racing Game";
 export const EDITION = "Grand Prix";

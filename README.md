@@ -215,23 +215,25 @@ original did).
 - **Music** that follows the race: three driving tracks (a daytime one in two flavours, and a slow, spacious one
   after dark), each built in layers. A pulse and a pad at the start, then hats, an arpeggio, a lead melody as
   the race goes on or you're in a close fight, and everything at once on the final lap, when the key lifts too.
-  Menus have their own loop. The music ducks while someone is speaking.
-- **Team radio**: your race engineer talks to you in short, calm messages through a radio filter (band-limited,
-  a touch of drive, static underneath, a click at each end): your place, the gaps to the cars either side
-  ("Gap ahead, one point two. Gap behind, point eight."), a tow to use or a car to defend against, laps to go,
-  incidents, rain and nightfall, the finish. **Full** or **Key moments** only (incidents, the final lap,
-  elimination, the finish) in Settings.
-- **Commentary**: a lead commentator and a co-commentator call the race like a broadcast: lights out, who leads into
-  turn one, passes, lead changes, crashes, contact, the fastest lap, battles, the final lap, the finish and photo
-  finishes, the rain, and a word about the circuit when it goes quiet. It also calls the highlights in the replay.
-  Subtitles show everything that's said (switch them off in Settings). The voices are made with the Kokoro
-  neural voice and play as recorded clips stitched into sentences. The computer drivers are called by name; any
-  other driver is "Number 23", with their real name in the subtitles. **Settings** has Voices, Team radio,
-  Commentary and Subtitles, and a **Hear the voices** button.
+  Menus have their own loop.
+- **Team radio and commentary** are built and switched off for now (nothing shows, nothing is downloaded): set
+  `VOICES_ENABLED = true` in `js/config.js` to bring them back, or add `?voices` to the address to try them. When on:
+  - **Team radio**: your race engineer talks to you in short, calm messages through a radio filter (band-limited,
+    a touch of drive, static underneath, a click at each end): your place, the gaps to the cars either side
+    ("Gap ahead, one point two. Gap behind, point eight."), a tow to use or a car to defend against, laps to go,
+    incidents, rain and nightfall, the finish. **Full** or **Key moments** only (incidents, the final lap,
+    elimination, the finish) in Settings.
+  - **Commentary**: a lead commentator and a co-commentator call the race like a broadcast: lights out, who leads into
+    turn one, passes, lead changes, crashes, contact, the fastest lap, battles, the final lap, the finish and photo
+    finishes, the rain, and a word about the circuit when it goes quiet. It also calls the highlights in the replay.
+    Subtitles show everything that's said (switch them off in Settings). The voices are made with the Kokoro
+    neural voice and play as recorded clips stitched into sentences. The computer drivers are called by name; any
+    other driver is "Number 23", with their real name in the subtitles. **Settings** has Voices, Team radio,
+    Commentary and Subtitles, and a **Hear the voices** button.
 - **Big screen** (Online > Big screen, or the link `?tv=ABCD`): put a room on a classroom projector. It joins as a
   watcher (never on the grid, never the host), shows the room code and who's in between races, then the race as
-  a broadcast (auto cameras, commentary and subtitles, a big timing tower, the map and lap counter) and the
-  results. **Race bots > Watch the bots race** does the same with computer drivers and no room.
+  a broadcast (auto cameras, a big timing tower, the map and lap counter, and the commentary and subtitles when
+  the voices are on) and the results. **Race bots > Watch the bots race** does the same with computer drivers and no room.
 - **Rear-view mirror** at the top of the screen (switch it off in Settings), and hold **B** to look behind you.
 - **Scenery**: every circuit gets a pit building with team garages, grandstands full of fans (who cheer at the start and the finish), fans behind the fences at corners, billboards, a bridge over the track, and trees or city blocks to suit the place. Nothing is allowed to stick onto the road: every piece is checked against the whole circuit, including where it doubles back. The TV cameras only use positions that can see the cars, and cut away if a tree or building gets in the way.
 - **The real surroundings of every F1 track**, from OpenStreetMap, on the real lie of the land:
@@ -549,7 +551,7 @@ The last two also need puppeteer installed.
 - `node tools/sky-shots.mjs [trackId] [tod-weather ...]` screenshots a track at different times and weather (e.g. `monza night-rain`).
 - `node tools/scenery-shots.mjs [trackId ...]` takes screenshots of each track (overview, racing with the mirror, looking back, highlights).
 - `node tools/engine-demo.mjs` renders a clip of each engine to WAV (with spectrograms) for tuning the sound. Engine settings are `ENGINES` in `js/audio.js`.
-- `node tools/sound-test.mjs [track]` plays a short race in a real browser and listens to the mix: the recorded effects load, the engineer and commentators speak (with subtitles), nothing clips or goes silent.
+- `node tools/sound-test.mjs [track] [--voices]` plays a short race in a real browser and listens to the mix: the recorded effects load, nothing clips or goes silent, and the voices stay out of sight (no settings, subtitles or voice files); with `--voices` it turns them on and checks the engineer and commentators speak, with subtitles.
 - `node tools/voice-test.mjs [--browser]` plays a made-up race through the engineer and commentators and prints what they would say; with `--browser` it also decodes every clip in the voice packs.
 - `node tools/build-voices.mjs [eng] [lead] [col] [--force] [--check]` renders the lines in `js/voicelines.js` into `assets/voice/*.pak` with the Kokoro voice (needs `npm i kokoro-js` in a scratch folder and `KOKORO_DIR` pointing at it, plus ffmpeg); `--check` listens back with a speech recogniser. Only needed when a line or a voice changes.
 - `node tools/build-sfx.mjs <folder>` packs the chosen sounds from Kenney's Impact Sounds, Interface Sounds and UI Audio packs (CC0) into `assets/audio/sfx.pak`.

@@ -46,7 +46,6 @@ export function unlock(){
 	noise = noiseBuffer(2);
 	echo = makeEcho();
 	music = createMusic(ctx, buses.music, noise);
-	voice = createVoice(ctx, { radio: buses.radio, cast: buses.voice }, noise, { start: duckFor, end: unduck });
 	bank = createBank(ctx, buses.sfx);
 	bank.warm();
 	loadEngineModel();
@@ -105,9 +104,14 @@ export function setLevel(kind, v){
 // The race engineer and the commentators (js/radio.js, js/commentary.js, js/voice.js). Safe to call before the sound is
 // unlocked or when the clips can't be loaded: nothing is said.
 // item: { parts, text, kind: "radio" | "cast", who, priority, expires, key, interrupt }
-export function speak(item){ if(voice && levels.voice > 0 && ctx && ctx.state === "running") voice.say(item); }
+export function speak(item){ const v = theVoice(); if(v && levels.voice > 0 && ctx.state === "running") v.say(item); }
 export function stopVoices(){ if(voice) voice.stopAll(); }
-export function preloadVoices(...names){ return voice ? voice.preload(...names) : Promise.resolve(); }
+export function preloadVoices(...names){ const v = theVoice(); return v ? v.preload(...names) : Promise.resolve(); }
+// (Made the first time something is said or fetched: with the voices switched off nothing here ever runs.)
+function theVoice(){
+	if(!voice && ctx && ctx.state !== "closed") voice = createVoice(ctx, { radio: buses.radio, cast: buses.voice }, noise, { start: duckFor, end: unduck });
+	return voice;
+}
 export function speaking(){ return voice ? voice.speaking : null; }
 // fn({ who, kind, text }) when something starts being said, fn(null) when it ends: for subtitles.
 export function onCaption(fn){ captionFn = fn; }

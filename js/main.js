@@ -30,7 +30,7 @@ import { BOT_NAMES } from "./voicelines.js";
 import { Engineer } from "./radio.js";
 import { Commentary } from "./commentary.js";
 import { build as buildSpeech, carPiece, gapPiece } from "./speechkit.js";
-import { GAME_NAME, MAX_CARS, EDITOR_ENABLED, ACCOUNTS, VERSION } from "./config.js";
+import { GAME_NAME, MAX_CARS, EDITOR_ENABLED, VOICES_ENABLED, ACCOUNTS, VERSION } from "./config.js";
 import * as phys from "./physics.js";
 
 const THREE = globalThis.THREE;
@@ -379,18 +379,23 @@ for(const [id, key, kind] of [["setMusic", "music", "music"], ["setSfx", "sfx", 
 }
 
 // ---------- Voices: the race engineer, the commentators and the subtitles ----------
-const engineer = new Engineer({ say: audio.speak, level: S.settings.radio || "full" });
-const cast = new Commentary({ say: audio.speak, level: S.settings.commentary === false ? "off" : "on" });
+// (Switched off in js/config.js for now: VOICES_ENABLED, or ?voices in the address to try them. Off, they say nothing,
+// show nothing and download nothing.)
+const VOICES_ON = VOICES_ENABLED || new URLSearchParams(location.search).has("voices");
+$("voiceSettings").hidden = !VOICES_ON;
+const engineer = new Engineer({ say: audio.speak, level: VOICES_ON ? (S.settings.radio || "full") : "off" });
+const cast = new Commentary({ say: audio.speak, level: VOICES_ON && S.settings.commentary !== false ? "on" : "off" });
 // Fetch the clips for whatever is switched on (once the sound is unlocked: before that there's nothing to do).
 function wantVoices(){
+	if(!VOICES_ON) return;
 	const want = [];
 	if(engineer.level !== "off") want.push("eng");
 	if(cast.level !== "off") want.push("lead", "col");
 	if(want.length) audio.preloadVoices(...want);
 }
 function applyVoiceSettings(){
-	engineer.level = S.settings.radio || "full";
-	cast.level = S.settings.commentary === false ? "off" : "on";
+	engineer.level = VOICES_ON ? (S.settings.radio || "full") : "off";
+	cast.level = VOICES_ON && S.settings.commentary !== false ? "on" : "off";
 	if(engineer.level === "off" && cast.level === "off") audio.stopVoices();
 	wantVoices();
 }

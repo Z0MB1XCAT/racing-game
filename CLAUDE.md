@@ -68,7 +68,7 @@ on purpose; `npm run setup` recreates them. If the server is already running, do
 | `vendor-post.mjs` | rebuilds `vendor/three-r128/postprocessing.js` (bloom and pass chaining from three r128's examples) |
 | `check-assets.mjs` | `assets/manifest.json` vs the files: they exist, plain glTF, within their triangle/size budgets |
 | `asset-test.mjs` | the game with assets loading, missing, broken, replaced and on Low: it must cope with each |
-| `sound-test.mjs [track]` | a short race in a real browser: recorded effects load, the engineer and commentators speak, the mix never clips or goes silent |
+| `sound-test.mjs [track] [--voices]` | a short race in a real browser: recorded effects load, the mix never clips or goes silent, and the voices stay hidden (with `--voices`: they speak, with subtitles) |
 | `voice-test.mjs [--browser]` | the engineer and commentators against a made-up race (and, with `--browser`, every voice clip decodes) |
 | `build-voices.mjs`, `build-sfx.mjs` | render the voice clips (Kokoro, needs `KOKORO_DIR` and ffmpeg) and pack the recorded effects (Kenney CC0); only when lines or sounds change |
 | `preview-test.mjs` | picking a track in a menu: click returns at once with a loading chip, quick picks build only the last, no rebuild under a race |
@@ -91,7 +91,9 @@ script or its data and rebuild.
   which runs it to the end. A build must come out the same either way. `slice.log = []` records how long each
   stretch between pauses took, to find the ones that need another pause.
 - Sound: every sound has a synthesised version in `js/audio.js`; recorded effects (`assets/audio`) and the voices
-  (`assets/voice`) are layered on where they've loaded, so a missing file never breaks the game. What the engineer and
+  (`assets/voice`) are layered on where they've loaded, so a missing file never breaks the game. The voices are
+  switched off for now (`VOICES_ENABLED` in `js/config.js`; `?voices` to try them): off, they show and download
+  nothing. What the engineer and
   commentators may say is in `js/voicelines.js` (text only): after changing a line, run `tools/build-voices.mjs`
   (`tools/check-assets.mjs` fails on a line with no clip). Never use real driver names, teams or catchphrases in them.
 - The F1 tracks are real data: centrelines (bacinger/f1-circuits), heights from real altitudes,
