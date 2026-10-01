@@ -74,7 +74,7 @@ function rebuild(){
 	const old = ctx, engines = enginesOn;
 	try { if(music) music.dispose(); } catch {}
 	try { if(voice) voice.dispose(); } catch {}
-	voices = new Map(); road = null; rainNodes = null; modelReady = null; probeBuf = null;
+	voices = new Map(); road = null; rainNodes = null; windNodes = null; modelReady = null; probeBuf = null;
 	ctx = null; master = null; buses = null; ducks = null; music = null; probe = null; echo = null; voice = null; bank = null;
 	try { old.onstatechange = null; old.close().catch(() => {}); } catch {}
 	unlock();
@@ -167,6 +167,7 @@ export function setCover(v){
 	const t = ctx.currentTime;
 	if(echo) echo.wet.gain.setTargetAtTime(coverLevel * 0.55, t, 0.12);
 	applyRain();
+	if(windNodes) setWind(windLevel);
 }
 
 function noiseBuffer(seconds){
@@ -500,6 +501,32 @@ function applyRain(){
 	rainNodes.lp.frequency.setTargetAtTime(6500 - 4800 * cov, t, 0.15);
 	rainNodes.rumble.gain.setTargetAtTime(v * 0.1 * (1 - 0.5 * cov), t, 0.15);
 	rainNodes.roof.gain.setTargetAtTime(v * 0.32 * cov, t, 0.15);
+}
+// ---------- Wind ----------
+// A low howl with gusts in it: v 0..1 (storms and strong winds). Quieter under a roof.
+let windNodes = null, windLevel = 0;
+export function setWind(v){
+	windLevel = Math.max(0, Math.min(1, fin(v)));
+	if(!ctx || ctx.state === "closed") return;
+	if(!windNodes){
+		if(windLevel <= 0.02) return;
+		const src = noiseSrc(true);
+		const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 320; bp.Q.value = 0.7;
+		const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 900;
+		const gain = ctx.createGain(); gain.gain.value = 0;
+		// The gusts: a slow, uneven swell in the level and the pitch.
+		const lfo = ctx.createOscillator(); lfo.frequency.value = 0.23;
+		const lfo2 = ctx.createOscillator(); lfo2.frequency.value = 0.071;
+		const swell = ctx.createGain(); swell.gain.value = 0.5; swell.connect(gain.gain);
+		const pitch = ctx.createGain(); pitch.gain.value = 140;
+		lfo.connect(swell); lfo2.connect(swell); lfo.connect(pitch); pitch.connect(bp.frequency);
+		src.connect(bp); bp.connect(lp); lp.connect(gain); gain.connect(buses.sfx);
+		src.start(); lfo.start(); lfo2.start();
+		windNodes = { src, bp, gain, lfo, lfo2 };
+	}
+	const t = ctx.currentTime;
+	windNodes.gain.gain.setTargetAtTime(0.22 * windLevel * windLevel * (1 - 0.8 * coverLevel), t, 0.4);
+	windNodes.bp.Q.setTargetAtTime(0.7 + windLevel * 0.5, t, 0.4);
 }
 // A rumble of thunder after a delay (seconds).
 export function thunder(delay = 1){

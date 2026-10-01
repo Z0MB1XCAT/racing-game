@@ -12,7 +12,7 @@ const browser = await puppeteer.launch({ headless: "new" });
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const errors = [];
 for(const combo of list){
-	const [tod, weather] = combo.split("-");
+	const [tod, weatherPart] = combo.split("-"), weather = weatherPart.split("+")[0];
 	const page = await browser.newPage();
 	await page.setViewport({ width: 1440, height: 900 });
 	page.on("pageerror", e => errors.push(combo + ": " + e.message));
@@ -30,6 +30,10 @@ for(const combo of list){
 		g.race.update = (dt) => { g.race.tracker.update(me); return orig(dt, me.bot.steer(me, g.race.tracker, g.race.active, dt)); };
 	});
 	await wait(9000);
+	// Let the road get wet and the snow settle (they build up over a minute or so).
+	await page.evaluate(() => { const w = window.__game.world; w.update(60, null, null); w.update(60, null, null); });
+	// "storm+bolt": hold a lightning strike lit for the screenshot.
+	if(/bolt/.test(combo)) await page.evaluate(() => { window.__game.world.strike(true); });
 	const look = await page.evaluate(() => { const l = window.__game.world.look; return { night: +l.night.toFixed(2), lights: +l.lights.toFixed(2), rain: +l.rain.toFixed(2), wet: +l.wet.toFixed(2) }; });
 	await page.screenshot({ path: `${out}/${trackId}-${combo}.png` });
 	console.log(combo, JSON.stringify(look));

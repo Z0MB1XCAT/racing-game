@@ -101,12 +101,25 @@ original did).
 - **Sectors**: each lap is split into three, shown under the lap times. Purple is the best anyone
   has done (in a race, the fastest in the session; in time trial, the best you know of, including
   the record holder's), green is your own best, yellow is slower.
-- **Time of day and weather** (solo setup, or the host in a room): Default, Day, Sunset, Night
-  or Dynamic, and Clear, Cloudy, Rain or Dynamic. Dynamic time moves about an hour every 30
-  seconds, so a race can run from afternoon into night; dynamic weather changes every minute or so,
-  fading in over about 15 seconds. At night the floodlights, headlights and windows come on;
-  in the rain the track gets wet, cars throw up spray, and heavy rain brings lightning and thunder.
-  Every screen in a room sees the same sky at the same time. It's looks only: the handling is the same.
+- **Time of day and weather** (solo setup, or the host in a room): time is Default, Day, Sunset,
+  Night or Dynamic; weather is Clear, Cloudy, Fog, Rain, Storm, Snow or Dynamic. Dynamic time moves
+  about an hour every 30 seconds, so a race can run from afternoon into night. At night the
+  floodlights, headlights and windows come on.
+  - **Dynamic weather is calm on purpose.** Spells last a few minutes and change over about a
+    minute, the sky clouds over a minute before any rain, the first spell is always dry, and a shower
+    is never followed by another within two spells. In a five-lap race that is about one race in
+    four seeing any rain at all, and never rain twice (`tools/weather-test.mjs` runs thousands of
+    made-up races to check). Each circuit has its own usual weather, shown on the setup screen:
+    Jeddah never rains, Daytona gets thunderstorms, Suzuka is often damp, Glacier Pass snows.
+  - **Wet roads**: the tarmac darkens, shines in the wheel ruts and puddles and reflects the sky
+    (and the floodlights at night); the kerbs sheen. Drops land on the camera and run back at
+    speed. After a shower in the sun, a rainbow. Storms bring wind (and the sound of it) and
+    lightning bolts with thunder; plain rain doesn't. Snow settles on the ground and the road.
+    Fast quality keeps the plain wet look and skips the reflections, lens drops and bolts.
+  - **Forecast**: under the lap times a strip shows the next six minutes (colour for each kind of
+    weather), with a line like "Rain in 1 min", and a short banner appears when something is about
+    to arrive. Fixed weather has no forecast. Every screen in a room sees the same sky at the same
+    time. It's looks only: the handling is the same.
 - **Weekly challenge**: every Monday at 00:00 UTC a new track and direction are picked
   automatically from the date, with a fresh leaderboard. Last week's winner shows on the title
   screen. You never need to update anything. The challenge has its own ghost and delta bar: your
@@ -498,6 +511,7 @@ Once it's on, open **Track editor** from the menu.
 | `js/trackgen.js` | Turns a circuit into walls, kerbs, checkpoints and a racing line |
 | `js/circuits.js`, `js/terrain.js` | Real F1 circuit data (generated); hills, the Monaco tunnel and the Suzuka bridge |
 | `js/world.js`, `js/scenery.js` | Sky, road and themes for each track; pits, grandstands, fans, billboards, buildings and trees |
+| `js/atmosphere.js`, `js/weatherfx.js`, `js/lens.js` | The weather timeline and each circuit's climate; wet-road, snow and lightning looks; drops on the camera lens |
 | `js/trackside.js` | Marshal posts, flags, cones and paddock tents from the models in `assets/` (skipped if they aren't loaded) |
 | `js/steps.js` | Time slicing for the world builders: they are generators that pause every few milliseconds, so picking a track in a menu builds its preview between frames instead of freezing the page |
 | `js/landscape.js`, `js/placegeo.js`, `js/places/` | The real surroundings of the F1 tracks (OpenStreetMap, real terrain), placed round the game's road |
@@ -548,6 +562,7 @@ The last two also need puppeteer installed.
 - `node tools/remnant-check.mjs [trackId]` checks the closed-off roads of a venue's other layouts never show through the track.
 - `node tools/montage.mjs out.png cols a.png b.png ...` puts several screenshots on one sheet.
 - `node tools/walls-plot.mjs <trackId> <x> <z> [radius]` draws the physics walls around a point.
+- `node tools/weather-test.mjs` checks the dynamic weather over thousands of made-up races (calm, slow, cloud before rain, forecast, same sky on every screen); no browser.
 - `node tools/sky-shots.mjs [trackId] [tod-weather ...]` screenshots a track at different times and weather (e.g. `monza night-rain`).
 - `node tools/scenery-shots.mjs [trackId ...]` takes screenshots of each track (overview, racing with the mirror, looking back, highlights).
 - `node tools/engine-demo.mjs` renders a clip of each engine to WAV (with spectrograms) for tuning the sound. Engine settings are `ENGINES` in `js/audio.js`.

@@ -25,6 +25,7 @@
 </head>
 <body>
 	<div id="stage"></div>
+	<canvas id="lens" aria-hidden="true" hidden></canvas>
 	<div class="menu-toast" id="menuToast" role="status" hidden></div>
 	<div class="voice-cap" id="voiceCap" role="status" hidden><span class="vc-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="vc-who" id="vcWho"></span><span class="vc-text" id="vcText"></span></div>
 	<div class="track-loading" id="trackLoading" role="status" aria-live="polite" hidden><i class="tl-kerb" aria-hidden="true"></i><span id="trackLoadingText">Loading track</span></div>
@@ -205,12 +206,16 @@
 					</div>
 					<div class="opt-row stacked" data-for="bots trial">
 						<span class="opt-label">Weather</span>
-						<div class="seg seg-fill" id="setupWeather" role="radiogroup" aria-label="Weather">
+						<div class="seg seg-fill seg-wrap" id="setupWeather" role="radiogroup" aria-label="Weather">
 							<button data-v="clear" aria-checked="true">Clear</button>
 							<button data-v="cloudy" aria-checked="false">Cloudy</button>
+							<button data-v="fog" aria-checked="false">Fog</button>
 							<button data-v="rain" aria-checked="false">Rain</button>
+							<button data-v="storm" aria-checked="false">Storm</button>
+							<button data-v="snow" aria-checked="false">Snow</button>
 							<button data-v="dynamic" aria-checked="false">Dynamic</button>
 						</div>
+						<p class="opt-help" id="setupClimate" hidden></p>
 					</div>
 					<div class="opt-row">
 						<span class="opt-label">Direction</span>
@@ -388,12 +393,16 @@
 					</div>
 					<div class="opt-row stacked">
 						<span class="opt-label">Weather</span>
-						<div class="seg seg-fill" id="lobbyWeather" role="radiogroup" aria-label="Weather">
+						<div class="seg seg-fill seg-wrap" id="lobbyWeather" role="radiogroup" aria-label="Weather">
 							<button data-v="clear" aria-checked="true">Clear</button>
 							<button data-v="cloudy" aria-checked="false">Cloudy</button>
+							<button data-v="fog" aria-checked="false">Fog</button>
 							<button data-v="rain" aria-checked="false">Rain</button>
+							<button data-v="storm" aria-checked="false">Storm</button>
+							<button data-v="snow" aria-checked="false">Snow</button>
 							<button data-v="dynamic" aria-checked="false">Dynamic</button>
 						</div>
+						<p class="opt-help" id="lobbyClimate" hidden></p>
 					</div>
 					<div class="opt-row">
 						<span class="opt-label">Direction</span>
@@ -611,6 +620,11 @@
 			</dl>
 			<div class="sectors" id="sectors" aria-label="Sector times">
 				<span class="sec"><em>S1</em><b>--.---</b></span><span class="sec"><em>S2</em><b>--.---</b></span><span class="sec"><em>S3</em><b>--.---</b></span>
+			</div>
+			<div class="forecast" id="forecast" hidden aria-label="Weather forecast">
+				<div class="fc-head"><svg class="fc-ico" id="fcIcon" viewBox="0 0 24 24" aria-hidden="true"></svg><b id="fcNow">Clear</b><span id="fcNext"></span></div>
+				<div class="fc-strip" id="fcStrip" aria-hidden="true"></div>
+				<div class="fc-axis" aria-hidden="true"><span>Now</span><span>+3 min</span><span>+6 min</span></div>
 			</div>
 		</div>
 		<canvas id="minimap" aria-label="Track map"></canvas>

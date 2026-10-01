@@ -8,7 +8,8 @@ import { PLACE_VENUES, loadPlaces, placesLoaded } from "./placegeo.js";
 import { preload as preloadAssets, assetsStamp } from "./assets.js";
 import { Gfx } from "./gfx.js";
 import { ghostSectors } from "./ghosts.js";
-import { makeAtmosphere } from "./atmosphere.js";
+import { makeAtmosphere, kindOf, CLIMATE_NOTES, WEATHERS } from "./atmosphere.js";
+import { Lens } from "./lens.js";
 import { makeCar, disposeCar, animateCar, BODIES } from "./cars.js";
 import { Race, COUNTDOWN, QUALI_LAPS } from "./race.js";
 import { Hud, fmtTime } from "./hud.js";
@@ -86,6 +87,8 @@ scene.add(camera);
 gfx.attach(scene, camera);
 let fx = new Effects(scene, quality());
 const hud = new Hud();
+const lens = new Lens($("lens"));
+const calmMotion = matchMedia("(prefers-reduced-motion: reduce)");
 addEventListener("resize", () => {
 	renderer.setSize(innerWidth, innerHeight);
 	gfx.resize();
@@ -518,7 +521,13 @@ seg($("setupMode"), "race", v => {
 seg($("setupDraft"), "1", v => { S.setup.draft = v === "1"; });
 seg($("setupContact"), "soft", v => { S.setup.contact = v; });
 seg($("setupTod"), "default", v => { S.setup.tod = v; });
-seg($("setupWeather"), "clear", v => { S.setup.weather = v; });
+seg($("setupWeather"), "clear", v => { S.setup.weather = v; showClimate("setupClimate", S.setup.trackId, v); });
+// What a circuit's weather is usually like, under the Weather choice when it's Dynamic.
+function showClimate(id, trackId, weather){
+	const def = trackById(trackId) || defFor(trackId), el = $(id);
+	el.textContent = weather === "dynamic" ? "Follows the circuit's usual weather: " + (CLIMATE_NOTES[(def && def.theme) || "classic"] || CLIMATE_NOTES.classic) + " It changes slowly." : "";
+	el.hidden = !el.textContent;
+}
 seg($("setupQuali"), "0", v => { S.setup.quali = v === "1"; });
 seg($("setupChase"), "mine", v => { S.setup.chase = v; });
 const setupOwnGhost = seg($("setupOwnGhost"), S.settings.hideMyGhost ? "0" : "1", v => { S.settings.hideMyGhost = v === "0"; saveSettings(); });
@@ -583,6 +592,7 @@ function refreshSetup(){
 	$("setupDir").dataset.locked = def.code ? "1" : "";
 	$("setupDir").querySelectorAll("button").forEach(b => { b.disabled = !!def.code && b.dataset.v === "1"; });
 	$("setupName").textContent = def.name;
+	showClimate("setupClimate", def.id, S.setup.weather);
 	$("setupPlace").textContent = [def.place, def.realLength].filter(Boolean).join(" · ");
 	renderLayoutSeg($("setupLayout"), def.id, pickSetupLayout);
 	$("setupBlurb").textContent = def.blurb || "A track you made in the editor.";
@@ -933,19 +943,48 @@ function updateSky(r, raceMs, dt){
 		c.beam.visible = beamOpacity > 0.02 && c.model.visible;
 	}
 	audio.setRain(S.paused ? 0 : look.rain);
+	audio.setWind(S.paused ? 0 : look.wind);
 	// Under a roof (the tunnel, under the bridge): the sound closes in. Eased so it doesn't click.
 	const covered = S.world.coverAt ? S.world.coverAt(camera.position.x, camera.position.y, camera.position.z) : 0;
 	S.cover = (S.cover || 0) + (covered - (S.cover || 0)) * Math.min(1, dt * 5);
 	audio.setCover(S.paused ? 0 : S.cover);
-	// Say when the weather turns.
-	if(S.atmos.dynamic && r.phase === "racing" && !S.replay){
-		if(!S.rainOn && a.rain > 0.3){ S.rainOn = true; hud.toast("Rain is falling", 2200); }
-		else if(S.rainOn && a.rain < 0.12){ S.rainOn = false; hud.toast("The rain has stopped", 2200); }
-	}
+	// The forecast, and a word when the weather turns (dynamic weather).
+	const kind = kindOf(a);
+	if(S.atmos.changes && r.phase === "racing" && !S.replay){
+		if(S.wxKind && kind !== S.wxKind){ const msg = weatherToast(S.wxKind, kind); if(msg) hud.toast(msg, 2800); }
+		S.fcT = (S.fcT ?? 0) - dt;
+		if(S.fcT <= 0){
+			S.fcT = 1;
+			const cells = S.atmos.forecast(raceMs, 360000, 10000);
+			// The first wet or misty spell in the next couple of minutes, else the next change of any kind.
+			const j = cells.findIndex((k, i) => i > 0 && i < 15 && k !== kind && k !== "clear" && k !== "cloudy");
+			hud.setForecast({ cells, now: kind, next: j >= 0 ? { kind: cells[j], in: j * 10 } : S.atmos.next(raceMs, 150000) });
+			// And a warning a minute or two ahead of it.
+			if(j >= 0 && j <= 12){
+				const key = cells[j] + ":" + Math.round((raceMs / 1000 + j * 10) / 25), sec = j * 10;
+				if(S.fcAnnounced !== key){ S.fcAnnounced = key; hud.toast(`${WEATHERS[cells[j]]} in about ${sec < 50 ? sec + " s" : sec < 100 ? "a minute" : Math.round(sec / 60) + " minutes"}`, 4200); }
+			}
+		}
+	}else if(!S.atmos.changes && S.fcT !== -1){ S.fcT = -1; hud.setForecast(null); }
+	S.wxKind = r.phase === "racing" ? kind : null;
+	// Drops on the lens, in the rain: not on the TV cameras or the replay, not on Fast, and not if motion is reduced.
+	const focus = focusCar(), v = focus ? Math.hypot(focus.data.xv, focus.data.yv) / 0.4 : 0;
+	lens.update(dt, { rain: S.paused ? 0 : look.rain, speed: Math.min(1, v), active: !S.paused && !S.replay && !tv.live && S.screen === "race" && quality() === "high" && !calmMotion.matches });
 	// Spray behind cars on a wet track.
 	if(look.wet > 0.2 && !S.paused && !S.replay && r.phase === "racing"){
 		for(const c of r.cars) if(!c.gone && c.elim === null) fx.spray(c, dt, look.wet);
 	}
+}
+
+// What the weather turning says: "It's starting to rain", "The rain has stopped".
+function weatherToast(from, to){
+	const dry = k => k === "clear" || k === "cloudy";
+	if(to === "rain") return "It's starting to rain";
+	if(to === "storm") return "A storm is rolling in";
+	if(to === "fog") return "Mist is coming down";
+	if(to === "snow") return "It's started to snow";
+	if(dry(to)) return from === "rain" ? "The rain has stopped" : from === "storm" ? "The storm has passed" : from === "fog" ? "The mist is lifting" : from === "snow" ? "The snow has stopped" : "";
+	return "";
 }
 
 // Spectating: joined mid-race, knocked out, or finished a few seconds ago.
@@ -2141,6 +2180,7 @@ function renderLobby(room){
 	lobbySettingsControls.contact(st.contact === "classic" ? "classic" : "soft");
 	lobbySettingsControls.tod(st.tod || "default");
 	lobbySettingsControls.weather(st.weather || "clear");
+	showClimate("lobbyClimate", st.track, st.weather);
 	for(const id of ["lobbyTod", "lobbyWeather"]){
 		$(id).dataset.locked = host ? "" : "1";
 		$(id).querySelectorAll("button").forEach(b => { b.disabled = !host; });

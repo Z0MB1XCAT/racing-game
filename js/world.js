@@ -3,10 +3,11 @@
 import { GRID } from "./physics.js";
 import { START_Z, seededRandom } from "./trackgen.js";
 import { buildScenerySteps, canvasTexture } from "./scenery.js";
-import { naturalHour } from "./atmosphere.js";
+import { naturalHour, CLIMATES } from "./atmosphere.js";
 import { buildTerrainSteps, buildTunnel, buildBridge, buildSkirts, TUNNEL_WALL } from "./terrain.js";
 import { placeGeoSteps } from "./placegeo.js";
 import { slice, drain } from "./steps.js";
+import { wetRoad, snowPatch, makeEnvSky, makeBolt } from "./weatherfx.js";
 import { remnantsSteps, remnantGround } from "./remnants.js";
 import { detail } from "./materials.js";
 import { instantiate, hasModel, modelSize } from "./assets.js";
@@ -36,6 +37,10 @@ export const THEMES = {
 	snow: { sky: [0x93acc6, 0xe7eff7], ground: 0xe9eff5, wall: 0x2f6fbd, road: 0x5a5f68, trees: "snowpine", treeDensity: 1.1,
 		mountains: "peaks", mountainColor: 0x6d7c8e, fog: [0xdfe8f0, 240, 1100], snowfall: true, sun: 0.6, amb: 0.65, grandstand: 1, standColor: 0x2f6fbd }
 };
+
+// Each circuit's usual weather (js/atmosphere.js), and the colour of its haze: Jeddah's is sand.
+for(const k of Object.keys(THEMES)) THEMES[k].climate = CLIMATES[k] || CLIMATES.classic;
+THEMES.jeddah.haze = 0xd8c6a0;
 
 // Ground colours for the real ground cover (placegeo.js landAt), from the track's own grass.
 function landColours(theme, town){
@@ -213,7 +218,7 @@ function blockRibbon(center, from, to, y, keepFn, colorFn){
 const SKY_VERT = `varying vec3 vDir; void main(){ vDir = position; vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }`;
 const SKY_FRAG = `
 	uniform vec3 uTop, uBottom, uSunDir, uSunColor;
-	uniform float uSun, uNight, uCloud, uTime;
+	uniform float uSun, uNight, uCloud, uTime, uRainbow;
 	varying vec3 vDir;
 	float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 	float noise(vec2 p){
@@ -237,6 +242,14 @@ const SKY_FRAG = `
 		cloudCol *= 1.0 - 0.3 * smoothstep(0.55, 0.95, c);                   // darker where they're thick
 		col = mix(col, cloudCol, cl * (0.86 - 0.3 * uNight));
 		col += uSunColor * pow(s, 9.0) * cl * 0.22 * uSun;                   // a bright edge near the sun
+		// A rainbow after a shower: a ring about 42 degrees round the point opposite the sun, red outside, violet inside.
+		if(uRainbow > 0.001){
+			float ang = acos(clamp(dot(d, -normalize(vec3(uSunDir.x, 0.0, uSunDir.z))), -1.0, 1.0));
+			float r = (ang - 0.733) / 0.032;
+			float band = exp(-r * r * 0.5) * smoothstep(-0.02, 0.1, d.y);
+			vec3 spec = clamp(vec3(1.0 - abs(r - 0.9) * 0.9, 1.0 - abs(r) * 1.1, 1.0 - abs(r + 0.9) * 0.9), 0.0, 1.0);
+			col += spec * band * uRainbow * (0.55 - 0.35 * clamp(uCloud, 0.0, 1.0)) * (1.0 - uNight);
+		}
 		col += (hash(gl_FragCoord.xy) - 0.5) / 255.0;                         // (dither: no bands in the gradient)
 		gl_FragColor = vec4(col, 1.0);
 	}`;
@@ -244,7 +257,7 @@ function sky(top, bottom, radius){
 	const g = new THREE.SphereBufferGeometry(radius, 32, 16);
 	const mesh = new THREE.Mesh(g, new THREE.ShaderMaterial({
 		uniforms: { uTop: { value: new THREE.Color(top) }, uBottom: { value: new THREE.Color(bottom) }, uSunDir: { value: new THREE.Vector3(0.4, 0.8, -0.3).normalize() },
-			uSunColor: { value: new THREE.Color(0xffffff) }, uSun: { value: 0.8 }, uNight: { value: 0 }, uCloud: { value: 0.2 }, uTime: { value: 0 } },
+			uSunColor: { value: new THREE.Color(0xffffff) }, uSun: { value: 0.8 }, uNight: { value: 0 }, uCloud: { value: 0.2 }, uTime: { value: 0 }, uRainbow: { value: 0 } },
 		vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, side: THREE.BackSide, fog: false, depthWrite: false
 	}));
 	mesh.renderOrder = 10;
@@ -298,6 +311,7 @@ export function* buildWorldSteps(track, opts = {}){
 	const updaters = [];
 	const keep = x => (disposables.push(x), x);
 	if(opts.sink) opts.sink.disposables = disposables;
+	const snowUniforms = [];             // ground materials that whiten as snow settles (weatherfx.js)
 
 	// The rest of the venue's circuit (its other layouts' roads), closed off (remnants.js). The world
 	// is made big enough for all of it.
@@ -373,6 +387,8 @@ export function* buildWorldSteps(track, opts = {}){
 	}else{
 		groundMat = keep(new THREE.MeshLambertMaterial({ color: theme.ground }));
 	}
+	const snowy = quality === "high" && !theme.snowfall;       // (Glacier Pass is white already)
+	if(snowy) snowUniforms.push(snowPatch(groundMat));
 	// Which side is sea (Monaco, Jeddah), in real compass terms.
 	let seaEdge = null;
 	if(theme.sea && track.toMap){
@@ -462,6 +478,7 @@ export function* buildWorldSteps(track, opts = {}){
 		if(tmat === groundMat) tmat = keep(tmat.clone());
 		tmat.map = turf.texture;
 		if(!turf.tint && !colorAt) tmat.color.set(0xffffff);
+		if(snowy) snowUniforms.push(snowPatch(tmat));
 		const tm = new THREE.Mesh(terrain.geometry, tmat);
 		tm.receiveShadow = shadows;
 		tm.frustumCulled = false;
@@ -476,7 +493,7 @@ export function* buildWorldSteps(track, opts = {}){
 	ground.receiveShadow = shadows;
 	group.add(ground);
 
-	let roadMat = null, roadLines = null, remnantSides = [];
+	let roadMat = null, roadLines = null, remnantSides = [], roadFx = null, envSky = null, kerbMatRef = null;
 	// Road, edge lines, kerbs, start line, grid boxes (circuits only; the Classic look has none).
 	if(track.center && theme.road !== undefined){
 		const c = track.center, hw = c.hw;
@@ -485,6 +502,12 @@ export function* buildWorldSteps(track, opts = {}){
 		const tarmac = detail("asphalt", quality);
 		roadMat.map = tarmac.texture;
 		if(!tarmac.tint) roadMat.color.set(0xffffff);
+		// On High quality the wet road shines in puddles and ruts and reflects the sky (weatherfx.js).
+		if(quality === "high"){
+			roadFx = wetRoad(roadMat);
+			envSky = makeEnvSky(); keep(envSky.tex);
+			roadMat.envMap = envSky.tex; roadMat.reflectivity = 0.6; roadMat.combine = THREE.MixOperation;
+		}
 		const road = new THREE.Mesh(keep(ribbon(c, hw + 0.8, -hw - 0.8, 0.02, c.dup ? i => !c.dup[i] : null)), roadMat);   // (a road used twice is drawn once)
 		road.receiveShadow = shadows;
 		group.add(road);
@@ -495,7 +518,7 @@ export function* buildWorldSteps(track, opts = {}){
 		group.add(new THREE.Mesh(keep(ribbon(c, hw - 0.5, hw - 0.8, 0.035, keepL)), lineMat));
 		group.add(new THREE.Mesh(keep(ribbon(c, -hw + 0.8, -hw + 0.5, 0.035, keepR)), lineMat));
 
-		const kerbMat = keep(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+		const kerbMat = kerbMatRef = keep(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
 		if(slice.over()) yield "road lines";
 		for(const k of track.kerbs){
 			if(slice.over()) yield "kerbs";
@@ -987,15 +1010,25 @@ export function* buildWorldSteps(track, opts = {}){
 	if(slice.over()) yield "mountains done";
 	// Falling snow that follows the camera.
 	let snow = null;
-	if(theme.snowfall && quality !== "low"){
-		const N = 1400, pos = new Float32Array(N * 3);
+	{
+		const N = quality === "low" ? 800 : 2200, pos = new Float32Array(N * 3);
 		for(let i = 0; i < N; i++){ pos[i * 3] = (rand() - 0.5) * 80; pos[i * 3 + 1] = rand() * 30; pos[i * 3 + 2] = (rand() - 0.5) * 80; }
 		const g = new THREE.BufferGeometry();
 		g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-		snow = new THREE.Points(keep(g), keep(new THREE.PointsMaterial({ color: 0xffffff, size: 0.25, transparent: true, opacity: 0.85 })));
+		// (Soft round flakes, not square dots.)
+		const flake = keep(canvasTexture(32, 32, (c, w, h) => {
+			const gr = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+			gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.45, "rgba(255,255,255,0.7)"); gr.addColorStop(1, "rgba(255,255,255,0)");
+			c.fillStyle = gr; c.fillRect(0, 0, w, h);
+		}));
+		snow = new THREE.Points(keep(g), keep(new THREE.PointsMaterial({ color: 0xffffff, size: 0.3, map: flake, transparent: true, opacity: 0.85, depthWrite: false })));
 		snow.frustumCulled = false;
+		snow.visible = false;
 		group.add(snow);
 	}
+	// Lightning, far off, in a storm (High quality).
+	const bolt = quality === "low" ? null : makeBolt();
+	if(bolt){ keep(bolt.line.geometry); keep(bolt.line.material); group.add(bolt.line); }
 
 	// Rain: streaks that follow the camera. (Glacier Pass gets heavier snow instead.)
 	let rainLines = null;
@@ -1055,33 +1088,52 @@ export function* buildWorldSteps(track, opts = {}){
 	const skyRadius = farPlane * 0.85;
 	const GREY_TOP = new THREE.Color(0x6c7682), GREY_BOTTOM = new THREE.Color(0xa3acb5), GREY_FOG = new THREE.Color(0x9aa3ad);
 	const skyColor = new THREE.Color(skyBottom);
-	const now = { hour: naturalHour(theme), cloud: 0.08, rain: 0 };
-	const look = { night: palettes[theme.night ? "night" : "day"].night, dim: 0, rain: 0, wet: 0, lights: 0, warm: 0 };
+	const now = { hour: naturalHour(theme), cloud: 0.08, rain: 0, fog: 0, snow: 0, wind: 0, storm: 0 };
+	const look = { night: palettes[theme.night ? "night" : "day"].night, dim: 0, rain: 0, wet: 0, lights: 0, warm: 0, fog: 0, snow: 0, wind: 0, storm: 0, cover: 0, rainbow: 0 };
 	const sunTint = new THREE.Color();
 	let wet = 0, flash = 0, flashTimer = 3, applyTimer = 0, lastKey = "";
-	let onThunder = null;
-	const tA = new THREE.Color(), tB = new THREE.Color(), tF = new THREE.Color();
+	let onThunder = null, holdFlash = false;
+	// A flash, a bolt somewhere out in the sky, and the thunder a moment later (longer the further off).
+	function strikeNow(az){
+		flash = 1;
+		const dist = 420 + Math.random() * 520;
+		if(bolt) bolt.strike(az ?? Math.random() * Math.PI * 2, dist);
+		if(onThunder) onThunder(0.35 + dist / 450 * 1.8);
+	}
+	const tA = new THREE.Color(), tB = new THREE.Color(), tF = new THREE.Color(), tM = new THREE.Color();
+	let sunAmt = 0, snowAmt = 0, snowCover = 0, rainbowT = 0, lastRain = 0, envT = 0;
+	const sunDirTmp = new THREE.Vector3();
 	function apply(){
 		const p = paletteAt(palettes, now.hour);
-		const grey = Math.min(1, now.cloud * 0.62 + now.rain * 0.25);
-		const dark = 1 - 0.82 * p.night;
+		const mist = now.fog, storm = now.storm;
+		const grey = Math.min(1, now.cloud * 0.62 + now.rain * 0.25 + storm * 0.2 + mist * 0.3 + now.snow * 0.2);
+		const dark = (1 - 0.82 * p.night) * (1 - 0.3 * storm);
+		// The haze: pale grey-white, or sand where a circuit's air is dusty; dark at night.
+		tM.set(theme.haze ?? 0xcdd5db).multiplyScalar(0.3 + 0.7 * (1 - 0.85 * p.night));
 		tA.set(p.top).lerp(tF.copy(GREY_TOP).multiplyScalar(dark), grey);
 		tB.set(p.bottom).lerp(tF.copy(GREY_BOTTOM).multiplyScalar(dark), grey);
+		tA.lerp(tM, mist * 0.55); tB.lerp(tM, mist * 0.88);
 		const f = 1 + flash * 2.2;
 		tA.multiplyScalar(f); tB.multiplyScalar(f);
 		const key = [tA.getHex(), tB.getHex()].join();
 		if(skyMesh && key !== lastKey) paintSky(skyMesh, tA, tB, skyRadius);
 		lastKey = key;
 		skyColor.copy(tB);
-		fog.color.set(p.fog).lerp(tF.copy(GREY_FOG).multiplyScalar(dark), grey);
-		fog.near = fogBase[0] + (Math.min(fogBase[0], 40) - fogBase[0]) * now.rain * 0.9;
-		fog.far = fogBase[1] + (Math.min(fogBase[1], 520) - fogBase[1]) * now.rain;
+		fog.color.set(p.fog).lerp(tF.copy(GREY_FOG).multiplyScalar(dark), grey).lerp(tM, mist * 0.9);
+		// Rain closes the view in, snow a little less, and mist most of all.
+		let near = fogBase[0] + (Math.min(fogBase[0], 40) - fogBase[0]) * now.rain * 0.9;
+		let far = fogBase[1] + (Math.min(fogBase[1], 520) - fogBase[1]) * now.rain;
+		// (Mist and snow work on the logarithm: tracks with no fog of their own start from a distance of thousands.)
+		const logLerp = (a, b, k) => b >= a ? a : a * Math.pow(b / a, k);
+		near = Math.min(near, logLerp(fogBase[0], 4, mist));
+		far = Math.min(far, logLerp(fogBase[1], 105, mist), logLerp(fogBase[1], 380, now.snow));
+		fog.near = near; fog.far = far;
 		if(p.night > 0.5) fog.far *= 1 - 0.15 * p.night;
 		hemi.color.set(p.hemiSky); hemi.groundColor.set(p.hemiGround);
 		hemi.intensity = p.hemi * (1 - 0.15 * now.cloud) + flash * 1.4;
 		ambient.intensity = p.amb;
 		sun.color.set(p.sunColor);
-		sun.intensity = p.sun * (1 - 0.62 * now.cloud);
+		sun.intensity = p.sun * (1 - 0.62 * now.cloud) * (1 - 0.55 * mist);
 		// The sun rises in the east and sets in the west; at night it's the moon, fairly high.
 		const day = now.hour > 5.5 && now.hour < 20.5;
 		const arc = day ? (now.hour - 6) / 12 * Math.PI : 1.1;
@@ -1089,29 +1141,33 @@ export function* buildWorldSteps(track, opts = {}){
 		sunOffset.set(Math.cos(arc) * 300, 70 + up * 330, -120);
 		// The sky shows the sun (or moon) where the light comes from; the grade warms up when the light is golden.
 		sunTint.set(p.sunColor);
-		look.warm = Math.max(0, Math.min(1, (sunTint.r - sunTint.b) * 1.8)) * (1 - 0.6 * now.cloud);
+		look.warm = Math.max(0, Math.min(1, (sunTint.r - sunTint.b) * 1.8)) * (1 - 0.6 * now.cloud) * (1 - 0.6 * mist);
+		sunAmt = Math.min(1.2, sun.intensity / 0.7) * (1 - 0.75 * now.cloud) * (1 - 0.7 * mist);
 		if(skyMesh){
 			const u = skyMesh.material.uniforms;
 			u.uSunDir.value.copy(sunOffset).normalize(); u.uSunColor.value.copy(sunTint);
-			u.uSun.value = Math.min(1.2, sun.intensity / 0.7) * (1 - 0.75 * now.cloud);
-			u.uNight.value = p.night; u.uCloud.value = 0.15 + 0.85 * now.cloud;
+			u.uSun.value = sunAmt;
+			u.uNight.value = p.night; u.uCloud.value = 0.15 + 0.85 * Math.max(now.cloud, mist * 0.9);
 		}
 		if(!shadows){ sun.position.copy(sunOffset); sun.target.position.set(0, 0, 0); }
 		// Lights: floodlights and headlights come on as it gets dark, or in heavy weather.
-		const dim = Math.max(p.night, now.cloud * 0.35 + now.rain * 0.3);
-		look.night = p.night; look.dim = dim; look.rain = now.rain;
+		const dim = Math.max(p.night, now.cloud * 0.35 + now.rain * 0.3 + storm * 0.2 + mist * 0.3);
+		look.night = p.night; look.dim = dim; look.rain = now.rain; look.fog = mist; look.wind = now.wind; look.storm = storm;
 		if(roadLines) roadLines.color.setHex(0xe9edf2).multiplyScalar(1 - 0.34 * p.night);
 		look.lights = Math.max(theme.lights ? Math.max(p.night, 0.35) : 0, Math.min(1, (dim - 0.25) / 0.5));
 		if(poolMat) poolMat.opacity = 0.3 * look.lights;
 		if(headMat) headMat.color.set(mixHex(0x8d939e, 0xfff1c9, Math.min(1, look.lights * 1.5)));
 		if(extras.setNight) extras.setNight(Math.max(p.night, dim * 0.4));
-		starMat.opacity = p.night * (1 - now.cloud) * 0.9;
+		starMat.opacity = p.night * (1 - now.cloud) * 0.9 * (1 - mist);
 		stars.visible = starMat.opacity > 0.02;
-		cloudMat.opacity = Math.min(0.9, now.cloud * 0.95);
+		cloudMat.opacity = Math.min(0.9, Math.max(now.cloud, mist * 0.6) * 0.95);
 		cloudMat.color.set(tB).lerp(tF.set(0xffffff), 0.2 * dark);
 		clouds.visible = cloudMat.opacity > 0.02;
 		if(rainLines){ rainLines.material.opacity = Math.min(0.55, now.rain * 0.6); rainLines.visible = now.rain > 0.02; }
-		if(snow){ snow.material.opacity = 0.85; snow.material.size = 0.25 + now.rain * 0.25; }
+		// Snow: always falling on Glacier Pass (more in bad weather), elsewhere when the weather says so.
+		snowAmt = theme.snowfall ? Math.max(0.5, now.snow, now.rain * 0.9) : now.snow;
+		look.snow = snowAmt;
+		if(snow){ snow.material.opacity = Math.min(0.95, 0.25 + snowAmt * 0.7); snow.material.size = 0.2 + snowAmt * 0.14; snow.visible = snowAmt > 0.03; }
 	}
 	apply();
 
@@ -1188,9 +1244,11 @@ export function* buildWorldSteps(track, opts = {}){
 		coverAt(x, y, z){ const r = roofAt(x, z); return r !== undefined && y < r ? 1 : 0; },
 		look,
 		// { hour 0-24, cloud 0-1, rain 0-1 }. Cheap to call every frame.
-		setAtmosphere(a){ now.hour = a.hour; now.cloud = a.cloud; now.rain = a.rain; },
-		defaultAtmosphere(){ return { hour: naturalHour(theme), cloud: 0.08, rain: 0 }; },
+		setAtmosphere(a){ now.hour = a.hour; now.cloud = a.cloud; now.rain = a.rain; now.fog = a.fog || 0; now.snow = a.snow || 0; now.wind = a.wind || 0; now.storm = a.storm || 0; },
+		defaultAtmosphere(){ return { hour: naturalHour(theme), cloud: 0.08, rain: 0, fog: 0, snow: 0, wind: 0, storm: 0 }; },
 		set onThunder(fn){ onThunder = fn; },
+		// (For the screenshot tools and tests: a strike, which stays lit for a screenshot if hold is true; strike(false) lets it go.)
+		strike(hold, az){ if(hold === false){ holdFlash = false; return; } strikeNow(az); holdFlash = !!hold; if(hold) flash = 0.45; },
 		// Crowd excitement 0..1 (the start, a finish).
 		cheer(v){ extras.cheer(v); },
 		skyColor,
@@ -1198,19 +1256,49 @@ export function* buildWorldSteps(track, opts = {}){
 		// cam: where the camera is (the rain falls around it), if not the focus.
 		update(dt, focus, cam){
 			for(const u of updaters) u(dt);
-			// Wet road builds up in the rain and dries slowly afterwards.
+			// Wet road builds up in the rain and dries slowly afterwards; snow settles and melts more slowly still.
 			wet += (now.rain - wet) * Math.min(1, dt * (now.rain > wet ? 0.12 : 0.04));
 			look.wet = wet;
+			const snowGoal = theme.snowfall ? 0 : now.snow;
+			snowCover += (snowGoal - snowCover) * Math.min(1, dt * (snowGoal > snowCover ? 0.05 : 0.012));
+			look.cover = snowCover;
 			if(roadMat){
-				roadMat.color.copy(baseRoad).multiplyScalar(1 - 0.4 * wet);
+				roadMat.color.copy(baseRoad).multiplyScalar(1 - 0.4 * wet * (1 - snowCover));
 				roadMat.specular.setScalar(0.28 * wet);
+				roadMat.shininess = 40 + 50 * wet;
+				if(roadFx){ roadFx.wet.value = wet; roadFx.snow.value = snowCover; }
 			}
-			// Lightning in heavy rain, with thunder a moment later.
-			if(now.rain > 0.7){
+			if(kerbMatRef) kerbMatRef.color.setScalar(1 - 0.2 * wet);
+			for(const u of snowUniforms) u.value = snowCover;
+			// What a wet road reflects is the sky as it is now: painted again when it's wet, a couple of times a second at most.
+			envT -= dt;
+			if(envSky && wet > 0.04 && envT <= 0){
+				envT = 1.3;
+				sunDirTmp.copy(sunOffset).normalize();
+				envSky.paint(tA, tB, sunDirTmp, sunTint, Math.min(1, sunAmt), look.lights);
+			}
+			// Lightning in a storm (or now and then in the heaviest rain), with thunder a moment later: the bolt is somewhere
+			// out in the sky, and the thunder takes longer the further off it is.
+			const lightning = Math.max(now.storm, now.rain > 0.9 ? 0.3 : 0);
+			if(lightning > 0.25){
 				flashTimer -= dt;
-				if(flashTimer <= 0){ flash = 1; flashTimer = 6 + Math.random() * 14; if(onThunder) onThunder(0.4 + Math.random() * 1.6); }
+				if(flashTimer <= 0){ strikeNow(); flashTimer = (24 - 19 * lightning) * (0.6 + Math.random() * 0.9); }
 			}
-			if(flash > 0) flash = Math.max(0, flash - dt * (flash > 0.5 ? 6 : 2.5));
+			if(flash > 0 && !holdFlash) flash = Math.max(0, flash - dt * (flash > 0.5 ? 6 : 2.5));
+			if(bolt){
+				const on = flash > 0.2;
+				bolt.line.visible = on;
+				bolt.line.material.opacity = on ? Math.min(1, flash * 1.1) * (0.65 + 0.35 * Math.random()) : 0;
+				const cf = cam || focus;
+				if(cf) bolt.line.position.set(cf.x, (cf.y || 0), cf.z);
+			}
+			// A rainbow after a shower, while the sun is out: it fades in, stays about a minute, and fades out.
+			if(lastRain > 0.3 && now.rain <= 0.3 && now.hour > 7 && now.hour < 18 && now.cloud < 0.9 && now.fog < 0.4) rainbowT = 75;
+			lastRain = now.rain;
+			let rainbow = 0;
+			if(rainbowT > 0){ rainbowT -= dt; const k = Math.min(1, (75 - rainbowT) / 8, rainbowT / 15); rainbow = Math.max(0, k * k * (3 - 2 * k)); }
+			look.rainbow = rainbow;
+			if(skyMesh) skyMesh.material.uniforms.uRainbow.value = rainbow;
 			applyTimer -= dt;
 			if(applyTimer <= 0 || flash > 0){ applyTimer = 0.1; apply(); }
 			if(focus){
@@ -1220,7 +1308,7 @@ export function* buildWorldSteps(track, opts = {}){
 			const rf = cam || focus;
 			if(rainLines && rainLines.visible && rf){
 				const p = rainLines.geometry.attributes.position, a = p.array;
-				const fall = dt * (38 + now.rain * 14), ys = rainLines.userData.fallY;
+				const fall = dt * (38 + now.rain * 14), ys = rainLines.userData.fallY, windX = now.wind * 9 * dt, slant = 0.12 + now.wind * 0.8;
 				const ox = rf.x, oy = (rf.y || 0) - 14, oz = rf.z;
 				// Only look for roofs when there are any nearby.
 				const nearRoof = roofs.size > 0 && (roofAt(ox, oz) !== undefined || [[-30, 0], [30, 0], [0, -30], [0, 30], [-20, -20], [20, 20], [-20, 20], [20, -20]].some(([dx, dz]) => roofAt(ox + dx, oz + dz) !== undefined));
@@ -1234,23 +1322,29 @@ export function* buildWorldSteps(track, opts = {}){
 						if(r !== undefined && y + oy < r){ y = top = -500; }      // under a roof: not drawn
 					}
 					a[i + 1] = y; a[i + 4] = top;
+					// The wind carries the rain sideways and leans the streaks.
+					let x = a[i] + windX;
+					if(x > 35) x -= 70;
+					a[i] = x; a[i + 3] = x + slant;
 				}
 				p.needsUpdate = true;
 				rainLines.position.set(ox, oy, oz);
 			}
-			if(skyMesh){ skyMesh.material.uniforms.uTime.value += dt; if(focus) skyMesh.position.set(focus.x, 0, focus.z); }
+			if(skyMesh){ skyMesh.material.uniforms.uTime.value += dt * (1 + now.wind * 3); if(focus) skyMesh.position.set(focus.x, 0, focus.z); }
 			if(shadows && focus){
 				snapToTexels(focus.x, focus.y || 0, focus.z, snapped);
 				sun.target.position.copy(snapped);
 				sun.position.set(snapped.x + sunOffset.x, snapped.y + sunOffset.y, snapped.z + sunOffset.z);
 			}
-			if(snow && focus){
+			if(snow && snow.visible && focus){
 				const p = snow.geometry.attributes.position;
 				for(let i = 0; i < p.count; i++){
-					let y = p.getY(i) - dt * (6 + now.rain * 10);
+					let y = p.getY(i) - dt * (6 + now.rain * 10 + now.snow * 3);
 					if(y < 0) y += 30;
 					p.setY(i, y);
-					p.setX(i, p.getX(i) + Math.sin(y * 0.4 + i) * dt * 0.6);
+					let x = p.getX(i) + Math.sin(y * 0.4 + i) * dt * 0.6 + now.wind * 7 * dt;
+					if(x > 40) x -= 80;
+					p.setX(i, x);
 				}
 				p.needsUpdate = true;
 				snow.position.set(focus.x, (focus.y || 0) - 2, focus.z);

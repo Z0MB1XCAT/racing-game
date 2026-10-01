@@ -13,6 +13,16 @@ export function fmtTime(ms, withMinutes = true){
 function setText(el, text){
 	if(el && el._t !== text){ el._t = text; el.textContent = text; }
 }
+const WEATHER_NAMES = { clear: "Clear", cloudy: "Cloudy", fog: "Fog", rain: "Rain", storm: "Storm", snow: "Snow" };
+// Small line icons (24 x 24) for the forecast.
+const ICONS = {
+	clear: '<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/>',
+	cloudy: '<path d="M7 18h10a4 4 0 0 0 .6-7.95A5.5 5.5 0 0 0 7 9.5 4.3 4.3 0 0 0 7 18z"/>',
+	fog: '<path d="M4 9h13M7 13h13M4 17h11"/>',
+	rain: '<path d="M7 14h10a3.6 3.6 0 0 0 .5-7.15A5 5 0 0 0 7.2 6.2 3.9 3.9 0 0 0 7 14z"/><path d="M8 17l-1 3M12 17l-1 3M16 17l-1 3"/>',
+	storm: '<path d="M13 3L6 13h5l-1 8 8-11h-5z"/>',
+	snow: '<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/>'
+};
 
 export class Hud {
 	constructor(){
@@ -232,6 +242,32 @@ export class Hud {
 		t.hidden = false;
 		clearTimeout(this.toastTimer);
 		this.toastTimer = setTimeout(() => { t.hidden = true; }, ms);
+	}
+
+	// The weather forecast (dynamic weather only): info = { cells: [kind per 10 s, the first is now], now: kind, next: { kind, in } | null },
+	// or null to hide it. The strip is only rebuilt when something in it changes.
+	setForecast(info){
+		const el = $("forecast");
+		if(!info){ if(!el.hidden) el.hidden = true; return; }
+		el.hidden = false;
+		if(el.dataset.k !== info.now){
+			el.dataset.k = info.now;
+			$("fcNow").textContent = WEATHER_NAMES[info.now] || info.now;
+			$("fcIcon").innerHTML = ICONS[info.now] || "";
+		}
+		let next = "";
+		if(info.next){
+			const s = Math.round(info.next.in), t = s >= 90 ? Math.round(s / 30) * 30 : s >= 60 ? 60 : Math.max(10, Math.round(s / 10) * 10);
+			next = (WEATHER_NAMES[info.next.kind] || info.next.kind) + " in " + (t >= 60 ? Math.floor(t / 60) + " min" + (t % 60 ? " " + (t % 60) + " s" : "") : t + " s");
+		}
+		setText($("fcNext"), next);
+		const key = info.cells.join(",");
+		if(el._key !== key){
+			el._key = key;
+			const runs = [];
+			for(const k of info.cells){ const r = runs[runs.length - 1]; if(r && r.k === k) r.n++; else runs.push({ k, n: 1 }); }
+			$("fcStrip").innerHTML = runs.map(r => `<i data-k="${r.k}" style="width:${(r.n / info.cells.length * 100).toFixed(2)}%"></i>`).join("");
+		}
 	}
 
 	spectating(text){

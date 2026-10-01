@@ -55,6 +55,8 @@ on purpose; `npm run setup` recreates them. If the server is already running, do
 | `e2e.mjs <flow> [trackId]` | drives the game in headless Chrome (flows: solo, online, tv, midjoin, p2p, quali, champ, migrate, ghost, ...) |
 | `audio-test.mjs` | sound survives bad values and rebuilds itself if it breaks |
 | `cover-test.mjs` | no rain under the Monaco tunnel / Suzuka bridge, and the sound knows it's covered |
+| `weather-test.mjs` | dynamic weather over thousands of made-up races: calm (rain in about 1 race in 4, never twice), slow changes, cloud before rain, forecast, same sky everywhere; no browser |
+| `sky-shots.mjs [id] [tod-weather ...]` | screenshots a track in each time and weather (`day-storm+bolt` holds a lightning strike); into `temporary screenshots/sky/` |
 | `spot-shots.mjs <id> [rev] [rain] [spots...]` | screenshots round a track (fractions, `s<i>`, `v<frac>`, `above<frac>`, `tunnel`, `bridge`, `top`, ...) into `temporary screenshots/spots/` |
 | `montage.mjs out.png cols a.png b.png ...` | several screenshots on one sheet (read it with the Read tool) |
 | `corner-plot.mjs <id> <fraction> [radius]` | the game road over the real layout at a corner |
