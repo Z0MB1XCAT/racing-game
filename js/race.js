@@ -461,6 +461,9 @@ export class Race {
 		}
 	}
 
+	// How many seconds car a is ahead of car b round the lap (the same estimate the timing tower uses).
+	gapSeconds(a, b){ return (raceProgress(a) - raceProgress(b)) * this.lapLen / AVG_SPEED; }
+
 	// Race order, best first.
 	standings(){
 		if(this.mode === "quali"){

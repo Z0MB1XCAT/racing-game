@@ -215,8 +215,8 @@ export function buildHighlights(events, endT, maxClips = 7){
 	}
 	const clips = [];
 	if(start) clips.push({ from: 0, to: 5500, focus: start.a, text: start.text, type: "start" });
-	for(const e of picked.sort((a, b) => a.t - b.t)) clips.push({ from: Math.max(0, e.t - 3500), to: Math.min(endT, e.t + 2500), focus: e.a, text: e.text, type: e.type });
-	if(finish) clips.push({ from: Math.max(0, finish.t - 4500), to: Math.min(endT, finish.t + 2000), focus: finish.a, text: finish.text, type: finish.type });
+	for(const e of picked.sort((a, b) => a.t - b.t)) clips.push({ from: Math.max(0, e.t - 3500), to: Math.min(endT, e.t + 2500), focus: e.a, text: e.text, type: e.type, a: e.a, b: e.b, pos: e.pos });
+	if(finish) clips.push({ from: Math.max(0, finish.t - 4500), to: Math.min(endT, finish.t + 2000), focus: finish.a, text: finish.text, type: finish.type, a: finish.a, b: finish.b, pos: finish.pos });
 	return clips;
 }
 

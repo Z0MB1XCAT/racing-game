@@ -26,6 +26,7 @@
 <body>
 	<div id="stage"></div>
 	<div class="menu-toast" id="menuToast" role="status" hidden></div>
+	<div class="voice-cap" id="voiceCap" role="status" hidden><span class="vc-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="vc-who" id="vcWho"></span><span class="vc-text" id="vcText"></span></div>
 	<div class="track-loading" id="trackLoading" role="status" aria-live="polite" hidden><i class="tl-kerb" aria-hidden="true"></i><span id="trackLoadingText">Loading track</span></div>
 	<div class="update-bar" id="updateBar" role="status" hidden>
 		<span>A new version of the game is out.</span>
@@ -238,6 +239,7 @@
 						<ol class="board" id="setupBoard"></ol>
 					</div>
 					<button class="go-btn" id="setupGo"><span>Start race</span></button>
+					<button class="go-btn ghost" id="setupWatch"><span>Watch the bots race</span></button>
 				</aside>
 			</div>
 		</section>
@@ -265,8 +267,36 @@
 					<input id="codeInput" class="code-input" maxlength="4" autocomplete="off" spellcheck="false" placeholder="ABCD" aria-label="Room code">
 					<button class="go-btn ghost" id="joinBtn"><span>Join room</span></button>
 				</div>
+				<div class="panel kerbed stack">
+					<div class="eyebrow">Classroom</div>
+					<h3 class="screen-title" style="font-size:32px">Big screen</h3>
+					<p class="msg" style="color:var(--mute)">Put a room's races on a projector: the grid, live cameras with commentary, and the results. It doesn't race.</p>
+					<input id="screenCode" class="code-input" maxlength="4" autocomplete="off" spellcheck="false" placeholder="ABCD" aria-label="Room code for the big screen">
+					<button class="go-btn ghost" id="screenBtn"><span>Show on this screen</span></button>
+				</div>
 			</div>
 			<p class="msg err" id="onlineMsg" style="margin-top:16px" hidden></p>
+		</section>
+
+		<!-- Big screen: the waiting board for a projector (Online > Big screen, or ?tv=CODE) -->
+		<section class="screen scrim-full" id="screen-bigtv" data-screen="bigtv" hidden>
+			<div class="bigtv">
+				<header class="bigtv-head">
+					<div>
+						<div class="eyebrow">Join this room</div>
+						<div class="bigtv-code" id="tvRoomCode" aria-label="Room code">----</div>
+					</div>
+					<button class="back-btn" id="tvLeave">&larr; Leave</button>
+				</header>
+				<div class="bigtv-next">
+					<div class="eyebrow">Next race</div>
+					<div class="bigtv-track" id="tvNextTrack">Monza</div>
+					<div class="bigtv-sub" id="tvNextSub"></div>
+					<p class="bigtv-status" id="tvStatus" role="status"><i class="tl-kerb" aria-hidden="true"></i><span>Waiting for the host to start the race</span></p>
+					<p class="bigtv-sound" id="tvSound" hidden>Click anywhere to turn the sound on, for the commentary.</p>
+				</div>
+				<ol class="bigtv-roster" id="tvRoster" aria-label="Drivers"></ol>
+			</div>
 		</section>
 
 		<!-- Lobby -->
@@ -686,6 +716,15 @@
 			<div class="opt-row"><label for="setMusic">Music</label><input class="range" id="setMusic" type="range" min="0" max="1" step="0.05"></div>
 			<div class="opt-row"><span class="opt-label">Music in races</span>
 				<div class="seg" id="setRaceMusic" role="radiogroup" aria-label="Music in races"><button data-v="1">On</button><button data-v="0">Off</button></div></div>
+			<div class="opt-row"><label for="setVoice">Voices</label><input class="range" id="setVoice" type="range" min="0" max="1" step="0.05"></div>
+			<div class="opt-row"><span class="opt-label">Team radio</span>
+				<div class="seg" id="setRadio" role="radiogroup" aria-label="Team radio"><button data-v="full">Full</button><button data-v="important">Key moments</button><button data-v="off">Off</button></div></div>
+			<div class="opt-row"><span class="opt-label">Commentary</span>
+				<div class="seg" id="setCommentary" role="radiogroup" aria-label="Commentary"><button data-v="1">On</button><button data-v="0">Off</button></div></div>
+			<div class="opt-row"><span class="opt-label">Subtitles</span>
+				<div class="seg" id="setSubs" role="radiogroup" aria-label="Subtitles"><button data-v="1">On</button><button data-v="0">Off</button></div></div>
+			<p class="opt-help">Your race engineer talks to you on the radio, and two commentators call the race. Subtitles show what they say.</p>
+			<button class="go-btn ghost" id="hearVoices"><span>Hear the voices</span></button>
 			<div class="opt-row"><span class="opt-label">Rear-view mirror</span>
 				<div class="seg" id="setMirror" role="radiogroup" aria-label="Rear-view mirror"><button data-v="1">On</button><button data-v="0">Off</button></div></div>
 			<div class="opt-row"><span class="opt-label">Camera shake</span>

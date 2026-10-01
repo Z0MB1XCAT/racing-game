@@ -622,5 +622,44 @@ if(flow === "online"){
 	await shot(host, "boards-laps");
 }
 
+if(flow === "bigtv"){
+	// A classroom projector: a big screen joins a room, shows the waiting board, then the race as a broadcast, then the results.
+	// It must never take a place on the grid.
+	const host = await open(base + "?localnet");
+	await click(host, "#btnOnline"); await wait(400);
+	await click(host, "#hostBtn"); await wait(1200);
+	const code = await host.$eval("#roomCode", e => e.textContent);
+	for(let i = 0; i < 4; i++){ await click(host, "#addBot"); await wait(300); }
+	await host.evaluate(() => window.__game.net.updateSettings({ laps: 1, track: "figure8" }));
+	await wait(500);
+	const popup = new Promise(r => browser.once("targetcreated", t => r(t.page())));
+	await host.evaluate(u => window.open(u, "tvscreen", "popup,width=1600,height=900"), base + "?localnet&tv=" + code);
+	const tv = await popup;
+	tv.on("pageerror", e => errors.push("tv pageerror: " + e.message));
+	tv.on("console", m => { if(m.type() === "error") errors.push("tv console: " + m.text()); });
+	await tv.setViewport({ width: 1600, height: 900 });
+	try{ await tv.waitForFunction(() => window.__game && window.__game.screen === "bigtv", { timeout: 30000 }); }
+	catch(e){ console.log("the big screen never reached its waiting board:", JSON.stringify(await tv.evaluate(() => ({ url: location.href, screen: window.__game && window.__game.screen, msg: document.getElementById("onlineMsg").textContent }))), errors); throw e; }
+	await wait(2500);
+	const board = await tv.evaluate(() => ({ code: document.getElementById("tvRoomCode").textContent, track: document.getElementById("tvNextTrack").textContent, drivers: document.querySelectorAll("#tvRoster li").length, big: document.body.classList.contains("bigtv"), status: document.getElementById("tvStatus").textContent.trim() }));
+	console.log("waiting board:", JSON.stringify(board));
+	console.log("  shows the room's code:", board.code === code, "| the five drivers, not the screen:", board.drivers === 5, "| big-screen styling:", board.big);
+	await shot(tv, "bigtv-board");
+	const lobbyText = await host.$eval("#lobbyStatus", e => e.textContent);
+	console.log("host's lobby counts the screen apart:", /big screen connected/.test(lobbyText), "(" + lobbyText + ")");
+	await click(host, "#lobbyGo");
+	await wait(1500);
+	await autodrive(host);
+	await wait(9000);
+	const live = await tv.evaluate(() => ({ screen: window.__game.screen, watching: !window.__game.race.me, cars: window.__game.race.cars.length, tag: document.getElementById("tvTag").textContent, sub: document.getElementById("tvSub").textContent, big: document.body.classList.contains("bigtv"), tower: document.querySelectorAll("#tower .tower-row").length }));
+	console.log("race on the big screen:", JSON.stringify(live));
+	console.log("  watching with no car of its own:", live.watching, "| five cars on the grid:", live.cars === 5, "| live TV, no 'you'll race next time':", live.tag === "Live" && live.sub === "");
+	await shot(tv, "bigtv-race");
+	console.log("host's own race has the same five cars:", await host.evaluate(() => window.__game.race.cars.length) === 5);
+	console.log("host gets results:", await waitScreen(host, "results", 150), "| big screen gets results:", await waitScreen(tv, "results", 60));
+	await wait(1200);
+	await shot(tv, "bigtv-results");
+}
+
 console.log(errors.length ? "ERRORS:\n" + [...new Set(errors)].join("\n") : "no page errors");
 await browser.close();

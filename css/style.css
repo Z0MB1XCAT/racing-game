@@ -722,6 +722,26 @@ kbd{ font-family: var(--f-display); font-weight: 700; font-size: 13px; padding: 
 	font-weight: 600; font-size: 15px; box-shadow: var(--elev-3); animation: pop .35s var(--spring) both;
 }
 
+/* What the race engineer and the commentators are saying (js/audio.js onCaption, main.js). Radio is green, commentary blue. */
+.voice-cap{
+	--vc: var(--green);
+	position: fixed; left: 50%; bottom: max(64px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 45;
+	display: flex; align-items: center; gap: 12px; max-width: min(680px, calc(100vw - 32px)); padding: 9px 18px 10px 14px;
+	background: rgba(14,18,26,.92); border-left: 3px solid var(--vc); box-shadow: var(--elev-3); pointer-events: none;
+	animation: vc-in .22s var(--ease) both;
+}
+.voice-cap[hidden]{ display: none; }
+.voice-cap[data-kind="cast"]{ --vc: var(--start); }
+.vc-bars{ flex: none; display: flex; align-items: flex-end; gap: 2px; height: 16px; }
+.vc-bars i{ width: 3px; height: 100%; background: var(--vc); transform-origin: bottom; animation: vc-bar .8s ease-in-out infinite; }
+.vc-bars i:nth-child(2){ animation-delay: -.25s; } .vc-bars i:nth-child(3){ animation-delay: -.5s; } .vc-bars i:nth-child(4){ animation-delay: -.12s; }
+.vc-who{ flex: none; font-family: var(--f-display); font-weight: 700; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--vc); white-space: nowrap; }
+.vc-text{ font-weight: 600; font-size: 15px; line-height: 1.35; }
+@keyframes vc-bar{ 0%, 100%{ transform: scaleY(.25); } 50%{ transform: scaleY(1); } }
+@keyframes vc-in{ from{ opacity: 0; transform: translate(-50%, 8px); } }
+@media (prefers-reduced-motion: reduce){ .vc-bars i{ animation: none; transform: scaleY(.6); } .voice-cap{ animation: none; } }
+@media (max-width: 640px){ .voice-cap{ bottom: max(110px, env(safe-area-inset-bottom)); } .vc-who{ display: none; } }
+
 /* Picking a track in a menu: a chip while its preview is being built (see previewTrack in js/main.js). The kerb
    stripes run by transform only, so they keep moving while the page is busy building. */
 .track-loading{
@@ -874,3 +894,47 @@ kbd{ font-family: var(--f-display); font-weight: 700; font-size: 13px; padding: 
 .fps-box .fps-row{ white-space: nowrap; }
 .fps-box .fps-gpu{ color: rgba(243,245,249,.45); max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 640px){ .fps-box{ bottom: auto; top: 54px; left: 8px; } }
+
+/* ---------- Big screen: a projector in a classroom (Online > Big screen, or ?tv=CODE; see main.js joinAsBigScreen) ---------- */
+.bigtv{
+	display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); grid-template-rows: auto 1fr; gap: clamp(20px, 3vw, 56px) clamp(32px, 5vw, 96px);
+	height: 100%; padding: clamp(24px, 4vw, 72px); align-content: start;
+}
+.bigtv-head{ grid-column: 1 / -1; display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s5); }
+.bigtv-code{
+	font-family: var(--f-display); font-weight: 900; font-style: italic; font-size: clamp(80px, 14vw, 240px); line-height: .86; letter-spacing: .1em; color: var(--chalk);
+	text-shadow: 0 0 60px hsl(var(--hue) 100% 55% / .4); padding-bottom: .08em; background: var(--kerb-stripe) bottom / 100% 8px no-repeat;
+}
+.bigtv-next{ display: flex; flex-direction: column; gap: var(--s3); align-self: center; }
+.bigtv-track{ font-family: var(--f-display); font-weight: 900; font-style: italic; text-transform: uppercase; font-size: clamp(44px, 6.4vw, 110px); line-height: .95; letter-spacing: -.02em; }
+.bigtv-sub{ font-size: clamp(18px, 2vw, 34px); font-weight: 600; color: var(--mute); letter-spacing: .01em; }
+.bigtv-status{ display: flex; align-items: center; gap: 16px; margin: var(--s4) 0 0; font-size: clamp(16px, 1.6vw, 26px); font-weight: 600; color: var(--chalk); }
+.bigtv-status .tl-kerb{ width: 62px; height: 14px; }
+.bigtv-sound{ margin: 0; font-size: clamp(14px, 1.3vw, 22px); color: #ffcf5c; font-weight: 600; }
+.bigtv-roster{ list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; align-content: start; align-self: center; }
+.bigtv-roster li{
+	display: grid; grid-template-columns: 10px 1fr auto; gap: 14px; align-items: center; padding: 10px 16px 10px 12px;
+	background: rgba(23, 28, 38, .86); border: 1px solid var(--line); box-shadow: var(--elev-2); animation: bt-in .4s var(--ease) both;
+}
+.bigtv-roster .chip{ width: 10px; height: 38px; border-radius: 1px; }
+.bigtv-roster .bt-name{ font-family: var(--f-display); font-weight: 800; text-transform: uppercase; font-size: clamp(18px, 2vw, 36px); line-height: 1.05; overflow-wrap: anywhere; }
+.bigtv-roster .bt-car{ display: block; font-family: var(--f-body); font-weight: 500; font-size: clamp(12px, 1vw, 17px); color: var(--mute); text-transform: none; }
+.bigtv-roster .tag{ font-size: clamp(12px, 1vw, 17px); }
+@keyframes bt-in{ from{ opacity: 0; transform: translateY(10px); } }
+@media (max-width: 900px){ .bigtv{ grid-template-columns: 1fr; } .bigtv-roster{ grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce){ .bigtv-roster li{ animation: none; } }
+
+/* On the big screen the race is a broadcast: no driving instruments, a bigger timing tower, subtitles and lap counter. */
+body.bigtv .hud-speed, body.bigtv .hud-keys, body.bigtv .hud-pause, body.bigtv #mirror, body.bigtv .delta, body.bigtv .sectors, body.bigtv .times dt:nth-of-type(n+2), body.bigtv .times dd:nth-of-type(n+2){ display: none !important; }
+body.bigtv .tower{ width: 330px; gap: 3px; transform: scale(1.5); transform-origin: top left; }
+body.bigtv .hud-lap{ transform: scale(1.5); transform-origin: top right; }
+body.bigtv #minimap{ width: 260px; height: 260px; left: auto; right: max(24px, env(safe-area-inset-right)); }
+body.bigtv .chat-float, body.bigtv .fps-box{ display: none !important; }
+body.bigtv #tv:not(.replay) .tv-bar{ display: none; }
+body.bigtv #tv:not(.replay) .tv-third{ bottom: 150px; transform: scale(1.3); transform-origin: bottom left; }
+body.bigtv .tv-tag{ transform: translateX(-50%) skewX(var(--skew)) scale(1.4); transform-origin: top center; }
+body.bigtv .voice-cap{ bottom: max(40px, env(safe-area-inset-bottom)); max-width: min(1100px, calc(100vw - 64px)); padding: 14px 28px 16px 20px; }
+body.bigtv .vc-text{ font-size: clamp(20px, 2vw, 32px); }
+body.bigtv .vc-who{ font-size: clamp(13px, 1.1vw, 18px); }
+body.bigtv .vc-bars{ height: 26px; } body.bigtv .vc-bars i{ width: 4px; }
+body.bigtv .results, body.bigtv .results td, body.bigtv .results th{ font-size: clamp(16px, 1.6vw, 28px); }

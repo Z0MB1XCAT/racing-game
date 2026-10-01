@@ -206,11 +206,32 @@ original did).
   - **Stock car:** deep, rough V8 with four long gears.
   - **Classic:** buzzy four-cylinder, close to the old sound.
 
-  You hear the cars around you too, panned left and right, with a doppler sweep as they pass.
-  There's tyre squeal, wind in the slipstream, metal-on-metal and barrier-scrape crashes, start-light
-  beeps, a white-flag bell, a finish fanfare and crowd, and music for menus and races, all made in
-  the browser (no audio files). **Settings** has separate Engines, Effects and Music volumes, and
-  can turn music off during races.
+  You hear the cars around you too, panned left and right, with a doppler sweep as they pass, duller the
+  further away they are. Under the car: tyre squeal (a wobbling tone with the scrub of rubber under it), a rattle
+  that speeds up as you run over a kerb, and a rough hush on the grass. Crashes layer a recorded crunch (from a
+  free sound pack) on a synthesised thump; the menus have soft recorded clicks, ticks and a faint hover sound.
+  There's wind in the slipstream, start-light beeps, a white-flag bell, a finish fanfare and crowd. Everything
+  also works with no sound files at all: each recorded sound has a synthesised version to fall back on.
+- **Music** that follows the race: three driving tracks (a daytime one in two flavours, and a slow, spacious one
+  after dark), each built in layers. A pulse and a pad at the start, then hats, an arpeggio, a lead melody as
+  the race goes on or you're in a close fight, and everything at once on the final lap, when the key lifts too.
+  Menus have their own loop. The music ducks while someone is speaking.
+- **Team radio**: your race engineer talks to you in short, calm messages through a radio filter (band-limited,
+  a touch of drive, static underneath, a click at each end): your place, the gaps to the cars either side
+  ("Gap ahead, one point two. Gap behind, point eight."), a tow to use or a car to defend against, laps to go,
+  incidents, rain and nightfall, the finish. **Full** or **Key moments** only (incidents, the final lap,
+  elimination, the finish) in Settings.
+- **Commentary**: a lead commentator and a co-commentator call the race like a broadcast: lights out, who leads into
+  turn one, passes, lead changes, crashes, contact, the fastest lap, battles, the final lap, the finish and photo
+  finishes, the rain, and a word about the circuit when it goes quiet. It also calls the highlights in the replay.
+  Subtitles show everything that's said (switch them off in Settings). The voices are made with the Kokoro
+  neural voice and play as recorded clips stitched into sentences. The computer drivers are called by name; any
+  other driver is "Number 23", with their real name in the subtitles. **Settings** has Voices, Team radio,
+  Commentary and Subtitles, and a **Hear the voices** button.
+- **Big screen** (Online > Big screen, or the link `?tv=ABCD`): put a room on a classroom projector. It joins as a
+  watcher (never on the grid, never the host), shows the room code and who's in between races, then the race as
+  a broadcast (auto cameras, commentary and subtitles, a big timing tower, the map and lap counter) and the
+  results. **Race bots > Watch the bots race** does the same with computer drivers and no room.
 - **Rear-view mirror** at the top of the screen (switch it off in Settings), and hold **B** to look behind you.
 - **Scenery**: every circuit gets a pit building with team garages, grandstands full of fans (who cheer at the start and the finish), fans behind the fences at corners, billboards, a bridge over the track, and trees or city blocks to suit the place. Nothing is allowed to stick onto the road: every piece is checked against the whole circuit, including where it doubles back. The TV cameras only use positions that can see the cars, and cut away if a tree or building gets in the way.
 - **The real surroundings of every F1 track**, from OpenStreetMap, on the real lie of the land:
@@ -492,7 +513,10 @@ Once it's on, open **Track editor** from the menu.
 | `js/filter.js`, `js/admin.js`, `js/limits.js` | Name and chat filters, admin page, lap-time limits |
 | `js/chat.js` | Room chat: lobby panel, race feed, results dock, mute and report |
 | `js/champ.js`, `js/weekly.js` | Championship points and the automatic weekly challenge |
-| `js/audio.js`, `js/engine-worklet.js`, `js/music.js` | Engine model for each car body, sound effects and the music sequencer |
+| `js/audio.js`, `js/engine-worklet.js`, `js/music.js` | Engine model for each car body, sound effects, the mix (buses, ducking, limiter) and the layered music sequencer |
+| `js/sfxbank.js`, `assets/audio/` | Recorded effects (Kenney's CC0 packs) played by group name, with the synthesised sounds as the fallback |
+| `js/voice.js`, `js/voicelines.js`, `js/speechkit.js`, `assets/voice/` | The voices: every line as text, the clip packs, stitching sentences from clips, the radio and broadcast chains, the queue |
+| `js/radio.js`, `js/commentary.js` | The race engineer (what to tell the player) and the two commentators (what to call), driven by the race's events |
 | `js/main.js`, `js/hud.js` | Menus, HUD, camera and input |
 | `editor/` | Track editor |
 
@@ -525,6 +549,10 @@ The last two also need puppeteer installed.
 - `node tools/sky-shots.mjs [trackId] [tod-weather ...]` screenshots a track at different times and weather (e.g. `monza night-rain`).
 - `node tools/scenery-shots.mjs [trackId ...]` takes screenshots of each track (overview, racing with the mirror, looking back, highlights).
 - `node tools/engine-demo.mjs` renders a clip of each engine to WAV (with spectrograms) for tuning the sound. Engine settings are `ENGINES` in `js/audio.js`.
+- `node tools/sound-test.mjs [track]` plays a short race in a real browser and listens to the mix: the recorded effects load, the engineer and commentators speak (with subtitles), nothing clips or goes silent.
+- `node tools/voice-test.mjs [--browser]` plays a made-up race through the engineer and commentators and prints what they would say; with `--browser` it also decodes every clip in the voice packs.
+- `node tools/build-voices.mjs [eng] [lead] [col] [--force] [--check]` renders the lines in `js/voicelines.js` into `assets/voice/*.pak` with the Kokoro voice (needs `npm i kokoro-js` in a scratch folder and `KOKORO_DIR` pointing at it, plus ffmpeg); `--check` listens back with a speech recogniser. Only needed when a line or a voice changes.
+- `node tools/build-sfx.mjs <folder>` packs the chosen sounds from Kenney's Impact Sounds, Interface Sounds and UI Audio packs (CC0) into `assets/audio/sfx.pak`.
 - `node tools/contact-test.mjs monaco` compares original and soft car contact (side hit, rear tap, a bot race).
 - `node tools/e2e.mjs solo|online|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
 
@@ -549,5 +577,7 @@ The last two also need puppeteer installed.
   (CC0; licence note in the folder). Only some are used so far (the start gantry, marshal posts, cones,
   flags and tents); the rest of the kit sits there ready for grandstands and pit buildings.
 - `vendor/three-r128/GLTFLoader.js` (and the post-processing scripts beside it): from three.js r128 (MIT, © three.js authors).
+- `assets/audio/` (menu sounds and crash impacts): [Kenney](https://www.kenney.nl/assets) Impact Sounds, Interface Sounds and UI Audio, CC0 (notice beside the files).
+- `assets/voice/` (the race engineer and the commentators): spoken by the [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) neural voice (Apache-2.0), voices `bm_lewis`, `bm_george` and `bf_emma`, rendered by `tools/build-voices.mjs`.
 - Licensed under **GPL-3.0**, the same as the original (see [LICENSE](LICENSE)). If you share
   your version, keep it open source and keep this credit.

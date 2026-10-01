@@ -1,12 +1,17 @@
-// All sounds are synthesised with Web Audio, so there are no files to load.
+// Every sound can be made with Web Audio alone. Recorded effects (assets/audio) and voices (assets/voice) are added on
+// top where they have loaded; if they never do, the game is just as playable.
 // Browsers only allow sound after the player clicks or presses a key; unlock() handles that.
 //
-// Mix: master volume → [music, effects, engines] → gentle compressor → speakers.
+// Mix: master volume, then [music, effects, engines, voices], then a gentle compressor and a limiter.
+// Music, effects and engines each pass through a "duck" stage that turns them down while someone is speaking
+// (the race engineer on the radio, the commentators): see speak(). Voices have their own buses and a final limiter.
 import { createMusic } from "./music.js";
+import { createVoice } from "./voice.js";
+import { createBank } from "./sfxbank.js";
 
-let ctx = null, master = null, buses = null, noise = null, music = null, probe = null, echo = null;
-let rainLevel = 0, coverLevel = 0;
-let volume = 0.7, levels = { music: 0.5, sfx: 0.8, engine: 0.8 }, wantSong = null;
+let ctx = null, master = null, buses = null, ducks = null, noise = null, music = null, probe = null, echo = null, voice = null, bank = null;
+let rainLevel = 0, coverLevel = 0, captionFn = null;
+let volume = 0.7, levels = { music: 0.5, sfx: 0.8, engine: 0.8, voice: 0.9 }, wantSong = null;
 // A number that's safe to hand to Web Audio (a NaN or infinity there throws, or silences
 // everything after it for good).
 const fin = (x, d = 0) => Number.isFinite(x) ? x : d;
@@ -18,20 +23,32 @@ export function unlock(){
 	ctx = new AC();
 	const comp = ctx.createDynamicsCompressor();
 	comp.threshold.value = -14; comp.knee.value = 12; comp.ratio.value = 3; comp.attack.value = 0.004; comp.release.value = 0.2;
+	// A last limiter, so the voices on top of everything else never push the mix into clipping.
+	const lim = ctx.createDynamicsCompressor();
+	lim.threshold.value = -3; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.001; lim.release.value = 0.09;
 	master = ctx.createGain();
 	master.gain.value = volume;
-	master.connect(comp); comp.connect(ctx.destination);
+	master.connect(comp); comp.connect(lim); lim.connect(ctx.destination);
 	// Listens to the final mix so the watchdog can tell if the sound has broken.
 	probe = ctx.createAnalyser(); probe.fftSize = 256;
-	comp.connect(probe);
+	lim.connect(probe);
 	// If the browser pauses the sound (another app took the speakers, the laptop slept,
 	// headphones were unplugged), start it again.
 	ctx.onstatechange = () => { if(ctx && ctx.state !== "running" && ctx.state !== "closed" && document.visibilityState === "visible") ctx.resume().catch(() => {}); };
-	buses = {};
-	for(const k of ["music", "sfx", "engine"]){ buses[k] = ctx.createGain(); buses[k].gain.value = levels[k]; buses[k].connect(master); }
+	buses = {}; ducks = {};
+	for(const k of ["music", "sfx", "engine"]){
+		buses[k] = ctx.createGain(); buses[k].gain.value = levels[k];
+		ducks[k] = ctx.createGain(); ducks[k].gain.value = 1;
+		buses[k].connect(ducks[k]); ducks[k].connect(master);
+	}
+	// The commentary and the team radio each have a level of their own (one slider, "Voices").
+	for(const k of ["voice", "radio"]){ buses[k] = ctx.createGain(); buses[k].gain.value = levels.voice; buses[k].connect(master); }
 	noise = noiseBuffer(2);
 	echo = makeEcho();
 	music = createMusic(ctx, buses.music, noise);
+	voice = createVoice(ctx, { radio: buses.radio, cast: buses.voice }, noise, { start: duckFor, end: unduck });
+	bank = createBank(ctx, buses.sfx);
+	bank.warm();
 	loadEngineModel();
 	if(wantSong) music.play(wantSong);
 	startWatchdog();
@@ -57,8 +74,9 @@ function rebuild(){
 	console.warn("Sound broke; rebuilding it");
 	const old = ctx, engines = enginesOn;
 	try { if(music) music.dispose(); } catch {}
+	try { if(voice) voice.dispose(); } catch {}
 	voices = new Map(); road = null; rainNodes = null; modelReady = null; probeBuf = null;
-	ctx = null; master = null; buses = null; music = null; probe = null; echo = null;
+	ctx = null; master = null; buses = null; ducks = null; music = null; probe = null; echo = null; voice = null; bank = null;
 	try { old.onstatechange = null; old.close().catch(() => {}); } catch {}
 	unlock();
 	if(engines) startEngine();
@@ -71,11 +89,39 @@ export function setVolume(v){
 	volume = v = fin(v, volume);
 	if(master) master.gain.setTargetAtTime(v, ctx.currentTime, 0.05);
 }
-// kind: "music" | "sfx" | "engine", v: 0..1
+// kind: "music" | "sfx" | "engine" | "voice", v: 0..1
 export function setLevel(kind, v){
 	levels[kind] = v = fin(v, levels[kind]);
-	if(buses) buses[kind].gain.setTargetAtTime(v, ctx.currentTime, 0.05);
+	if(buses){
+		const t = ctx.currentTime;
+		if(kind === "voice"){ buses.voice.gain.setTargetAtTime(v, t, 0.05); buses.radio.gain.setTargetAtTime(v, t, 0.05); }
+		else buses[kind].gain.setTargetAtTime(v, t, 0.05);
+	}
 	if(kind === "engine" && v <= 0) stopEngine();
+	if(kind === "voice" && v <= 0) stopVoices();
+}
+
+// ---------- Voices ----------
+// The race engineer and the commentators (js/radio.js, js/commentary.js, js/voice.js). Safe to call before the sound is
+// unlocked or when the clips can't be loaded: nothing is said.
+// item: { parts, text, kind: "radio" | "cast", who, priority, expires, key, interrupt }
+export function speak(item){ if(voice && levels.voice > 0 && ctx && ctx.state === "running") voice.say(item); }
+export function stopVoices(){ if(voice) voice.stopAll(); }
+export function preloadVoices(...names){ return voice ? voice.preload(...names) : Promise.resolve(); }
+export function speaking(){ return voice ? voice.speaking : null; }
+// fn({ who, kind, text }) when something starts being said, fn(null) when it ends: for subtitles.
+export function onCaption(fn){ captionFn = fn; }
+function duckFor(item){
+	if(!ctx || !ducks) return;
+	const t = ctx.currentTime, radio = item.kind === "radio";
+	ducks.music.gain.setTargetAtTime(radio ? 0.22 : 0.4, t, 0.06);
+	ducks.sfx.gain.setTargetAtTime(radio ? 0.75 : 0.85, t, 0.06);
+	ducks.engine.gain.setTargetAtTime(radio ? 0.72 : 0.88, t, 0.06);
+	if(captionFn) captionFn({ who: item.who, kind: item.kind, text: item.text });
+}
+function unduck(){
+	if(ctx && ducks){ const t = ctx.currentTime; for(const k of ["music", "sfx", "engine"]) ducks[k].gain.setTargetAtTime(1, t, 0.35); }
+	if(captionFn) captionFn(null);
 }
 
 // ---------- Music ----------
@@ -85,6 +131,8 @@ export function playMusic(name){
 	if(music) music.play(name);
 }
 export function musicIntensity(v){ if(music) music.intensity(v); }
+// { progress: 0..1 through the race, battle: in a close fight }: the music builds with it.
+export function musicState(st){ if(music) music.state(st); }
 export function duckMusic(on){ if(music) music.duck(on); }
 
 // Under a roof (a tunnel, under a bridge): engines and rain echo off the walls. A reverb built
@@ -184,9 +232,11 @@ function makeVoice(body){
 	const cut = ctx.createGain(); cut.gain.value = 1;      // dips on gear changes
 	const out = ctx.createGain(); out.gain.value = 0;      // level and distance
 	const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
-	cut.connect(out);
-	if(pan){ out.connect(pan); pan.connect(buses.engine); } else out.connect(buses.engine);
-	const v = { body, p, cut, out, pan, gear: 0, rpm: p.idle, lastSpeed: 0, seen: 0, lastRev: 0, liftUntil: 0 };
+	// Air takes the high end off a far-away engine: the further the car, the duller it sounds.
+	const dull = ctx.createBiquadFilter(); dull.type = "lowpass"; dull.frequency.value = 18000; dull.Q.value = 0.5;
+	cut.connect(out); out.connect(dull);
+	if(pan){ dull.connect(pan); pan.connect(buses.engine); } else dull.connect(buses.engine);
+	const v = { body, p, cut, out, pan, dull, gear: 0, rpm: p.idle, lastSpeed: 0, seen: 0, lastRev: 0, liftUntil: 0 };
 	if(modelReady){
 		const m = p.model;
 		const opts = Object.assign({}, m, {
@@ -263,18 +313,39 @@ function crackle(v, n){
 	}
 }
 
-// Tyres and wind only follow the car you're watching.
+// Tyres, wind and the surface only follow the car you're watching.
 function makeRoad(){
 	const src = noiseSrc(true);
 	const b1 = ctx.createBiquadFilter(); b1.type = "bandpass"; b1.frequency.value = 1150; b1.Q.value = 7;
 	const b2 = ctx.createBiquadFilter(); b2.type = "bandpass"; b2.frequency.value = 2250; b2.Q.value = 6;
 	const sq = ctx.createGain(); sq.gain.value = 0;
 	src.connect(b1); src.connect(b2); b1.connect(sq); b2.connect(sq); sq.connect(buses.engine);
+	// The squeal itself is a tone that wobbles as the rubber grips and lets go, with the noise above as its scrub.
+	const tone = ctx.createOscillator(); tone.type = "sawtooth"; tone.frequency.value = 880;
+	const tf = ctx.createBiquadFilter(); tf.type = "bandpass"; tf.frequency.value = 1500; tf.Q.value = 5;
+	const tg = ctx.createGain(); tg.gain.value = 0;
+	const vib = ctx.createOscillator(); vib.frequency.value = 11; const vibG = ctx.createGain(); vibG.gain.value = 38;
+	vib.connect(vibG); vibG.connect(tone.frequency);
+	tone.connect(tf); tf.connect(tg); tg.connect(buses.engine);
+	tone.start(); vib.start();
 	const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 500;
 	const wind = ctx.createGain(); wind.gain.value = 0;
 	src.connect(lp); lp.connect(wind); wind.connect(buses.engine);
+	// Kerbs: a rattle that speeds up with the car (the stripes passing under the wheels).
+	const kb = ctx.createBiquadFilter(); kb.type = "bandpass"; kb.frequency.value = 330; kb.Q.value = 1.6;
+	const kAm = ctx.createGain(); kAm.gain.value = 0.5;
+	const kLfo = ctx.createOscillator(); kLfo.type = "square"; kLfo.frequency.value = 14; const kDepth = ctx.createGain(); kDepth.gain.value = 0.5;
+	kLfo.connect(kDepth); kDepth.connect(kAm.gain);
+	const kerb = ctx.createGain(); kerb.gain.value = 0;
+	src.connect(kb); kb.connect(kAm); kAm.connect(kerb); kerb.connect(buses.engine);
+	kLfo.start();
+	// Grass and gravel: a rough hush, louder and brighter the faster you go.
+	const gf = ctx.createBiquadFilter(); gf.type = "lowpass"; gf.frequency.value = 1100; gf.Q.value = 0.4;
+	const gb = ctx.createBiquadFilter(); gb.type = "highpass"; gb.frequency.value = 160;
+	const grass = ctx.createGain(); grass.gain.value = 0;
+	src.connect(gb); gb.connect(gf); gf.connect(grass); grass.connect(buses.engine);
 	src.start();
-	return { src, b1, b2, sq, lp, wind };
+	return { src, b1, b2, sq, tone, tf, tg, lp, wind, kerb, kLfo, grass, gf, extra: [tone, vib, kLfo] };
 }
 
 export function startEngine(){
@@ -289,8 +360,8 @@ export function stopEngine(){
 	voices.clear();
 	if(road){
 		const r = road, t = ctx.currentTime;
-		r.sq.gain.setTargetAtTime(0, t, 0.06); r.wind.gain.setTargetAtTime(0, t, 0.06);
-		setTimeout(() => { try { r.src.stop(); } catch {} }, 400);
+		for(const n of [r.sq, r.wind, r.tg, r.kerb, r.grass]) n.gain.setTargetAtTime(0, t, 0.06);
+		setTimeout(() => { try { r.src.stop(); for(const o of r.extra) o.stop(); } catch {} }, 400);
 		road = null;
 	}
 }
@@ -357,6 +428,7 @@ export function updateEngines(cars, focus, dt){
 			v.out.gain.setTargetAtTime(0.11 * p.vol * (0.55 + 0.45 * k) * c.gain, t, 0.04);
 		}
 		if(v.pan) v.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, c.pan || 0)), t, 0.05);
+		v.dull.frequency.setTargetAtTime(Math.min(18000, 900 + 17100 * Math.pow(c.gain, 1.5)), t, 0.1);
 		if(!Number.isFinite(v.rpm)) v.rpm = p.idle;
 		} catch(e){ const v = voices.get(c.id); if(v){ killVoice(v); voices.delete(c.id); } }
 	}
@@ -369,6 +441,15 @@ export function updateEngines(cars, focus, dt){
 		const speed = Math.max(0, fin(focus.speed)), slip = Math.max(0, Math.min(1, fin(focus.slip))), draft = Math.max(0, fin(focus.draft));
 		const squeal = slip > 0.3 && speed > 0.1 ? Math.min(0.1, (slip - 0.28) * 0.22) : 0;
 		road.sq.gain.setTargetAtTime(squeal, t, 0.04);
+		road.tg.gain.setTargetAtTime(squeal * 0.5, t, 0.05);
+		road.tone.frequency.setTargetAtTime(760 + slip * 520 + Math.sin(t * 5.3) * 40, t, 0.05);
+		road.tf.frequency.setTargetAtTime(1300 + slip * 700, t, 0.05);
+		// Where the wheels are: the road, a kerb, or off it.
+		const surface = fin(focus.surface), sp = Math.min(1, speed / VMAX);
+		road.kerb.gain.setTargetAtTime(surface === 1 ? 0.07 + sp * 0.2 : 0, t, 0.03);
+		road.kLfo.frequency.setTargetAtTime(7 + sp * 36, t, 0.05);
+		road.grass.gain.setTargetAtTime(surface === 2 ? 0.03 + sp * 0.2 : 0, t, 0.08);
+		road.gf.frequency.setTargetAtTime(700 + sp * 1900, t, 0.1);
 		const wob = Math.sin(t * 23) * 60 + Math.sin(t * 7.3) * 90;
 		road.b1.frequency.setTargetAtTime(1050 + slip * 300 + wob, t, 0.03);
 		road.b2.frequency.setTargetAtTime(2150 + slip * 500 - wob, t, 0.03);
@@ -500,16 +581,29 @@ export function thud(strength, near = 1, kind = "wall"){
 	if(!ctx || strength < 0.03) return;
 	const vol = Math.min(0.55, strength * 1.5) * near;
 	if(vol < 0.02) return;
+	const big = Math.min(1, strength / 0.5), rate = 0.92 + Math.random() * 0.16;
+	// The low thump is made here, so a hit has weight; the crunch on top is recorded when we have it.
 	tone(kind === "car" ? 95 : 65, 0.2, "sine", vol * 0.9, 0, 0.5);
 	burst(0.18, vol * 0.7, "lowpass", kind === "car" ? 1500 : 1000, 0.7);
+	let rec = false;
+	if(bank && bank.ready){
+		if(kind === "car"){
+			rec = bank.play(big > 0.55 ? "hit.metalMed" : "hit.metalLight", { vol: Math.min(1, vol * 1.5), rate });
+			bank.play(big > 0.4 ? "hit.plateMed" : "hit.plateLight", { vol: Math.min(1, vol * 1.1), rate, when: 0.012 });
+			if(big > 0.7) bank.play("hit.glass", { vol: vol * 0.7, when: 0.05 + Math.random() * 0.08 });
+		}else{
+			rec = bank.play(big > 0.55 ? "hit.metalHeavy" : "hit.metalMed", { vol: Math.min(1, vol * 1.5), rate });
+			bank.play(big > 0.45 ? "hit.plateHeavy" : "hit.plateMed", { vol: Math.min(1, vol * 1.1), rate, when: 0.01 });
+			if(big > 0.3) bank.play("hit.softHeavy", { vol: vol * 0.7, rate: rate * 0.9, when: 0.03 });
+		}
+	}
 	if(kind === "car"){
-		// Body panels: short metallic ring.
-		const b = 380 + Math.random() * 120;
-		[[1, 0.3], [2.63, 0.2], [4.1, 0.12], [6.7, 0.07]].forEach(([m, a]) => tone(b * m, 0.12 + 0.1 / m, "triangle", vol * a));
+		// Body panels: short metallic ring (when there's no recording of one).
+		if(!rec){ const b = 380 + Math.random() * 120; [[1, 0.3], [2.63, 0.2], [4.1, 0.12], [6.7, 0.07]].forEach(([m, a]) => tone(b * m, 0.12 + 0.1 / m, "triangle", vol * a)); }
 	}else{
 		// Scraping along the barrier.
 		burst(0.35 + vol * 0.4, vol * 0.3, "bandpass", 2600, 1.4, 0.02);
-		burst(0.12, vol * 0.5, "bandpass", 420, 2);
+		if(!rec) burst(0.12, vol * 0.5, "bandpass", 420, 2);
 	}
 }
 
@@ -538,13 +632,38 @@ export const sfx = {
 		}
 	},
 	out(){ [392, 330, 262].forEach((f, i) => brass(f, i === 2 ? 0.6 : 0.2, 0.07, i * 0.22)); },
-	click(){ tone(2100, 0.025, "sine", 0.05); burst(0.015, 0.04, "highpass", 5000); },
+	// Menus: recorded where we have them, the synthesised blip where we don't.
+	click(){ if(bank && bank.play("ui.click", { vol: 0.5 })) return; tone(2100, 0.025, "sine", 0.05); burst(0.015, 0.04, "highpass", 5000); },
+	select(){ if(!(bank && bank.play("ui.select", { vol: 0.5 }))) sfx.click(); },
+	back(){ if(!(bank && bank.play("ui.back", { vol: 0.5 }))) sfx.click(); },
+	toggle(){ if(!(bank && bank.play("ui.toggle", { vol: 0.5 }))) sfx.click(); },
+	tick(){ if(!(bank && bank.play("ui.tick", { vol: 0.4 }))) sfx.click(); },
+	open(){ if(!(bank && bank.play("ui.open", { vol: 0.45 }))) sfx.click(); },
+	close(){ if(!(bank && bank.play("ui.close", { vol: 0.45 }))) sfx.click(); },
+	// Starting a race, joining a room, anything that commits.
+	confirm(){ if(!(bank && bank.play("ui.confirm", { vol: 0.6 }))){ tone(784, 0.12, "triangle", 0.1); tone(1175, 0.2, "triangle", 0.1, 0.08); } },
+	error(){ if(!(bank && bank.play("ui.error", { vol: 0.45 }))) sfx.wrong(); },
+	// Pointing at something: very quiet, and only where there's a recording (a synthesised one would only be noise).
+	hover(){ if(bank) bank.play("ui.hover", { vol: 0.16 }); },
 	wrong(){ tone(185, 0.16, "square", 0.05); tone(185, 0.16, "square", 0.05, 0.2); },
 	// Something unlocked in the garage / levelled up.
-	unlock(){ [784, 988, 1175, 1568].forEach((f, i) => tone(f, 0.3, "triangle", 0.1, i * 0.06)); bell(2093, 0.05, 0.25, 0.8); }
+	unlock(){ [784, 988, 1175, 1568].forEach((f, i) => tone(f, 0.3, "triangle", 0.1, i * 0.06)); bell(2093, 0.05, 0.25, 0.8); if(bank) bank.play("ui.sparkle", { vol: 0.4, when: 0.12 }); }
 };
 
 // "model", "simple" (no AudioWorklet in this browser) or "loading". For checks and debugging.
 export function engineMode(){ return modelReady === null ? "loading" : modelReady ? "model" : "simple"; }
 // For the automated checks only: break the sound on purpose, to test that it recovers.
-export const _test = { close(){ if(ctx) ctx.close(); } };
+export const _test = {
+	close(){ if(ctx) ctx.close(); },
+	// Peak and loudness of what is going to the speakers right now (over a few milliseconds), or null.
+	meter(){
+		if(!probe) return null;
+		const b = new Float32Array(probe.fftSize);
+		probe.getFloatTimeDomainData(b);
+		let peak = 0, sum = 0;
+		for(const x of b){ peak = Math.max(peak, Math.abs(x)); sum += x * x; }
+		return { peak, rms: Math.sqrt(sum / b.length) };
+	},
+	// Whether the recorded effects and the voices have loaded.
+	loaded(){ return { sfx: !!(bank && bank.ready), voice: !!voice }; }
+};

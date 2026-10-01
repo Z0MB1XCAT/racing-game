@@ -26,12 +26,15 @@ import { initAdmin } from "./admin.js";
 import { initChat } from "./chat.js";
 import { minLapMs } from "./limits.js";
 import { Director, Replay, buildHighlights, pickFocus, SHOT_NAMES } from "./broadcast.js";
+import { BOT_NAMES } from "./voicelines.js";
+import { Engineer } from "./radio.js";
+import { Commentary } from "./commentary.js";
+import { build as buildSpeech, carPiece, gapPiece } from "./speechkit.js";
 import { GAME_NAME, MAX_CARS, EDITOR_ENABLED, ACCOUNTS, VERSION } from "./config.js";
 import * as phys from "./physics.js";
 
 const THREE = globalThis.THREE;
 const $ = id => document.getElementById(id);
-const BOT_NAMES = ["Pixel Pete", "Nitro Nia", "Captain Kerb", "Slipstream Sam", "Apex Ava", "Chicane Charlie", "Grid Greta", "Lockup Leo", "Drift Dana", "Pitlane Pat", "Turbo Tia"];
 const KMH = 60 * 3.6 * 2.25;   // physics units per frame -> km/h (the car is ~4.5 m long)
 
 if(!THREE){
@@ -259,14 +262,15 @@ function showScreen(name){
 	audio.playMusic("menu");
 	document.querySelectorAll("[data-screen]").forEach(s => { s.hidden = s.dataset.screen !== name; });
 }
-function openModal(id){ $(id).hidden = false; const f = $(id).querySelector("button, input"); if(f) f.focus(); }
-function closeModal(id){ $(id).hidden = true; }
+function openModal(id){ audio.sfx.open(); $(id).hidden = false; const f = $(id).querySelector("button, input"); if(f) f.focus(); }
+function closeModal(id){ audio.sfx.close(); $(id).hidden = true; }
 document.querySelectorAll("[data-open]").forEach(b => b.addEventListener("click", () => openModal(b.dataset.open)));
 document.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", () => closeModal(b.closest(".modal").id)));
 document.querySelectorAll(".modal").forEach(m => m.addEventListener("click", e => { if(e.target === m && m.id !== "pause") m.hidden = true; }));
-document.querySelectorAll("[data-back]").forEach(b => b.addEventListener("click", () => { audio.sfx.click(); goTitle(); }));
+document.querySelectorAll("[data-back]").forEach(b => b.addEventListener("click", () => { audio.sfx.back(); goTitle(); }));
 
 function goTitle(){
+	setBigTv(false);
 	endRace();
 	showScreen("title");
 	showTrack(defFor(S.setup.trackId), false);
@@ -279,7 +283,7 @@ function seg(el, value, onPick){
 	const buttons = [...el.querySelectorAll("button")];
 	const set = v => buttons.forEach(b => b.setAttribute("aria-checked", String(b.dataset.v === String(v))));
 	set(value);
-	buttons.forEach(b => b.addEventListener("click", () => { if(el.dataset.locked) return; audio.sfx.click(); set(b.dataset.v); onPick(b.dataset.v); }));
+	buttons.forEach(b => b.addEventListener("click", () => { if(el.dataset.locked) return; audio.sfx.toggle(); set(b.dataset.v); onPick(b.dataset.v); }));
 	return set;
 }
 function stepper(name, get, set, min, max){
@@ -287,8 +291,8 @@ function stepper(name, get, set, min, max){
 	const out = el.querySelector("output");
 	const [minus, plus] = el.querySelectorAll("button");
 	const render = () => { const v = get(); out.textContent = v; minus.disabled = v <= min() || !!el.dataset.locked; plus.disabled = v >= max() || !!el.dataset.locked; };
-	minus.addEventListener("click", () => { audio.sfx.click(); set(Math.max(min(), get() - 1)); render(); });
-	plus.addEventListener("click", () => { audio.sfx.click(); set(Math.min(max(), get() + 1)); render(); });
+	minus.addEventListener("click", () => { audio.sfx.tick(); set(Math.max(min(), get() - 1)); render(); });
+	plus.addEventListener("click", () => { audio.sfx.tick(); set(Math.min(max(), get() + 1)); render(); });
 	render();
 	return { render, el };
 }
@@ -356,7 +360,7 @@ seg($("setQuality"), S.settings.quality, v => { S.settings.quality = v; store.sa
 seg($("setAdaptive"), S.settings.adaptive === false ? "0" : "1", v => { S.settings.adaptive = v === "1"; saveSettings(); configureGfx(); });
 seg($("setFps"), S.settings.fps ? "1" : "0", v => { S.settings.fps = v === "1"; saveSettings(); gfx.setCounter(S.settings.fps); });
 seg($("setCamera"), S.settings.camera, v => { S.settings.camera = v; saveSettings(); });
-seg($("setRaceMusic"), S.settings.raceMusic ? "1" : "0", v => { S.settings.raceMusic = v === "1"; saveSettings(); if(S.screen === "race" && S.race && S.race.phase !== "countdown") audio.playMusic(S.settings.raceMusic ? "race" : null); });
+seg($("setRaceMusic"), S.settings.raceMusic ? "1" : "0", v => { S.settings.raceMusic = v === "1"; saveSettings(); if(S.screen === "race" && S.race && S.race.phase !== "countdown") audio.playMusic(S.settings.raceMusic ? raceSongFor() : null); });
 seg($("setShake"), S.settings.shake ? "1" : "0", v => { S.settings.shake = v === "1"; saveSettings(); });
 seg($("setMirror"), S.settings.mirror ? "1" : "0", v => { S.settings.mirror = v === "1"; saveSettings(); });
 seg($("setChat"), S.settings.chat === false ? "0" : "1", v => { S.settings.chat = v === "1"; saveSettings(); chat.render(); });
@@ -373,6 +377,49 @@ for(const [id, key, kind] of [["setMusic", "music", "music"], ["setSfx", "sfx", 
 	$(id).addEventListener("change", () => { if(kind === "sfx") audio.sfx.lap(); });
 	audio.setLevel(kind, S.settings[key]);
 }
+
+// ---------- Voices: the race engineer, the commentators and the subtitles ----------
+const engineer = new Engineer({ say: audio.speak, level: S.settings.radio || "full" });
+const cast = new Commentary({ say: audio.speak, level: S.settings.commentary === false ? "off" : "on" });
+// Fetch the clips for whatever is switched on (once the sound is unlocked: before that there's nothing to do).
+function wantVoices(){
+	const want = [];
+	if(engineer.level !== "off") want.push("eng");
+	if(cast.level !== "off") want.push("lead", "col");
+	if(want.length) audio.preloadVoices(...want);
+}
+function applyVoiceSettings(){
+	engineer.level = S.settings.radio || "full";
+	cast.level = S.settings.commentary === false ? "off" : "on";
+	if(engineer.level === "off" && cast.level === "off") audio.stopVoices();
+	wantVoices();
+}
+seg($("setRadio"), S.settings.radio || "full", v => { S.settings.radio = v; saveSettings(); applyVoiceSettings(); });
+seg($("setCommentary"), S.settings.commentary === false ? "0" : "1", v => { S.settings.commentary = v === "1"; saveSettings(); applyVoiceSettings(); });
+seg($("setSubs"), S.settings.subs === false ? "0" : "1", v => { S.settings.subs = v === "1"; saveSettings(); });
+$("setVoice").value = S.settings.voice ?? 0.9;
+$("setVoice").addEventListener("input", e => { S.settings.voice = +e.target.value; saveSettings(); audio.setLevel("voice", S.settings.voice); });
+audio.setLevel("voice", S.settings.voice ?? 0.9);
+// Settings > Hear the voices: a line of radio and a line of commentary, so the levels can be set by ear.
+$("hearVoices").addEventListener("click", () => {
+	audio.unlock(); applyVoiceSettings(); audio.stopVoices();
+	setTimeout(() => {
+		const a = buildSpeech("eng.gapAhead.0", gapPiece(1.2), { parts: [], text: "." }, "eng.gapBehind.0", gapPiece(0.8), { parts: [], text: "." });
+		audio.speak({ parts: a.parts, text: a.text, kind: "radio", who: "eng", priority: 5, expires: 15000 });
+		const b = buildSpeech(carPiece({ name: "Pixel Pete" }), "lead.goes.0", carPiece({ name: "Apex Ava" }), "lead.for.3");
+		audio.speak({ parts: b.parts, text: b.text, kind: "cast", who: "lead", priority: 5, expires: 15000 });
+		const c = buildSpeech("col.react.1");
+		audio.speak({ parts: c.parts, text: c.text, kind: "cast", who: "col", pan: 0.14, priority: 4, expires: 15000 });
+	}, 200);
+});
+audio.onCaption(c => {
+	const el = $("voiceCap");
+	if(!c || S.settings.subs === false){ el.hidden = true; return; }
+	el.dataset.kind = c.kind;
+	$("vcWho").textContent = c.kind === "radio" ? "Team radio" : c.who === "col" ? "Co-commentator" : "Commentary";
+	$("vcText").textContent = c.text;
+	el.hidden = false;
+});
 function applyQuality(){
 	configureGfx();
 	fx.dispose();
@@ -563,7 +610,7 @@ function escapeHtml(s){ return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;"
 
 $("btnBots").addEventListener("click", () => { audio.sfx.click(); openSetup("bots"); });
 $("btnTrial").addEventListener("click", () => { audio.sfx.click(); openSetup("trial"); });
-$("setupGo").addEventListener("click", () => { audio.unlock(); requestTilt(); startSolo(); });
+$("setupGo").addEventListener("click", () => { audio.unlock(); audio.sfx.confirm(); requestTilt(); startSolo(); });
 
 function spreadHues(n, avoid){
 	const out = [];
@@ -606,6 +653,24 @@ function startSolo(){
 	if(st.quali && st.mode === "bots") startQuali(def, st.reverse, entrants, race);
 	else race();
 }
+
+// Watch a race between computer drivers, as a broadcast on a big screen (Race bots > Watch the bots race).
+function startBroadcast(){
+	const st = S.setup, def = defFor(st.trackId);
+	const n = Math.max(4, Math.min(MAX_CARS, (st.bots || 5) + 1));
+	const hues = spreadHues(n, S.profile.hue), names = [...BOT_NAMES].sort(() => Math.random() - 0.5);
+	const entrants = [];
+	for(let i = 0; i < n; i++) entrants.push({ id: "bot" + i, name: names[i % names.length], hue: hues[i], body: BODIES[Math.floor(Math.random() * BODIES.length)].id, look: botLook(), bot: st.level || "medium", local: true });
+	const mode = st.gameMode === "elim" ? "elim" : "race";
+	audio.unlock();
+	beginRace({
+		source: "solo", def, reverse: st.reverse, mode, laps: mode === "elim" ? 99 : st.laps,
+		entrants, myId: null, draft: st.draft, contact: st.contact, tod: st.tod || "default", weather: st.weather || "clear",
+		startAt: soloNow() + 700 + COUNTDOWN, authority: true, restart: startBroadcast, watch: true
+	});
+	S.ctx.laps = st.laps;
+}
+$("setupWatch").addEventListener("click", () => { audio.unlock(); audio.sfx.confirm(); startBroadcast(); });
 
 // Qualifying: a hotlap session (no contact, no slipstream). Best lap sets the grid.
 function startQuali(def, reverse, entrants, then){
@@ -722,6 +787,7 @@ function beginRace(opts){
 	endRace(true);
 	const entry = showTrack(opts.def, opts.reverse);
 	S.ctx = opts;
+	setBigTv(!!opts.watch);
 	S.frozen = false;
 	S.paused = false;
 	S.lastDelta = null;
@@ -740,7 +806,7 @@ function beginRace(opts){
 	S.atmos = makeAtmosphere({ tod: opts.tod, weather: opts.weather }, S.world.theme, opts.startAt);
 	S.rainOn = false;
 	addHeadlights(S.race);
-	S.world.onThunder = delay => audio.thunder(delay);
+	S.world.onThunder = delay => { audio.thunder(delay); setTimeout(() => { if(S.race) { engineer.event("thunder"); cast.event("thunder"); } }, Math.max(0, delay) * 1000); };
 	if(opts.mode === "trial"){
 		syncGhostFromAccount(S.race, key, opts.weekly);
 		setupSectorRef(S.race, key, entry.tracker.path);
@@ -773,7 +839,7 @@ function beginRace(opts){
 	S.screen = "race";
 	hud.setup(entry.track, entry.tracker, opts.laps, opts.mode);
 	hud.show(true);
-	hud.spectating(S.race.me ? "" : "Spectating · you'll be in the next race");
+	hud.spectating(S.race.me || S.watch ? "" : "Spectating · you'll be in the next race");
 	updateTouchZones();
 	camMode = "chase";
 	snapCamera();
@@ -781,6 +847,9 @@ function beginRace(opts){
 	audio.unlock();
 	audio.playMusic(null);
 	audio.startEngine();
+	engineer.start(S.race);
+	cast.start(S.race, entry.def);
+	wantVoices();
 }
 
 function endRace(keepTrack){
@@ -801,6 +870,7 @@ function endRace(keepTrack){
 	S.paused = false;
 	S.frozen = false;
 	audio.stopEngine();
+	audio.stopVoices(); engineer.stop(); cast.stop();
 	if(S.showcase) S.showcase.visible = true;
 	fx.clear();
 }
@@ -891,10 +961,12 @@ function focusCar(){
 function onRaceEvent(type, d){
 	const r = S.race;
 	if(!r) return;
+	engineer.event(type, d);
+	cast.event(type, d);
 	const focus = focusCar();
 	switch(type){
 		case "go":
-			if(S.settings.raceMusic && r.mode !== "trial") audio.playMusic("race");
+			if(S.settings.raceMusic && r.mode !== "trial") audio.playMusic(raceSongFor());
 			if(r.mode === "quali"){ hud.banner("Qualifying", "Best lap sets the grid", "go", 1800); audio.sfx.go(); break; }
 			hud.banner("Go", "", "go", 900);
 			audio.sfx.go();
@@ -1054,7 +1126,7 @@ function showResults(results, online, opts = {}){
 	clearInterval(S.qualiTimer);
 	if(!S.race && !online) return;
 	const key = (online ? "o" : "s") + (S.race ? S.race.startAt : "");
-	if(online && !quali && S.statsKey !== key){ S.statsKey = key; recordStats(); }
+	if(online && !quali && !S.watchRoom && S.statsKey !== key){ S.statsKey = key; recordStats(); }
 	if(!quali && !opts.afterHighlights && S.race && S.highlightsKey !== key && S.race.rec.frames.length > 60){
 		S.highlightsKey = key;
 		S.frozen = true;
@@ -1183,7 +1255,7 @@ function pause(){
 	$("ownGhostBtn").hidden = !S.race.rival;
 	$("ownGhostBtn").firstElementChild.textContent = S.race.hideOwnGhost ? "Show my ghost" : "Hide my ghost";
 	$("quitBtn").firstElementChild.textContent = online ? "Leave room" : "Quit to menu";
-	if(!online){ S.paused = true; S.pauseStart = performance.now(); audio.stopEngine(); }
+	if(!online){ S.paused = true; S.pauseStart = performance.now(); audio.stopEngine(); audio.stopVoices(); }
 	audio.duckMusic(true);
 	openModal("pause");
 }
@@ -1249,7 +1321,19 @@ addEventListener("keyup", e => {
 	if(k === "KeyB") S.input.back = false;
 });
 addEventListener("blur", () => { S.input.left = S.input.right = S.input.back = false; });
-addEventListener("pointerdown", () => audio.unlock(), { once: false, passive: true });
+addEventListener("pointerdown", () => { audio.unlock(); setTimeout(() => { $("tvSound").hidden = audio.soundState() === "running"; }, 150); }, { once: false, passive: true });
+// Pointing at a button or a card makes a very soft tick (a mouse only, and only in the menus).
+let lastHover = 0, lastHoverEl = null;
+addEventListener("pointerover", e => {
+	if(e.pointerType !== "mouse" || S.screen === "race" || S.screen === "replay") return;
+	const el = e.target.closest && e.target.closest("button, .track-card, a, [role=radio]");
+	if(!el || el === lastHoverEl || el.disabled) return;
+	const now = performance.now();
+	if(now - lastHover < 70) return;
+	lastHover = now; lastHoverEl = el;
+	audio.sfx.hover();
+}, { passive: true });
+addEventListener("pointerout", e => { if(e.target === lastHoverEl) lastHoverEl = null; }, { passive: true });
 
 for(const [id, key] of [["touchLeft", "tl"], ["touchRight", "tr"]]){
 	const el = $(id);
@@ -1446,7 +1530,7 @@ function showTv(kind){
 	document.body.classList.add("tv-on");
 	el.classList.toggle("replay", kind !== "live");
 	$("tvTag").textContent = kind === "live" ? "Live" : kind === "highlights" ? "Highlights" : "Replay";
-	$("tvSub").textContent = kind === "live" && S.race && !S.race.me ? "You'll race next time" : "";
+	$("tvSub").textContent = kind === "live" && S.race && !S.race.me && !S.watch ? "You'll race next time" : "";
 	$("tvReplayCtl").hidden = kind !== "replay";
 	$("tvSkip").hidden = kind !== "highlights";
 	$("tvExit").hidden = kind !== "replay";
@@ -1506,6 +1590,7 @@ function startReplay(kind, then){
 	const winner = r.standings()[0];
 	S.replay = new Replay(r, clips, (r.me && r.me.id) || (winner && winner.car.id));
 	S.replayKind = kind;
+	S.replayClip = -1;
 	S.replayThen = then;
 	document.querySelectorAll("[data-screen]").forEach(el => { el.hidden = true; });
 	S.screen = "replay";
@@ -1518,6 +1603,7 @@ function endReplay(){
 	const then = S.replayThen;
 	S.replay = null;
 	S.replayThen = null;
+	audio.stopVoices();
 	stopTv();
 	if(then) then();
 }
@@ -1527,6 +1613,8 @@ function replayFrame(dt){
 	if(rp.done){ endReplay(); return; }
 	const focus = rp.apply(dt);
 	if(rp.cutNeeded){ director().newFocus(); rp.cutNeeded = false; }
+	// Each highlight is called by the commentator as it starts.
+	if(S.replayKind === "highlights" && rp.clips && rp.clip !== S.replayClip){ S.replayClip = rp.clip; cast.clip(rp.clips[rp.clip], rp.race); }
 	if(focus) director().update(dt, rp.t / 1000, focus);
 	tvThird(focus && focus.car, null, rp.caption);
 	if(S.replayKind === "replay" && rp.end > rp.start){
@@ -1579,9 +1667,48 @@ function updateLabels(standings, focus){
 }
 
 // ---------- Main loop ----------
-let last = performance.now(), hudTimer = 0, lightsShown = 0;
+let last = performance.now(), hudTimer = 0, lightsShown = 0, musicTimer = 0;
+// Which of the race songs plays: the slow, spacious one after dark, otherwise one of the other two (the same one for a given track).
+function raceSongFor(){
+	if(S.world && S.world.look && S.world.look.night > 0.5) return "night";
+	const id = (S.track && S.track.def && S.track.def.id) || "";
+	let h = 0; for(let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+	return (h & 1) ? "race2" : "race";
+}
+// How far through the race the player is and whether they're in a close fight: the music's layers follow (js/music.js).
+function raceMusicState(r, me, standings){
+	let progress = 0;
+	if(r.mode === "elim"){ const total = r.cars.filter(c => !c.gone).length || 1; progress = 1 - r.cars.filter(c => !c.gone && c.elim === null).length / total; }
+	else if(r.laps > 0 && me.data.lap > 0) progress = (me.data.lap - 1 + (me.frac || 0)) / r.laps;
+	const i = standings.findIndex(s => s.car === me);
+	let battle = false;
+	if(i >= 0 && me.finish === null){
+		const a = i > 0 ? r.gapSeconds(standings[i - 1].car, me) : 9, b = i < standings.length - 1 ? r.gapSeconds(me, standings[i + 1].car) : 9;
+		battle = Math.min(a, b) < 0.9;
+	}
+	return { progress, battle };
+}
 // Who you can hear: the car you're watching, plus the nearest others, panned
 // left/right from the camera, quieter with distance and with a touch of doppler.
+// Where a car's wheels are, for the tyre, kerb and grass sounds: 0 the road, 1 a kerb, 2 off the road.
+const kerbMasks = new WeakMap();
+function kerbMask(track){
+	let m = kerbMasks.get(track);
+	if(m) return m;
+	const c = track.center, n = c ? c.n : 0;
+	m = [new Uint8Array(n), new Uint8Array(n)];
+	if(c) for(const k of track.kerbs || []) if(k.end - k.start >= 6) for(let i = k.start - 3; i <= k.end + 3; i++) m[k.side === 0 ? 0 : 1][((i % n) + n) % n] = 1;
+	kerbMasks.set(track, m);
+	return m;
+}
+function surfaceOf(r, car){
+	const track = r.track, c = track.center;
+	if(!c || car.ci == null) return 0;
+	const i = car.ci, lat = (car.data.x - c.x[i]) * c.tz[i] - (car.data.y - c.z[i]) * c.tx[i], a = Math.abs(lat), hw = c.hw;
+	if(a > hw + 0.35) return 2;
+	if(a > hw - 1.4 && kerbMask(track)[lat > 0 ? 0 : 1][i]) return 1;
+	return 0;
+}
 const earRight = new THREE.Vector3(), earPrev = new Map();
 S.engineCars = [];
 function engineMix(r, focus, dt){
@@ -1643,6 +1770,7 @@ function frame(now){
 		if(!S.paused){
 			const steer = $("pause").hidden ? steerInput() : 0;
 			r.update(dt, steer);
+			if(!S.replay){ const lk = S.world && S.world.look; engineer.update(dt, lk); cast.update(dt, lk); }
 			// Start lights: one every 0.6 s, out at GO.
 			const rt = r.raceTime;
 			if(rt < 0){
@@ -1670,13 +1798,14 @@ function frame(now){
 			const speed = Math.hypot(d.xv, d.yv);
 			const slip = speed > 0.05 ? Math.abs(Math.sin(Math.atan2(d.xv, d.yv) - d.dir)) : 0;
 			engineMix(r, focus, dt);
-			audio.updateEngines(S.engineCars, { speed: r.phase === "racing" ? speed : 0, slip, draft: r.draft ? focus.draft || 0 : 0 }, dt);
+			audio.updateEngines(S.engineCars, { speed: r.phase === "racing" ? speed : 0, slip, draft: r.draft ? focus.draft || 0 : 0, surface: r.phase === "racing" ? surfaceOf(r, focus) : 0 }, dt);
 			hud.setDraft(r.draft && r.phase === "racing" ? focus.draft || 0 : 0);
 		}
 		hudTimer -= dt;
 		const standings = r.standings();
 		if(hudTimer <= 0 && focus){
 			hudTimer = 1 / 20;
+			if(r.phase === "racing" && r.mode !== "trial" && r.mode !== "quali" && (musicTimer -= 1 / 20) <= 0){ musicTimer = 1; audio.musicState(raceMusicState(r, focus, standings)); }
 			const d = focus.data, rt = r.raceTime;
 			const done = focus.finish !== null;
 			hud.setRace({
@@ -1768,6 +1897,63 @@ $("joinBtn").addEventListener("click", () => withBusy($("joinBtn"), async () => 
 	enterLobby();
 }));
 
+// ---------- Big screen: a projector in a classroom ----------
+// Joins a room as a watcher (net.joinRoom with watch): it shows the waiting board between races and a broadcast (the live
+// cameras, commentary, a big timing tower) during them. It never takes a place on the grid or a say in who hosts.
+function setBigTv(on){ S.watch = !!on; document.body.classList.toggle("bigtv", !!on); }
+async function joinAsBigScreen(code){
+	audio.unlock();
+	code = String(code || "").trim().toUpperCase();
+	if(code.length !== 4) throw new Error("Room codes are four letters.");
+	const net = await connect();
+	if(await net.isBanned().catch(() => false)) throw new Error("This account has been banned from online play by the admin.");
+	S.net = net;
+	await net.joinRoom(code, { name: "Big screen", hue: 200, body: "classic", look: null }, { watch: true });
+	S.watchRoom = true;
+	setBigTv(true);
+	S.raceId = null; S.resultsShown = null; S.room = null;
+	$("tvRoomCode").textContent = net.code;
+	chat.attach(net);
+	showScreen("bigtv");
+	camMode = "overview";
+	net.watchRoom(room => onRoom(room));
+	net.watchState((type, id, val) => {
+		if(!S.race || S.ctx.source !== "online") return;
+		if(type === "removed"){ if(!S.room || !S.room.players || !S.room.players[id]) S.race.removeCar(id); }
+		else S.race.applyRemote(id, val);
+	});
+	net.mesh = new Mesh(net, {
+		onState(from, carId, s){
+			if(!S.race || S.ctx.source !== "online" || !S.room) return;
+			const p = (S.room.players || {})[carId];
+			if(carId === from || (p && p.bot && S.room.host === from)) S.race.applyRemote(carId, s);
+		},
+		onStatus(){}
+	});
+}
+$("screenCode").addEventListener("input", e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4); });
+$("screenCode").addEventListener("keydown", e => { if(e.key === "Enter") $("screenBtn").click(); });
+$("screenBtn").addEventListener("click", () => withBusy($("screenBtn"), () => joinAsBigScreen($("screenCode").value)));
+$("tvLeave").addEventListener("click", () => leaveRoom());
+// The waiting board: the room's code, what's next and who's in.
+function renderBigTv(room){
+	const st = room.settings || lobbyDefaults();
+	const def = defFor(st.track, st.custom), champ = st.mode === "champ", rounds = (st.rounds || []).filter(id => trackById(id));
+	$("tvNextTrack").textContent = champ ? "Championship" : def.name + (st.reverse ? " (reversed)" : "");
+	$("tvNextSub").textContent = [champ ? (rounds.length ? rounds.map(id => trackById(id).name).join(", ") : "Rounds not picked yet") : def.place,
+		champ ? "" : st.mode === "elim" ? "Last car out each lap" : (st.laps || 3) + ((st.laps || 3) === 1 ? " lap" : " laps"), st.mode === "elim" ? "Elimination" : "", st.quali ? "Qualifying first" : ""].filter(Boolean).join(" · ");
+	$("tvSound").hidden = audio.soundState() === "running";
+	$("tvStatus").lastElementChild.textContent = room.phase === "lobby" ? "Waiting for the host to start the race" : room.phase === "race" ? "A race is starting" : "Next race coming up";
+	const drivers = Object.entries(room.players || {}).filter(([, p]) => !p.watch).map(([id, p]) => Object.assign({ id }, p)).sort((a, b) => (a.joined || 0) - (b.joined || 0));
+	const key = drivers.map(p => p.id + p.name + p.hue + p.ready + (room.host === p.id)).join("|");
+	if($("tvRoster")._key !== key){
+		$("tvRoster")._key = key;
+		$("tvRoster").innerHTML = drivers.map(p => `<li><i class="chip" style="background:hsl(${p.hue},100%,55%)"></i><span class="bt-name">${escapeHtml(cleanName(p.name, p.id))}<span class="bt-car">${(BODIES.find(b => b.id === p.body) || BODIES[0]).name}</span></span>${
+			p.id === room.host ? '<span class="tag host">Host</span>' : p.bot ? `<span class="tag bot">AI</span>` : p.ready ? '<span class="tag ready">Ready</span>' : ""}</li>`).join("");
+	}
+	if(!champ || rounds.length) previewTrack(champ ? trackById(rounds[0]) : def, st.reverse);
+}
+
 function enterLobby(){
 	S.raceId = null;
 	S.resultsShown = null;
@@ -1795,6 +1981,8 @@ function enterLobby(){
 }
 
 async function leaveRoom(msg){
+	S.watchRoom = false;
+	setBigTv(false);
 	endRace();
 	chat.detach();
 	if(S.net){ try { await S.net.leave(); } catch {} }
@@ -1845,12 +2033,13 @@ function onRoom(room){
 	}else if(room.phase === "results" && room.results && S.resultsShown !== (race && race.id)){
 		S.resultsShown = race && race.id;
 		showResults(room.results, true);
-	}else if(room.phase === "lobby" && S.screen !== "lobby"){
+	}else if(room.phase === "lobby" && S.screen !== (S.watchRoom ? "bigtv" : "lobby")){
 		endRace();
-		showScreen("lobby");
+		showScreen(S.watchRoom ? "bigtv" : "lobby");
 		camMode = "overview";
 	}
 	if(S.screen === "lobby") renderLobby(room);
+	if(S.screen === "bigtv") renderBigTv(room);
 }
 
 const lobbySettingsControls = {
@@ -1880,7 +2069,8 @@ function netTag(p){
 }
 function renderLobby(room){
 	const net = S.net, host = net.isHost, st = room.settings || lobbyDefaults();
-	const players = Object.entries(room.players || {}).map(([id, p]) => Object.assign({ id }, p)).sort((a, b) => (a.joined || 0) - (b.joined || 0));
+	const screens = Object.values(room.players || {}).filter(p => p.watch).length;
+	const players = Object.entries(room.players || {}).filter(([, p]) => !p.watch).map(([id, p]) => Object.assign({ id }, p)).sort((a, b) => (a.joined || 0) - (b.joined || 0));
 	$("playerCount").textContent = `${players.length}/${MAX_CARS}`;
 	$("playerList").innerHTML = "";
 	for(const p of players){
@@ -1969,7 +2159,7 @@ function renderLobby(room){
 		go.disabled = (st.mode === "elim" && players.length < 2) || (isChamp && rounds.length < 2);
 		$("lobbyStatus").textContent = st.mode === "elim" && players.length < 2 ? "Elimination needs at least two cars. Add a bot."
 			: isChamp && rounds.length < 2 ? "Pick at least two tracks for the championship."
-			: ready + " of " + humans.length + " drivers ready";
+			: ready + " of " + humans.length + " drivers ready" + (screens ? " · big screen connected" : "");
 	}else{
 		const me = (room.players || {})[net.uid];
 		go.firstElementChild.textContent = me && me.ready ? "Not ready" : "I'm ready";
@@ -1997,7 +2187,7 @@ function hostStart(){
 	const room = S.room, net = S.net;
 	if(!room || !net.isHost) return;
 	const st = room.settings || lobbyDefaults();
-	const grid = Object.entries(room.players || {}).sort((a, b) => (a[1].joined || 0) - (b[1].joined || 0)).map(([id]) => id).slice(0, MAX_CARS);
+	const grid = Object.entries(room.players || {}).filter(([, p]) => !p.watch).sort((a, b) => (a[1].joined || 0) - (b[1].joined || 0)).map(([id]) => id).slice(0, MAX_CARS);
 	if(st.mode === "elim" && grid.length < 2) return;
 	if(st.mode === "champ"){
 		const rounds = (st.rounds || []).filter(id => trackById(id));
@@ -2014,7 +2204,7 @@ function hostStart(){
 
 function startChampRoundOnline(champ, qualiGrid){
 	const room = S.room, net = S.net, st = room.settings || lobbyDefaults();
-	const ids = Object.entries(room.players || {}).sort((a, b) => (a[1].joined || 0) - (b[1].joined || 0)).map(([id]) => id).slice(0, MAX_CARS);
+	const ids = Object.entries(room.players || {}).filter(([, p]) => !p.watch).sort((a, b) => (a[1].joined || 0) - (b[1].joined || 0)).map(([id]) => id).slice(0, MAX_CARS);
 	const r = champ.rounds[champ.idx];
 	const next = { track: r.track, reverse: !!champ.reverse && !trackById(r.track).code, laps: champ.laps, mode: "race", custom: null, draft: st.draft !== false, contact: st.contact === "classic" ? "classic" : "soft", tod: st.tod || "default", weather: st.weather || "clear", champ: true };
 	const base = { id: ((room.race && room.race.id) || S.raceId || 0) + 1, startAt: net.now() + 1800 + COUNTDOWN, grid: champ.idx === 0 ? ids : champGrid(champ, ids) };
@@ -2026,7 +2216,7 @@ function hostAfterQuali(){
 	const room = S.room;
 	if(!room || !S.net || !S.net.isHost || room.phase !== "qualiResults" || !room.race || !room.race.next) return;
 	const order = ((room.quali && room.quali.order) || []).filter(id => room.players && room.players[id]);
-	const rest = Object.keys(room.players || {}).filter(id => !order.includes(id));
+	const rest = Object.keys(room.players || {}).filter(id => !order.includes(id) && !room.players[id].watch);
 	S.net.startRace(Object.assign({}, room.race.next, {
 		id: room.race.id + 1, startAt: S.net.now() + 1800 + COUNTDOWN, grid: [...order, ...rest].slice(0, MAX_CARS)
 	}));
@@ -2049,7 +2239,7 @@ function beginOnlineRace(room){
 	const def = defFor(r.track, r.custom);
 	beginRace({
 		source: "online", def, reverse: r.reverse, mode: r.mode, laps: r.mode === "elim" ? 99 : r.laps,
-		entrants, myId: net.uid, startAt: r.startAt, authority: room.host === net.uid, draft: r.draft !== false, contact: r.contact, tod: r.tod, weather: r.weather, champ: !!r.champ
+		entrants, myId: net.uid, startAt: r.startAt, authority: room.host === net.uid, draft: r.draft !== false, contact: r.contact, tod: r.tod, weather: r.weather, champ: !!r.champ, watch: !!S.watchRoom
 	});
 	S.ctx.laps = r.laps;
 }
@@ -2511,6 +2701,19 @@ showScreen("title");
 		openSetup("bots");
 	}
 	if(play){ params.delete("play"); history.replaceState(null, "", location.pathname + (params.toString() ? "?" + params : "")); }
+	// A link for the classroom projector: ?tv=ABCD joins that room as a big screen.
+	const tvCode = (params.get("tv") || "").toUpperCase();
+	if(/^[A-Z]{4}$/.test(tvCode) && onlineAvailable()){
+		// (A few tries: the room may not be there yet, or the connection may still be settling.)
+		const tryJoin = async left => {
+			try{ await joinAsBigScreen(tvCode); }
+			catch(e){
+				if(left > 0 && /no room/i.test(e.message || "")) setTimeout(() => tryJoin(left - 1), 1500);
+				else { openOnline(); onlineMsg(e.message || String(e)); }
+			}
+		};
+		tryJoin(8);
+	}
 }
 loadWeeklyCard();
 refreshAccount().then(() => garage.refresh(true)).then(() => { $("titleLevel").textContent = garage.level; });

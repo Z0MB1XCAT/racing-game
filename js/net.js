@@ -537,15 +537,16 @@ export class Net {
 		throw new Error("Couldn't find a free room code. Try again.");
 	}
 
-	async joinRoom(code, profile){
+	// opts.watch: join as a big screen: it watches the races and never takes a place on the grid or a say in who hosts.
+	async joinRoom(code, profile, opts = {}){
 		code = code.toUpperCase();
 		const room = await this.store.get("rooms/" + code);
 		if(!room || !room.host) throw new Error(`There's no room ${code}. Check the code with whoever is hosting.`);
 		if(this.now() - (room.created || 0) > STALE_ROOM) throw new Error(`Room ${code} has closed. Ask the host to make a new one.`);
-		const count = Object.keys(room.players || {}).length;
-		if(count >= MAX_CARS && !(room.players || {})[this.uid]) throw new Error(`Room ${code} is full (${MAX_CARS} cars).`);
+		const count = Object.values(room.players || {}).filter(p => !p.watch).length;
+		if(!opts.watch && count >= MAX_CARS && !(room.players || {})[this.uid]) throw new Error(`Room ${code} is full (${MAX_CARS} cars).`);
 		this.code = code;
-		await this.store.set(this.path("players/" + this.uid), this.playerRecord(profile, false));
+		await this.store.set(this.path("players/" + this.uid), this.playerRecord(profile, false, opts.watch));
 		this.watchPresence();
 		return room;
 	}
@@ -559,14 +560,16 @@ export class Net {
 	// Host migration: when the host has gone, the longest-waiting real driver takes over.
 	nextHost(room, excluding){
 		const humans = Object.entries((room && room.players) || {})
-			.filter(([id, p]) => !p.bot && id !== excluding)
+			.filter(([id, p]) => !p.bot && !p.watch && id !== excluding)
 			.sort((a, b) => (a[1].joined || 0) - (b[1].joined || 0));
 		return humans.length ? humans[0][0] : null;
 	}
 	claimHost(){ return this.store.set(this.path("host"), this.uid); }
 
-	playerRecord(profile, ready){
-		return { name: profile.name, hue: profile.hue, body: profile.body, look: profile.look || null, ready: !!ready, joined: this.now(), owner: this.uid, v: VERSION };
+	playerRecord(profile, ready, watch){
+		const rec = { name: profile.name, hue: profile.hue, body: profile.body, look: profile.look || null, ready: !!ready, joined: this.now(), owner: this.uid, v: VERSION };
+		if(watch) rec.watch = true;
+		return rec;
 	}
 
 	// cb(room) whenever anything except car positions changes; cb(null) if the room disappears.
