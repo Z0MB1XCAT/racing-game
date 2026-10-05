@@ -1,6 +1,7 @@
 // Drives the game in a headless browser and screenshots each step.
 //   node tools/e2e.mjs solo [trackId]     race bots, hold right-ish steering, screenshot HUD + results
 //   node tools/e2e.mjs online             two tabs over ?localnet: host, join, race
+//   node tools/e2e.mjs invite             copy the lobby's invite link and open it as a friend
 //   node tools/e2e.mjs rematch            four tabs: race, then vote for a rematch on the results screen
 import puppeteer from "puppeteer";
 import { mkdir } from "node:fs/promises";
@@ -716,6 +717,41 @@ if(flow === "rematch"){
 	await wait(1500);
 	const rs = await Promise.all(all.map(p => p.evaluate(() => ({ screen: window.__game.screen, id: window.__game.room.race.id, phase: window.__game.room.phase }))));
 	console.log("a majority starts the rematch for everyone (race 2):", rs.every(x => x.id === 2 && x.phase === "race"), JSON.stringify(rs.map(x => x.screen)));
+}
+
+if(flow === "invite"){
+	// "Copy invite link" in the lobby, and a friend opening that link: Online opens with the code filled in and Join ready.
+	await browser.defaultBrowserContext().overridePermissions("http://localhost:3000", ["clipboard-read", "clipboard-write"]);
+	const host = await open(base + "?localnet");
+	await click(host, "#btnOnline"); await wait(400);
+	await click(host, "#hostBtn"); await wait(1200);
+	const code = await host.$eval("#roomCode", e => e.textContent);
+	await host.bringToFront();
+	await click(host, "#copyInvite"); await wait(400);
+	let link = await host.evaluate(() => navigator.clipboard.readText().catch(() => ""));
+	const copied = await host.$eval("#copyInvite", e => e.textContent);
+	if(!link){ link = await host.$eval("#lobbyStatus", e => (e.textContent.match(/https?:\S+/) || [""])[0]); console.log("(the clipboard was blocked here, so the link came from the fallback message)"); }
+	console.log("link:", link, "| button says:", copied);
+	console.log("  the link carries the room and keeps ?localnet:", link === base + "?localnet&room=" + code || link === base + "?room=" + code + "&localnet" || link === base + "?localnet=&room=" + code);
+	// A friend opens it.
+	const friend = await open(link);
+	await wait(1200);
+	const f = await friend.evaluate(() => ({ screen: window.__game.screen, code: document.getElementById("codeInput").value, note: document.getElementById("inviteNote").textContent, noteShown: !document.getElementById("inviteNote").hidden, joinIsPrimary: !document.getElementById("joinBtn").classList.contains("ghost"), focused: document.activeElement && document.activeElement.id, url: location.search }));
+	console.log("friend lands on Online with the code in:", f.screen === "online" && f.code === code, "|", f.note);
+	console.log("  Join is highlighted and focused:", f.joinIsPrimary && f.focused === "joinBtn", "| the address bar is tidied (no ?room):", !/room=/.test(f.url), JSON.stringify(f.url));
+	await shot(friend, "invite-landing");
+	await click(friend, "#joinBtn"); await wait(1500);
+	const inLobby = await friend.evaluate(() => ({ screen: window.__game.screen, drivers: document.querySelectorAll("#playerList .player").length }));
+	console.log("one press joins the room:", inLobby.screen === "lobby" && inLobby.drivers === 2, JSON.stringify(inLobby));
+	// Going back to Online by hand has no leftover invite.
+	await friend.evaluate(() => document.getElementById("leaveRoom").click()); await wait(800);
+	console.log("after leaving, no invite note and Join is plain again:", await friend.evaluate(() => document.getElementById("inviteNote").hidden && document.getElementById("joinBtn").classList.contains("ghost")));
+	// Not a room code, or a closed room.
+	const bad = await open(base + "?localnet&room=abc");
+	console.log("a bad code is ignored (stays on the title):", await bad.evaluate(() => window.__game.screen) === "title");
+	const gone = await open(base + "?localnet&room=ZZZZ"); await wait(1000);
+	await click(gone, "#joinBtn"); await wait(1200);
+	console.log("a room that isn't there says so:", await gone.$eval("#onlineMsg", e => e.textContent));
 }
 
 console.log(errors.length ? "ERRORS:\n" + [...new Set(errors)].join("\n") : "no page errors");

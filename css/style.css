@@ -288,6 +288,7 @@ a.race-btn{ color: inherit; text-decoration: none; }
 .code-input:focus{ outline: none; border-color: var(--car); box-shadow: 0 0 0 3px var(--car-soft); }
 .msg{ font-size: 14px; line-height: 1.5; margin: 0; }
 .msg.err{ color: #ff8a8a; }
+.msg.invite{ color: var(--green); font-weight: 600; }
 .notice{ border-left: 4px solid var(--wall); }
 .notice code{ font-size: 13px; background: #0d1118; padding: 1px 5px; border-radius: 2px; }
 

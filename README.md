@@ -210,7 +210,9 @@ original did).
   at least two real drivers, plus a lap-record board for every track in both directions. Lap
   records come from Time trial only.
 - **Online rooms**: four-letter codes, a lobby with ready-up, host picks track, laps and bots.
-  Up to 10 cars per room.
+  Up to 10 cars per room. **Copy invite link** in the lobby copies a link like `https://your-site/?room=ABCD`: whoever opens it
+  lands on Online with the code filled in and **Join room** highlighted (one press to join; it never joins on its own, so a
+  player can still set their name first). A bad code is ignored and a closed room says so when they press Join.
 - **Bots** in three levels (Rookie, Racer, Ace), in solo races and online rooms.
 - **HUD**: F1-style start lights, timing tower, lap and race timers, best lap, speedometer,
   minimap, final-lap and wrong-way banners, results podium.
@@ -584,7 +586,7 @@ The last two also need puppeteer installed.
 - `node tools/build-voices.mjs [eng] [lead] [col] [--force] [--check]` renders the lines in `js/voicelines.js` into `assets/voice/*.pak` with the Kokoro voice (needs `npm i kokoro-js` in a scratch folder and `KOKORO_DIR` pointing at it, plus ffmpeg); `--check` listens back with a speech recogniser. Only needed when a line or a voice changes.
 - `node tools/build-sfx.mjs <folder>` packs the chosen sounds from Kenney's Impact Sounds, Interface Sounds and UI Audio packs (CC0) into `assets/audio/sfx.pak`.
 - `node tools/contact-test.mjs monaco` compares original and soft car contact (side hit, rear tap, a bot race).
-- `node tools/e2e.mjs solo|online|rematch|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
+- `node tools/e2e.mjs solo|online|rematch|invite|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
 
 ## Credits and licence
 

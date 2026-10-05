@@ -270,6 +270,7 @@
 					<div class="eyebrow">Join</div>
 					<h3 class="screen-title" style="font-size:32px">Enter a code</h3>
 					<input id="codeInput" class="code-input" maxlength="4" autocomplete="off" spellcheck="false" placeholder="ABCD" aria-label="Room code">
+					<p class="msg invite" id="inviteNote" role="status" hidden></p>
 					<button class="go-btn ghost" id="joinBtn"><span>Join room</span></button>
 				</div>
 				<div class="panel kerbed stack">
@@ -313,7 +314,10 @@
 						<div class="eyebrow">Room code</div>
 						<div class="code" id="roomCode">----</div>
 					</div>
-					<button class="back-btn" id="copyCode">Copy code</button>
+					<div class="flex gap-3" style="flex-wrap:wrap">
+						<button class="back-btn" id="copyCode">Copy code</button>
+						<button class="back-btn" id="copyInvite" title="A link that opens the game with this room's code filled in">Copy invite link</button>
+					</div>
 				</div>
 				<p class="msg" id="lobbyStatus" style="color:var(--mute)"></p>
 			</header>

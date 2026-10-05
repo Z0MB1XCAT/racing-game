@@ -1937,6 +1937,18 @@ function openOnline(){
 	$("onlineNotice").hidden = ok;
 	$("onlineCards").style.opacity = ok ? "" : ".45";
 	$("hostBtn").disabled = $("joinBtn").disabled = $("codeInput").disabled = !ok;
+	$("inviteNote").hidden = true;
+	$("joinBtn").classList.add("ghost");
+}
+// A link from a friend (?room=ABCD): Online opens with their room's code filled in and Join ready.
+function openInvite(code){
+	openOnline();
+	if(!onlineAvailable()) return;
+	$("codeInput").value = code;
+	$("inviteNote").textContent = `You're invited to room ${code}. Press Join room.`;
+	$("inviteNote").hidden = false;
+	$("joinBtn").classList.remove("ghost");
+	$("joinBtn").focus();
 }
 $("btnOnline").addEventListener("click", () => { audio.sfx.click(); openOnline(); });
 $("codeInput").addEventListener("input", e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4); });
@@ -2065,6 +2077,18 @@ async function leaveRoom(msg){
 	if(typeof msg === "string") onlineMsg(msg);
 }
 $("leaveRoom").addEventListener("click", () => leaveRoom());
+$("copyInvite").addEventListener("click", async () => {
+	const code = S.net && S.net.code;
+	if(!code) return;
+	// This page's own address (keeping ?localnet when testing), with the room in it.
+	const q = new URLSearchParams(location.search);
+	for(const k of ["tv", "play", "room"]) q.delete(k);
+	q.set("room", code);
+	const link = location.origin + location.pathname + "?" + q;
+	try { await navigator.clipboard.writeText(link); $("copyInvite").textContent = "Link copied"; }
+	catch { $("copyInvite").textContent = "Copy invite link"; $("lobbyStatus").textContent = "Your browser blocked copying. The link is " + link; }
+	setTimeout(() => { $("copyInvite").textContent = "Copy invite link"; }, 1800);
+});
 $("copyCode").addEventListener("click", async () => {
 	const code = S.net && S.net.code;
 	if(!code) return;
@@ -2818,9 +2842,11 @@ showScreen("title");
 		S.setup.laps = 3;
 		openSetup("bots");
 	}
-	if(play){ params.delete("play"); history.replaceState(null, "", location.pathname + (params.toString() ? "?" + params : "")); }
+	const inviteCode = (params.get("room") || "").toUpperCase();
+	if(play || params.has("room")){ params.delete("play"); params.delete("room"); history.replaceState(null, "", location.pathname + (params.toString() ? "?" + params : "")); }
 	// A link for the classroom projector: ?tv=ABCD joins that room as a big screen.
 	const tvCode = (params.get("tv") || "").toUpperCase();
+	if(/^[A-Z]{4}$/.test(inviteCode) && !/^[A-Z]{4}$/.test(tvCode) && !play) openInvite(inviteCode);
 	if(/^[A-Z]{4}$/.test(tvCode) && onlineAvailable()){
 		// (A few tries: the room may not be there yet, or the connection may still be settling.)
 		const tryJoin = async left => {
