@@ -348,7 +348,10 @@ On phones, tilt to steer or tap the screen sides (Settings).
 **Updating:** when you push a new version, change `VERSION` in `js/config.js` and the same value in
 `version.json`. Anyone with the game already open then gets a "new version" bar with a Refresh button,
 and the lobby marks players on an older copy with *Needs refresh* (an old copy can miss new settings
-like weather).
+like weather). After they refresh, the game shows a **What's new** popup once (the entries in `js/changelog.js` newer than
+the version they last played; a first-ever visit and a link into a room or a big screen skip it, and it waits for next time).
+How to play > **What's new** opens the latest entries again. **When a version has something players will notice, add an entry
+at the top of `js/changelog.js`** (its `version` is the `VERSION` that ships it; keep items short and plain).
 
 Bots, time trial and the editor work straight away. Online rooms need the next part.
 
@@ -583,6 +586,7 @@ The last two also need puppeteer installed.
 - `node tools/sky-shots.mjs [trackId] [tod-weather ...]` screenshots a track at different times and weather (e.g. `monza night-rain`).
 - `node tools/scenery-shots.mjs [trackId ...]` takes screenshots of each track (overview, racing with the mirror, looking back, highlights).
 - `node tools/engine-demo.mjs` renders a clip of each engine to WAV (with spectrograms) for tuning the sound. Engine settings are `ENGINES` in `js/audio.js`.
+- `node tools/changelog-test.mjs` checks the What's new changelog: entries are well formed and newest first, none is newer than the game, and versions compare right (-9 before -10). No browser.
 - `node tools/unlock-test.mjs` checks the results screen's "Next unlock" logic: it always names a locked item with something left to do, level goals count in XP, and nothing shows once everything is open. No browser.
 - `node tools/horn-test.mjs` checks the horn in a real browser: every horn sound is audible and about as loud as the others, a press (even a 15 ms tap) in one tab is heard in the other over `?localnet`, and with the room's Horn switched Off nothing happens.
 - `node tools/sound-test.mjs [track] [--voices]` plays a short race in a real browser and listens to the mix: the recorded effects load, nothing clips or goes silent, and the voices stay out of sight (no settings, subtitles or voice files); with `--voices` it turns them on and checks the engineer and commentators speak, with subtitles.
@@ -590,7 +594,7 @@ The last two also need puppeteer installed.
 - `node tools/build-voices.mjs [eng] [lead] [col] [--force] [--check]` renders the lines in `js/voicelines.js` into `assets/voice/*.pak` with the Kokoro voice (needs `npm i kokoro-js` in a scratch folder and `KOKORO_DIR` pointing at it, plus ffmpeg); `--check` listens back with a speech recogniser. Only needed when a line or a voice changes.
 - `node tools/build-sfx.mjs <folder>` packs the chosen sounds from Kenney's Impact Sounds, Interface Sounds and UI Audio packs (CC0) into `assets/audio/sfx.pak`.
 - `node tools/contact-test.mjs monaco` compares original and soft car contact (side hit, rear tap, a bot race).
-- `node tools/e2e.mjs solo|online|rematch|invite|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
+- `node tools/e2e.mjs solo|online|rematch|invite|whatsnew|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
 
 ## Credits and licence
 

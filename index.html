@@ -874,6 +874,16 @@
 				<li><kbd>H</kbd> sounds your horn (pick one in the garage). <kbd>C</kbd> change camera &middot; <kbd>M</kbd> mute &middot; <kbd>Esc</kbd> pause</li>
 			</ul>
 			<p class="credit">Physics and the Classic track are from <a href="https://github.com/jchabin/cars" target="_blank" rel="noopener">jchabin/cars</a> (GPL-3.0). Circuit shapes are simplified from the real layouts.</p>
+			<p class="credit"><button class="back-btn" data-open="whatsnew">What's new</button></p>
+			<button class="go-btn" data-close><span>Got it</span></button>
+		</div>
+	</div>
+
+	<!-- What's new: once after an update, and from How to play (js/changelog.js) -->
+	<div class="modal" id="whatsnew" hidden role="dialog" aria-modal="true" aria-labelledby="wnTitle">
+		<div class="panel kerbed">
+			<h2 id="wnTitle">What's new</h2>
+			<div id="wnBody"></div>
 			<button class="go-btn" data-close><span>Got it</span></button>
 		</div>
 	</div>

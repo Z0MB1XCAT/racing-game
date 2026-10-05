@@ -1,6 +1,7 @@
 // Drives the game in a headless browser and screenshots each step.
 //   node tools/e2e.mjs solo [trackId]     race bots, hold right-ish steering, screenshot HUD + results
 //   node tools/e2e.mjs online             two tabs over ?localnet: host, join, race
+//   node tools/e2e.mjs whatsnew           the What's new popup after an update, and from How to play
 //   node tools/e2e.mjs invite             copy the lobby's invite link and open it as a friend
 //   node tools/e2e.mjs rematch            four tabs: race, then vote for a rematch on the results screen
 import puppeteer from "puppeteer";
@@ -755,6 +756,34 @@ if(flow === "invite"){
 	const gone = await open(base + "?localnet&room=ZZZZ"); await wait(1000);
 	await click(gone, "#joinBtn"); await wait(1200);
 	console.log("a room that isn't there says so:", await gone.$eval("#onlineMsg", e => e.textContent));
+}
+
+if(flow === "whatsnew"){
+	// "What's new": once after an update (not for a first visit, not for an invite link), and again from How to play.
+	const { VERSION } = await import("../js/config.js");
+	const seenOf = p => p.evaluate(() => JSON.parse(localStorage.getItem("org-gp:seenVersion")));
+	const shown = p => p.evaluate(() => !document.getElementById("whatsnew").hidden);
+	const first = await open(base);
+	await wait(1500);
+	console.log("a first visit shows nothing and notes the version:", !(await shown(first)) && await seenOf(first) === VERSION);
+	// Someone who last played an older version.
+	await first.evaluate(() => localStorage.setItem("org-gp:seenVersion", JSON.stringify("2026.10.01-4")));
+	await first.reload({ waitUntil: "networkidle0" }); await wait(1500);
+	const w = await first.evaluate(() => ({ open: !document.getElementById("whatsnew").hidden, heads: [...document.querySelectorAll("#wnBody h3")].map(x => x.textContent), items: document.querySelectorAll("#wnBody li").length }));
+	console.log("an update shows What's new with the entries:", w.open && w.items >= 4, JSON.stringify(w.heads));
+	await shot(first, "whatsnew");
+	await first.evaluate(() => document.querySelector("#whatsnew [data-close]").click());
+	console.log("Got it closes it and notes the version:", !(await shown(first)) && await seenOf(first) === VERSION);
+	await first.reload({ waitUntil: "networkidle0" }); await wait(1500);
+	console.log("it doesn't come back on the next visit:", !(await shown(first)));
+	// How to play opens the latest entries again.
+	await first.evaluate(() => document.querySelector('[data-open="help"]').click()); await wait(300);
+	await first.evaluate(() => document.querySelector('#help [data-open="whatsnew"]').click()); await wait(300);
+	console.log("How to play > What's new opens it by hand:", await shown(first) && await first.evaluate(() => document.querySelectorAll("#wnBody li").length > 0));
+	// An invite link isn't interrupted, and the version isn't marked as seen.
+	await first.evaluate(() => localStorage.setItem("org-gp:seenVersion", JSON.stringify("2026.10.01-4")));
+	const inv = await open(base + "?localnet&room=ABCD"); await wait(1500);
+	console.log("an invite link isn't interrupted, and it will show next time:", !(await shown(inv)) && await seenOf(inv) === "2026.10.01-4");
 }
 
 console.log(errors.length ? "ERRORS:\n" + [...new Set(errors)].join("\n") : "no page errors");

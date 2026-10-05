@@ -31,6 +31,7 @@ import { BOT_NAMES } from "./voicelines.js";
 import { Engineer } from "./radio.js";
 import { Commentary } from "./commentary.js";
 import { build as buildSpeech, carPiece, gapPiece } from "./speechkit.js";
+import { CHANGELOG, entriesSince } from "./changelog.js";
 import { GAME_NAME, MAX_CARS, EDITOR_ENABLED, VOICES_ENABLED, ACCOUNTS, VERSION } from "./config.js";
 import * as phys from "./physics.js";
 
@@ -2871,6 +2872,25 @@ showScreen("title");
 	}
 }
 loadWeeklyCard();
+{
+	// "What's new": the first time after an update, on the title screen (not when a link took you into a room or a big screen).
+	// A first-ever visit just notes the version. The help screen can open the latest entries again.
+	const fill = list => {
+		$("wnBody").replaceChildren(...list.flatMap(e => {
+			const h = document.createElement("h3"), d = document.createElement("p"), ul = document.createElement("ul");
+			h.textContent = e.title; d.className = "credit"; d.textContent = e.date;
+			for(const t of e.items){ const li = document.createElement("li"); li.textContent = t; ul.appendChild(li); }
+			return [h, d, ul];
+		}));
+	};
+	document.querySelector('[data-open="whatsnew"]').addEventListener("click", () => fill(CHANGELOG.slice(0, 3)));
+	const seen = store.load("seenVersion", null), linked = /[?&](room|tv|play)=/.test(location.search) || S.screen !== "title";
+	if(!linked){
+		const list = seen && seen !== VERSION ? entriesSince(seen) : [];
+		if(list.length){ fill(list); setTimeout(() => { if(S.screen === "title" && !S.race) openModal("whatsnew"); }, 600); }
+		store.save("seenVersion", VERSION);
+	}
+}
 refreshAccount().then(() => garage.refresh(true)).then(() => { $("titleLevel").textContent = garage.level; });
 requestAnimationFrame(frame);
 window.__game = S;   // handy for debugging in the console
