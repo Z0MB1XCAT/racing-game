@@ -171,19 +171,25 @@ original did).
     crashes and the finish (photo finishes included). It's skippable, and afterwards there's a
     **Full replay** with play, pause, speed and a timeline.
 - **Garage** (unlockable looks, no effect on speed):
-  - **What you can change:** paint, race number, underglow, headlight colour, tyre-smoke colour, a title and a horn.
+  - **What you can change:** paint, race number (and the plate behind it), underglow, headlight colour, tyre-smoke colour, a title, a horn, a name effect and your start lights.
   - **Paint** (43 of them) includes **Blackout** (gloss black, free for everyone), Matte Black,
     **Monster** (black with glowing green claw marks), stripes, chequered, carbon, camo, arctic camo,
     tiger, zebra, hazard, candy cane, polka dots, pixel camo, sunset, galaxy, synthwave, lightning,
     lava, flames, chrome, gold, a **BVS** livery, and a colour scheme for each of the 11 teams on the
     2026 F1 grid (colours only, no logos or sponsor names). Monster, lava, synthwave and galaxy glow a
     little at night.
+  - **Number plate** (on the Number tab): classic disc, Blackout, a rally Plate, Chequered, Neon (glowing in your car colour) and Gold,
+    drawn on the car's roof and bonnet (`numberCanvas` in `js/cars.js`).
+  - **Name effect** (Name tab): Plain, Ice, Flame, Neon, Gold and Rainbow gradients on your name on the timing tower, over your car,
+    in the lobby and in the results, for everyone in the room to see. Only the game's own effects exist: whatever a look names is
+    looked up in the game's own list, so a modified copy can't put anything else on the page.
+  - **Start lights** (Start lights tab): red, amber, ice, green, neon (and a limited pumpkin set in October). Only you see yours.
   - **Headlights:** halogen, xenon, rally yellow, ice blue, green, pink, purple, red, your car colour
     or rainbow. The lamps and the beam on the road at night both take the colour, and everyone in a
     room sees yours. The garage shows the beam on your car while you pick.
   - **Underglow** adds red, purple, toxic, gold and flashing **Blues and Twos**; **tyre smoke**
     adds black, green, pink and orange; new titles include Monster, Night Rider, Rain Master,
-    Ghostbuster, Globetrotter and Speed Demon.
+    Ghostbuster, Globetrotter and Speed Demon, and four bot-race titles: **Wet Weather Wizard** (win in the rain), **Night Owl** (win at night), **Underdog** (win after starting at the back, against at least three bots) and **Clean Racer** (finish without touching another car, against at least two bots).
   - **Earning items:** your **driver level** (1–30) comes from XP in online races, plus
     achievements (wins, podiums, championships, lap records, weekly wins). Every results screen ends with a
     **Next unlock** panel: the cheapest garage item you don't have yet, what it needs ("Reach level 7 · 240 XP to go",
@@ -622,6 +628,7 @@ The last two also need puppeteer installed.
 - `node tools/sky-shots.mjs [trackId] [tod-weather ...]` screenshots a track at different times and weather (e.g. `monza night-rain`).
 - `node tools/scenery-shots.mjs [trackId ...]` takes screenshots of each track (overview, racing with the mirror, looking back, highlights).
 - `node tools/engine-demo.mjs` renders a clip of each engine to WAV (with spectrograms) for tuning the sound. Engine settings are `ENGINES` in `js/audio.js`.
+- `node tools/looks-test.mjs` checks the garage's number plates, name effects, start-light themes and the new titles, no browser: every item has a free default and a real way to get it, every effect and theme has its CSS, made-up and prototype names give nothing, and the solo-goal rules (`soloGoals` in `js/cosmetics.js`) tick off exactly what they should: Night Owl, Wet Weather Wizard, Underdog, Clean Racer and the Halloween paint.
 - `node tools/codes-test.mjs` checks prize codes and look codes, no browser: a code is found however it's typed, wrong, short and expired ones aren't, the shipped list holds no plain codes, the `codes.mjs` tool adds, lists, checks and removes on a copy, a prize unlocks any item for good, and look codes round-trip for every paint and refuse anything else (made-up and prototype names included).
 - `node tools/season-test.mjs` checks the seasons and the Halloween challenge week, no browser: the look comes on at the start of 1 October and goes off at the start of 1 November in every year (a leap year too); `?season=` and the Settings switch change what's drawn but never what can be earned; the Halloween challenge is the week with 31 October in it, on a forest circuit at night in fog, one a year to 2060, never repeating a track next to it, and no ordinary week is touched.
 - `node tools/music-test.mjs` plays the menu songs in a browser: each is audible, never clips, isn't silent for long, and the October one is about as loud as the usual one.
@@ -633,7 +640,7 @@ The last two also need puppeteer installed.
 - `node tools/build-voices.mjs [eng] [lead] [col] [--force] [--check]` renders the lines in `js/voicelines.js` into `assets/voice/*.pak` with the Kokoro voice (needs `npm i kokoro-js` in a scratch folder and `KOKORO_DIR` pointing at it, plus ffmpeg); `--check` listens back with a speech recogniser. Only needed when a line or a voice changes.
 - `node tools/build-sfx.mjs <folder>` packs the chosen sounds from Kenney's Impact Sounds, Interface Sounds and UI Audio packs (CC0) into `assets/audio/sfx.pak`.
 - `node tools/contact-test.mjs monaco` compares original and soft car contact (side hit, rear tap, a bot race).
-- `node tools/e2e.mjs solo|online|rematch|invite|whatsnew|halloween|codes|announce|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
+- `node tools/e2e.mjs solo|online|rematch|invite|whatsnew|halloween|codes|announce|looks|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
 
 ## Credits and licence
 

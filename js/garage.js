@@ -4,7 +4,7 @@ import { CATEGORIES, DEFAULT_LOOK, progress, isUnlocked, requirement, unlockedId
 import { TRACKS, LAYOUTS } from "./tracks.js";
 import { weeklyChallenge } from "./weekly.js";
 import * as store from "./storage.js";
-import { patternCanvas } from "./cars.js";
+import { patternCanvas, numberCanvas } from "./cars.js";
 
 const $ = id => document.getElementById(id);
 
@@ -38,6 +38,10 @@ function swatch(cat, it, hue){
 		const beam = col === "rainbow" ? "conic-gradient(from 180deg at 50% 100%, red, yellow, lime, cyan, blue, magenta, red)" : `radial-gradient(ellipse 60% 95% at 50% 100%, ${col} 0 18%, transparent 75%)`;
 		return `radial-gradient(circle at 30% 82%, #fff 0 5%, transparent 7%), radial-gradient(circle at 70% 82%, #fff 0 5%, transparent 7%), ${beam}, #0d1118`;
 	}
+	// The number's plate, drawn the way it will be on the car.
+	if(cat === "numstyle") return `url(${numberCanvas(27, it.id, hue).toDataURL()}) center / contain no-repeat #0d1118`;
+	// The five start lights, lit.
+	if(cat === "startlights") return [14, 32, 50, 68, 86].map(x => `radial-gradient(circle at ${x}% 50%, ${it.color} 0 7%, transparent 9%)`).join(", ") + ", #0d1118";
 	// A horn: sound waves spreading from the bell of it.
 	if(cat === "horn") return "repeating-radial-gradient(circle at 26% 50%, transparent 0 6px, rgba(255,255,255,.34) 6px 8px), radial-gradient(circle at 26% 50%, #fff 0 9%, transparent 11%), #0d1118";
 	if(cat === "glow") return !it.color ? "repeating-linear-gradient(45deg, #1c2029 0 6px, #232834 6px 12px)"
@@ -117,16 +121,21 @@ export function initGarage(ctx){
 		$("garageCrown").hidden = !isCrown();
 		$("garageNumberPanel").hidden = G.tab !== "number";
 		$("garageItems").hidden = G.tab === "number";
+		$("garageNumStyles").hidden = G.tab !== "number";
 		if(ctx.showBeams) ctx.showBeams(G.tab === "lights");
 		const look = Object.assign({}, DEFAULT_LOOK, ctx.S.profile.look);
 		if(G.tab === "number"){
 			$("garageNum").textContent = look.number != null ? look.number : "–";
 			$("garageNumOne").hidden = !isCrown();
 			$("garageNumNote").textContent = isCrown() ? "You won last week's challenge, so #1 is yours this week." : "#1 belongs to whoever won last week's weekly challenge.";
+			fillGrid($("garageNumStyles"), CATEGORIES.find(c => c.id === "numstyle"), look);
 			return;
 		}
-		const cat = CATEGORIES.find(c => c.id === G.tab);
-		const grid = $("garageItems");
+		fillGrid($("garageItems"), CATEGORIES.find(c => c.id === G.tab), look);
+	}
+	// One category's items as a grid of buttons.
+	function fillGrid(grid, cat, look){
+		const P = G.P;
 		grid.innerHTML = "";
 		for(const it of cat.items){
 			if(!shown(it, P)) continue;           // (a seasonal item, out of season, that you never got)
@@ -136,7 +145,7 @@ export function initGarage(ctx){
 			b.className = "gitem" + (open ? "" : " locked") + (on ? " on" : "");
 			b.setAttribute("aria-pressed", String(on));
 			const req = open ? null : requirement(it, P);
-			const sw = cat.id === "title" ? `<span class="gswatch gtitle">${ctx.escapeHtml(it.name)}</span>` : `<span class="gswatch" style="background:${swatch(cat.id, it, ctx.S.profile.hue)}"></span>`;
+			const sw = cat.id === "title" ? `<span class="gswatch gtitle">${ctx.escapeHtml(it.name)}</span>` : cat.id === "namefx" ? `<span class="gswatch gtitle"><span class="${it.cls || ""}">Your name</span></span>` : `<span class="gswatch" style="background:${swatch(cat.id, it, ctx.S.profile.hue)}"></span>`;
 			b.innerHTML = `${sw}<span class="gname">${ctx.escapeHtml(it.name)}</span>
 				${on ? '<span class="gtag">Equipped</span>' : open ? "" : `<span class="greq">${ctx.escapeHtml(req.text)}</span>${req.need > 1 ? `<span class="gbar"><i style="transform:scaleX(${req.frac})"></i></span><span class="gprog">${req.have} / ${req.need}</span>` : ""}`}
 				${open ? "" : '<svg class="glock" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3" fill="none" stroke="currentColor" stroke-width="2.2"/><rect x="5" y="10" width="14" height="10" rx="2" fill="currentColor"/></svg>'}`;

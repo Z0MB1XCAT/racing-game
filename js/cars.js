@@ -46,15 +46,40 @@ function canvasTex(w, h, draw){
 	return new THREE.CanvasTexture(c);
 }
 
-function numberTexture(num, ink){
-	return canvasTex(64, 64, g => {
-		g.fillStyle = "#f4f6fa";
-		g.beginPath(); g.arc(32, 32, 30, 0, Math.PI * 2); g.fill();
-		g.fillStyle = ink;
-		g.font = "bold 38px 'Barlow Condensed', Arial, sans-serif";
-		g.textAlign = "center"; g.textBaseline = "middle";
-		g.fillText(String(num), 32, 35);
-	});
+// The race number's plate, in the style chosen in the garage (NUMSTYLES in cosmetics.js). Also used for the garage's swatches.
+export function numberCanvas(num, style, hue){
+	const c = document.createElement("canvas");
+	c.width = c.height = 64;
+	const g = c.getContext("2d");
+	const disc = (fill, r = 30) => { g.fillStyle = fill; g.beginPath(); g.arc(32, 32, r, 0, Math.PI * 2); g.fill(); };
+	const text = (col, size = 38) => { g.fillStyle = col; g.font = `bold ${size}px 'Barlow Condensed', Arial, sans-serif`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(String(num), 32, 35); };
+	const glowCol = `hsl(${hue ?? 200}, 100%, 62%)`;
+	if(style === "night"){
+		disc("#12141a"); g.strokeStyle = "#f4f6fa"; g.lineWidth = 2; g.beginPath(); g.arc(32, 32, 26.5, 0, Math.PI * 2); g.stroke();
+		text("#f4f6fa");
+	}else if(style === "plate"){
+		const x = 3, y = 9, w = 58, h = 46, r = 7;
+		g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+		g.fillStyle = "#f4f6fa"; g.fill(); g.strokeStyle = "#0e1219"; g.lineWidth = 3; g.stroke();
+		text("#0e1219", 36);
+	}else if(style === "chequer"){
+		disc("#f4f6fa");
+		for(let k = 0; k < 16; k++){ g.fillStyle = k % 2 ? "#0e1219" : "#f4f6fa"; g.beginPath(); g.moveTo(32, 32); g.arc(32, 32, 30, k * Math.PI / 8, (k + 1) * Math.PI / 8); g.closePath(); g.fill(); }
+		disc("#f4f6fa", 21); text("#0e1219", 32);
+	}else if(style === "neon"){
+		disc("#0b0d12", 29); g.strokeStyle = glowCol; g.lineWidth = 3; g.shadowColor = glowCol; g.shadowBlur = 7;
+		g.beginPath(); g.arc(32, 32, 25, 0, Math.PI * 2); g.stroke();
+		text(glowCol, 36);
+	}else if(style === "gold"){
+		const gr = g.createLinearGradient(6, 6, 58, 58); gr.addColorStop(0, "#f5d76e"); gr.addColorStop(0.5, "#fff0b0"); gr.addColorStop(1, "#b8860b");
+		disc(gr); text("#3a2a05");
+	}else{
+		disc("#f4f6fa"); text("#0e1219");      // (the original)
+	}
+	return c;
+}
+function numberTexture(num, style, hue){
+	return new THREE.CanvasTexture(numberCanvas(num, style, hue));
 }
 
 // Small repeatable random numbers, so a pattern looks the same on every screen.
@@ -372,7 +397,7 @@ export function makeCar(body, hue, opts = {}){
 	// Race number.
 	if(!ghost && decal && look.number != null){
 		const [size, x, y, z] = decal;
-		const tex = numberTexture(look.number, "#0e1219");
+		const tex = numberTexture(look.number, look.numstyle, hue);
 		const d = new THREE.Mesh(new THREE.PlaneBufferGeometry(size, size), own(new THREE.MeshLambertMaterial({ map: tex, transparent: true })));
 		d.rotation.x = -Math.PI / 2;
 		d.position.set(x, y, z);

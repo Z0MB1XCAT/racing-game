@@ -1,6 +1,7 @@
 // Drives the game in a headless browser and screenshots each step.
 //   node tools/e2e.mjs solo [trackId]     race bots, hold right-ish steering, screenshot HUD + results
 //   node tools/e2e.mjs online             two tabs over ?localnet: host, join, race
+//   node tools/e2e.mjs looks              a name effect, start lights and number style: seen by the right people in the lobby, tower, labels and results
 //   node tools/e2e.mjs codes              prize codes (right, wrong, expired, locked out) and look codes between two players
 //   node tools/e2e.mjs announce           the admin's announcement bar: publish, show, dismiss, run out, clear
 //   node tools/e2e.mjs halloween          October's look (clock faked): on 1 Oct, off 1 Nov, the challenge week, the limited paint
@@ -985,6 +986,54 @@ if(flow === "announce"){
 	await page.evaluate(() => document.querySelector('#adminTab [data-v="news"]').click()); await wait(800);
 	await page.evaluate(() => [...document.querySelectorAll("#adminBody button")].find(b => b.textContent === "Clear").click()); await wait(900);
 	console.log("Clear removes it:", await page.evaluate(async () => { const { connect } = await import("/js/net.js"); const n = await connect(); return (await n.store.get("config/announcement")) == null; }));
+}
+
+if(flow === "looks"){
+	// A name effect, start-light theme and number style chosen in the garage: seen where they should be, by the right people.
+	const host = await open(base + "?localnet&season=off");
+	await host.evaluate(() => {
+		const keys = ["numstyle:neon", "namefx:flame", "startlights:amber"];
+		localStorage.setItem("org-gp:solo", JSON.stringify(Object.fromEntries(keys.map(k => ["prize:" + k, true]))));
+		localStorage.setItem("org-gp:profile", JSON.stringify({ name: "Nova", hue: 200, body: "classic", look: { livery: "factory", number: 27, numstyle: "neon", namefx: "flame", startlights: "amber" } }));
+	});
+	await host.reload({ waitUntil: "networkidle0" }); await wait(2000);
+	console.log("the look stays after a reload:", JSON.stringify(await host.evaluate(() => { const l = window.__game.profile.look; return [l.numstyle, l.namefx, l.startlights]; })));
+	const popup = new Promise(r => browser.once("targetcreated", t => r(t.page())));
+	await host.evaluate(u => window.open(u, "guest", "popup,width=1100,height=700"), base + "?localnet&season=off");
+	const guest = await popup;
+	guest.on("pageerror", e => errors.push("guest pageerror: " + e.message));
+	await guest.setViewport({ width: 1100, height: 700 });
+	await guest.waitForFunction(() => window.__game, { timeout: 60000 });
+	await wait(1200);
+	await click(host, "#btnOnline"); await wait(400);
+	await click(host, "#hostBtn"); await wait(1200);
+	const code = await host.$eval("#roomCode", e => e.textContent);
+	await click(guest, "#btnOnline"); await wait(400);
+	await guest.evaluate(c => { const i = document.getElementById("codeInput"); i.value = c; i.dispatchEvent(new Event("input")); }, code);
+	await click(guest, "#joinBtn"); await wait(1500);
+	const inLobby = p => p.evaluate(() => [...document.querySelectorAll("#playerList .player")].map(li => ({ name: li.querySelector(".pname > span:not(.pbody):not(.ptitle)")?.textContent, cls: li.querySelector(".pname > span:not(.pbody):not(.ptitle)")?.className })));
+	const gl = await inLobby(guest);
+	console.log("the guest sees the host's name in flames in the lobby:", gl.some(x => x.name === "Nova" && x.cls === "nfx-flame"), JSON.stringify(gl));
+	await host.evaluate(() => window.__game.net.updateSettings({ laps: 1, track: "figure8" }));
+	// (The two tabs share one browser profile, so give the guest the plain red lights by hand.)
+	await guest.evaluate(() => { window.__game.profile.look = Object.assign({}, window.__game.profile.look, { startlights: "classic" }); });
+	await wait(600);
+	await click(host, "#lobbyGo");
+	for(let i = 0; i < 40; i++){ const ph = await guest.evaluate(() => window.__game.race && window.__game.race.phase).catch(() => null); if(ph === "racing") break; await wait(500); }
+	const theme = await Promise.all([host, guest].map(p => p.evaluate(() => document.getElementById("lights").dataset.theme)));
+	console.log("the host's start lights are amber and the guest's (who picked none) are red:", theme[0] === "amber" && theme[1] === "classic", JSON.stringify(theme));
+	const tower = p => p.evaluate(() => [...document.querySelectorAll("#tower .tower-row .tw-name")].map(n => ({ name: n.textContent, cls: n.className })));
+	const gt = await tower(guest), ht = await tower(host);
+	console.log("on the guest's timing tower the host's name has the flame effect:", gt.some(x => x.name === "Nova" && /nfx-flame/.test(x.cls)), JSON.stringify(gt));
+	console.log("and on the host's own:", ht.some(x => x.name === "Nova" && /nfx-flame/.test(x.cls)));
+	const label = await guest.evaluate(() => [...document.querySelectorAll("#labels .label span")].map(s => ({ name: s.textContent, cls: s.className })));
+	console.log("over the host's car on the guest's screen too:", label.some(x => x.name === "Nova" && /nfx-flame/.test(x.cls)), JSON.stringify(label));
+	await shot(guest, "looks-tower");
+	await autodrive(host); await autodrive(guest);
+	console.log("results:", await waitScreen(guest, "results", 150));
+	await wait(1500);
+	const rows = await guest.evaluate(() => [...document.querySelectorAll("#resultsBody .name")].map(td => ({ name: td.textContent.trim(), fx: td.querySelector("span")?.className })));
+	console.log("the results table shows the effect:", rows.some(x => x.name === "Nova" && x.fx === "nfx-flame"), JSON.stringify(rows));
 }
 
 console.log(errors.length ? "ERRORS:\n" + [...new Set(errors)].join("\n") : "no page errors");

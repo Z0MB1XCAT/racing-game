@@ -136,7 +136,11 @@ export const TITLES = [
 	{ id: "ghost",    name: "Ghostbuster", unlock: [{ solo: "beatGhost" }] },
 	{ id: "tourist",  name: "Globetrotter", unlock: [{ solo: "allTracks" }] },
 	{ id: "demon",    name: "Speed Demon", unlock: [{ records: 5 }] },
-	{ id: "spooky",   name: "Trick or Treater", season: "halloween", unlock: [{ solo: "halloween" }] }
+	{ id: "spooky",   name: "Trick or Treater", season: "halloween", unlock: [{ solo: "halloween" }] },
+	{ id: "wizard",   name: "Wet Weather Wizard", unlock: [{ solo: "winRain" }] },
+	{ id: "owl",      name: "Night Owl", unlock: [{ solo: "winNight" }] },
+	{ id: "underdog", name: "Underdog", unlock: [{ solo: "underdog" }] },
+	{ id: "clean",    name: "Clean Racer", unlock: [{ solo: "cleanRace" }] }
 ];
 
 // Headlight colour: the lamps on the car and the beam on the road at night.
@@ -163,6 +167,36 @@ export const HORNS = [
 	{ id: "train",   name: "Train Horn", unlock: [{ level: 15 }] }
 ];
 
+// The plate behind the race number on the car (drawn in cars.js, numberCanvas).
+export const NUMSTYLES = [
+	{ id: "classic", name: "Classic", unlock: [{ free: true }] },
+	{ id: "night",   name: "Blackout", unlock: [{ level: 3 }] },
+	{ id: "plate",   name: "Plate", unlock: [{ level: 6 }, { solo: "race" }] },
+	{ id: "chequer", name: "Chequered", unlock: [{ level: 9 }] },
+	{ id: "neon",    name: "Neon", unlock: [{ level: 12 }] },
+	{ id: "gold",    name: "Gold", unlock: [{ podiums: 5 }, { level: 20 }] }
+];
+
+// How your name looks on the timing tower, over your car and in lists (the .nfx-* classes in css/style.css).
+export const NAMEFX = [
+	{ id: "none",    name: "Plain", unlock: [{ free: true }] },
+	{ id: "ice",     name: "Ice", cls: "nfx-ice", unlock: [{ level: 10 }] },
+	{ id: "flame",   name: "Flame", cls: "nfx-flame", unlock: [{ wins: 10 }] },
+	{ id: "neon",    name: "Neon", cls: "nfx-neon", unlock: [{ level: 18 }] },
+	{ id: "gold",    name: "Gold", cls: "nfx-gold", unlock: [{ titles: 1 }, { wins: 25 }] },
+	{ id: "rainbow", name: "Rainbow", cls: "nfx-rainbow", unlock: [{ weeklyWins: 1 }] }
+];
+
+// The five start lights over the track before a race. Only you see yours (js/hud.js, .lights[data-theme] in css/style.css).
+export const LIGHTTHEMES = [
+	{ id: "classic", name: "Red", color: "#ff2432", unlock: [{ free: true }] },
+	{ id: "amber",   name: "Amber", color: "#ffb02e", unlock: [{ level: 4 }] },
+	{ id: "ice",     name: "Ice", color: "#5ad7ff", unlock: [{ level: 8 }] },
+	{ id: "green",   name: "Green", color: "#3ddc84", unlock: [{ level: 12 }] },
+	{ id: "neon",    name: "Neon", color: "#ff3bd8", unlock: [{ level: 16 }] },
+	{ id: "pumpkin", name: "Pumpkin", color: "#ff7a12", season: "halloween", unlock: [{ solo: "halloween" }] }
+];
+
 export const CATEGORIES = [
 	{ id: "livery", name: "Paint", items: LIVERIES },
 	{ id: "number", name: "Number", items: null },
@@ -170,10 +204,13 @@ export const CATEGORIES = [
 	{ id: "lights", name: "Headlights", items: LIGHTS },
 	{ id: "smoke",  name: "Tyre smoke", items: SMOKES },
 	{ id: "title",  name: "Title", items: TITLES },
-	{ id: "horn",   name: "Horn", items: HORNS }
+	{ id: "horn",   name: "Horn", items: HORNS },
+	{ id: "numstyle", name: "Number style", items: NUMSTYLES },
+	{ id: "namefx", name: "Name effect", items: NAMEFX },
+	{ id: "startlights", name: "Start lights", items: LIGHTTHEMES }
 ];
 
-export const DEFAULT_LOOK = { livery: "factory", number: null, glow: "none", smoke: "white", lights: "warm", title: "rookie", horn: "classic" };
+export const DEFAULT_LOOK = { livery: "factory", number: null, glow: "none", smoke: "white", lights: "warm", title: "rookie", horn: "classic", numstyle: "classic", namefx: "none", startlights: "classic" };
 
 export const SOLO_GOALS = {
 	race: "Finish a race against bots",
@@ -183,11 +220,15 @@ export const SOLO_GOALS = {
 	night: "Finish a race against bots at night",
 	rain: "Finish a race against bots in the rain",
 	beatGhost: "Beat someone else's ghost in time trial",
-	halloween: "Finish a lap of the Halloween challenge, or a bot race at night in fog (October only)"
+	halloween: "Finish a lap of the Halloween challenge, or a bot race at night in fog (October only)",
+	winRain: "Win a bot race in the rain",
+	winNight: "Win a bot race at night",
+	underdog: "Win a bot race (3 or more bots) after starting at the back of the grid",
+	cleanRace: "Finish a bot race (2 or more bots) without touching another car"
 };
 
 const byId = list => Object.fromEntries(list.map(i => [i.id, i]));
-const INDEX = { livery: byId(LIVERIES), glow: byId(GLOWS), smoke: byId(SMOKES), lights: byId(LIGHTS), title: byId(TITLES), horn: byId(HORNS) };
+const INDEX = { livery: byId(LIVERIES), glow: byId(GLOWS), smoke: byId(SMOKES), lights: byId(LIGHTS), title: byId(TITLES), horn: byId(HORNS), numstyle: byId(NUMSTYLES), namefx: byId(NAMEFX), startlights: byId(LIGHTTHEMES) };
 // (Only the game's own items: a look from outside can name anything, even "constructor" or "__proto__".)
 const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 export function item(cat, id){ return own(INDEX, cat) && own(INDEX[cat], id) ? INDEX[cat][id] : undefined; }
@@ -251,7 +292,7 @@ export function requirement(it, P){
 }
 
 // What each kind of item is called in a sentence ("Flames paint").
-export const CAT_NOUN = { livery: "paint", glow: "underglow", smoke: "tyre smoke", lights: "headlights", title: "title", horn: "horn" };
+export const CAT_NOUN = { livery: "paint", glow: "underglow", smoke: "tyre smoke", lights: "headlights", title: "title", horn: "horn", numstyle: "number style", namefx: "name effect", startlights: "start lights" };
 
 // Roughly how much play each requirement still needs, in XP (a race is worth 60, a win 150): used to pick what's closest.
 const COST_PER = { races: 60, podiums: 90, wins: 150, titles: 400, records: 400, weeklyWins: 700 };
@@ -287,7 +328,7 @@ export function unlockedIds(P){
 // The crown holder is the only one who may wear #1.
 export function cleanLook(look, P, isCrown){
 	const l = Object.assign({}, DEFAULT_LOOK, look);
-	for(const cat of ["livery", "glow", "smoke", "lights", "title", "horn"]){
+	for(const cat of ["livery", "glow", "smoke", "lights", "title", "horn", "numstyle", "namefx", "startlights"]){
 		const it = item(cat, l[cat]);
 		if(!it || !isUnlocked(it, P)) l[cat] = DEFAULT_LOOK[cat];
 	}
@@ -296,20 +337,45 @@ export function cleanLook(look, P, isCrown){
 	return l;
 }
 
+// ----- Solo goals -----
+// Which solo goals a finished bot race ticks off in the garage. me and results are from the race ({ pos, status }); sky is what the
+// sky was doing as you finished ({ night, rain, fog }) or null; level is the bots' level; hits is how many times you touched another
+// car; lastOnGrid says you started at the back; october says it's the Halloween season.
+export function soloGoals({ me, results, sky, level, mode, hits, lastOnGrid, october }){
+	const flags = [];
+	if(!me) return flags;
+	if(me.status === "finished" || (me.pos === 1 && mode === "elim")){
+		flags.push("race");
+		if(sky && sky.night) flags.push("night");
+		if(sky && sky.rain) flags.push("rain");
+		if(sky && sky.night && sky.fog && october) flags.push("halloween");        // the limited Halloween paint
+	}
+	if(me.pos === 1 && me.status !== "dnf"){
+		if(level === "medium" || level === "hard") flags.push("winRacer");
+		if(level === "hard") flags.push("winAce");
+		if(sky && sky.rain) flags.push("winRain");
+		if(sky && sky.night) flags.push("winNight");
+		if(results.length >= 4 && lastOnGrid) flags.push("underdog");      // (won from the back, against at least three bots)
+	}
+	if(me.status === "finished" && results.length >= 3 && !hits) flags.push("cleanRace");
+	return flags;
+}
+
 // ----- Look codes -----
 // A look as one line of text to send a friend: GPL1.<paint>.<number or ->.<underglow>.<smoke>.<headlights>.<title>.<horn>
 // e.g. "GPL1.flames.7.none.white.warm.rookie.classic". Pasting one gives you whatever of it you've unlocked; the rest stays as it was.
-const LOOK_PARTS = ["livery", "glow", "smoke", "lights", "title", "horn"];
+// (The last three parts, the number style, name effect and start lights, can be left off: older codes stop at the horn.)
+const LOOK_PARTS = ["livery", "glow", "smoke", "lights", "title", "horn", "numstyle", "namefx", "startlights"];
 export function lookToCode(look){
 	const l = Object.assign({}, DEFAULT_LOOK, look);
-	return ["GPL1", l.livery, l.number == null ? "-" : l.number, l.glow, l.smoke, l.lights, l.title, l.horn].join(".");
+	return ["GPL1", l.livery, l.number == null ? "-" : l.number, l.glow, l.smoke, l.lights, l.title, l.horn, l.numstyle, l.namefx, l.startlights].join(".");
 }
 // The look a code describes, or null if it isn't a look code (or names something that doesn't exist).
 export function parseLookCode(text){
 	const parts = String(text || "").trim().split(".");
-	if(parts.length !== 8 || parts[0] !== "GPL1") return null;
-	const [, livery, number, glow, smoke, lights, title, horn] = parts;
-	const look = { livery, glow, smoke, lights, title, horn, number: number === "-" ? null : /^\d{1,2}$/.test(number) ? Number(number) : NaN };
+	if(parts.length < 8 || parts.length > 11 || parts[0] !== "GPL1") return null;
+	const [, livery, number, glow, smoke, lights, title, horn, numstyle = DEFAULT_LOOK.numstyle, namefx = DEFAULT_LOOK.namefx, startlights = DEFAULT_LOOK.startlights] = parts;
+	const look = { livery, glow, smoke, lights, title, horn, numstyle, namefx, startlights, number: number === "-" ? null : /^\d{1,2}$/.test(number) ? Number(number) : NaN };
 	if(Number.isNaN(look.number) || (look.number != null && look.number < 1)) return null;
 	for(const c of LOOK_PARTS) if(!item(c, look[c])) return null;
 	return look;
@@ -327,6 +393,10 @@ export function applyLook(mine, wanted, P, isCrown){
 	else out.number = wanted.number;
 	return { look: out, skipped };
 }
+
+// The CSS class that dresses a name for a look's name effect ("" for plain, or for anything that isn't one of ours).
+export const nameFxById = id => { const it = item("namefx", id); return it && it.cls ? it.cls : ""; };
+export const nameFxClass = look => nameFxById(look && look.namefx);
 
 // Random looks for bots: mostly team colours, some patterns.
 export function botLook(rand = Math.random){

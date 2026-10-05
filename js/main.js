@@ -20,7 +20,7 @@ import { connect, onlineAvailable, normaliseBvs, normaliseHwb } from "./net.js";
 import { newChamp, scoreRound, champStandings, champGrid } from "./champ.js";
 import { weeklyChallenge, timeLeft } from "./weekly.js";
 import { Mesh } from "./p2p.js";
-import { DEFAULT_LOOK, botLook, item as lookItem } from "./cosmetics.js";
+import { DEFAULT_LOOK, botLook, item as lookItem, nameFxClass, nameFxById, soloGoals } from "./cosmetics.js";
 import { isRude, cleanName } from "./filter.js";
 import { initGarage } from "./garage.js";
 import { initAdmin } from "./admin.js";
@@ -830,6 +830,7 @@ function beginRace(opts){
 	S.paused = false;
 	S.lastDelta = null;
 	S.resultsShown = null;
+	S.carHits = 0;                 // (touches with another car this race, for the "Clean Racer" title)
 	const key = entry.key;
 	// Time trial chases your fastest lap ever; the weekly challenge chases your best this week.
 	const ghost = opts.mode !== "trial" ? null : opts.weekly ? store.getWeeklyGhost(opts.weekly) : store.getGhost(key);
@@ -859,6 +860,7 @@ function beginRace(opts){
 		el.style.setProperty("--c", `hsl(${c.hue},100%,55%)`);
 		el.innerHTML = `<b></b><span></span>`;
 		el.lastElementChild.textContent = c.name;
+		if(nameFxClass(c.look)) el.lastElementChild.classList.add(nameFxClass(c.look));
 		if(garage && garage.crown && c.id === garage.crown) el.lastElementChild.insertAdjacentHTML("afterbegin", CROWN_SVG);
 		$("labels").appendChild(el);
 		c.label = el;
@@ -877,6 +879,7 @@ function beginRace(opts){
 	S.screen = "race";
 	document.body.dataset.view = "race";
 	hud.setup(entry.track, entry.tracker, opts.laps, opts.mode);
+	hud.setLightTheme((lookItem("startlights", S.profile.look && S.profile.look.startlights) || {}).id);
 	hud.show(true);
 	hud.spectating(S.race.me || S.watch ? "" : "Spectating · you'll be in the next race");
 	updateTouchZones();
@@ -1042,6 +1045,7 @@ function onRaceEvent(type, d){
 			break;
 		case "hit": {
 			const c = d.car;
+			if(d.type === "car" && (c.me || (d.other && d.other.me))) S.carHits = (S.carHits || 0) + 1;
 			const dist = focus ? Math.hypot(c.pos.x - focus.pos.x, c.pos.z - focus.pos.z) : 0;
 			const near = Math.max(0, 1 - dist / 60);
 			if(c === focus || d.other === focus){
@@ -1240,7 +1244,7 @@ function showResults(results, online, opts = {}){
 	}).join("");
 	$("resultsBody").innerHTML = results.map(r => `<tr class="${r.id === myId ? "me" : ""}">
 		<td class="pos">${r.pos}</td>
-		<td class="name"><i style="background:hsl(${r.hue},100%,55%)"></i>${escapeHtml(r.name)}${r.bot ? ' <span class="tag bot">AI</span>' : ""}</td>
+		<td class="name"><i style="background:hsl(${r.hue},100%,55%)"></i><span class="${nameFxById(r.nf)}">${escapeHtml(r.name)}</span>${r.bot ? ' <span class="tag bot">AI</span>' : ""}</td>
 		<td>${r.time != null ? fmtTime(r.time) : r.status === "out" ? "Out" : "DNF"}</td>
 		<td class="best ${r.best != null && r.best === fastest ? "fastest" : ""}">${r.best != null ? fmtTime(r.best) : "--"}</td>
 		<td>${r.pos === 1 ? "" : r.gap || ""}</td></tr>`).join("");
@@ -1308,16 +1312,12 @@ function showResults(results, online, opts = {}){
 	camMode = "winner";
 	// Solo results tick off solo goals in the garage (once per race).
 	if(!quali && !online && S.soloFlagsKey !== key && me && S.ctx && S.ctx.mode !== "trial" && results.length > 1){
-		const flags = [];
-		if(me.status === "finished" || (me.pos === 1 && S.ctx.mode === "elim")){
-			flags.push("race");
-			const sky = S.finishSky && S.race && S.finishSky.at === S.race.startAt ? S.finishSky : null;
-			if(sky && sky.night) flags.push("night");
-			if(sky && sky.rain) flags.push("rain");
-			if(sky && sky.night && sky.fog && season() === "halloween") flags.push("halloween");        // the limited Halloween paint
-		}
-		const lvl = S.setup.level;
-		if(me.pos === 1 && me.status !== "dnf"){ if(lvl === "medium" || lvl === "hard") flags.push("winRacer"); if(lvl === "hard") flags.push("winAce"); }
+		const grid = S.ctx.entrants || [];       // (the grid is the entrants' order)
+		const flags = soloGoals({
+			me, results, mode: S.ctx.mode, level: S.setup.level, hits: S.carHits, october: season() === "halloween",
+			sky: S.finishSky && S.race && S.finishSky.at === S.race.startAt ? S.finishSky : null,
+			lastOnGrid: grid.length > 0 && grid[grid.length - 1].id === "me"
+		});
 		S.soloFlagsKey = key;
 		garageNote(garage.afterSolo(flags));
 	}
@@ -2247,7 +2247,7 @@ function renderLobby(room){
 		const stale = !p.bot && p.v !== hostV ? '<span class="tag old" title="A different version of the game from the host: refresh the page">Needs refresh</span>' : "";
 		const tags = [stale, p.id === room.host ? '<span class="tag host">Host</span>' : "", p.bot ? `<span class="tag bot">AI · ${({ easy: "Rookie", medium: "Racer", hard: "Ace" })[p.bot]}</span>` : p.id === room.host ? "" : `<span class="tag ${p.ready ? "ready" : ""}">${p.ready ? "Ready" : "Not ready"}</span>`].join(" ");
 		li.innerHTML = `<i class="chip" style="background:hsl(${p.hue},100%,55%)"></i>
-			<span class="pname">${garage && garage.crown === p.id ? CROWN_SVG : ""}${escapeHtml(cleanName(p.name, p.id))}${p.id === net.uid ? " (you)" : ""}<span class="pbody">${(BODIES.find(b => b.id === p.body) || BODIES[0]).name}${p.look && p.look.number != null ? " · #" + p.look.number : ""}</span>${lookTitle(p)}</span>
+			<span class="pname">${garage && garage.crown === p.id ? CROWN_SVG : ""}<span class="${nameFxClass(p.look)}">${escapeHtml(cleanName(p.name, p.id))}</span>${p.id === net.uid ? " (you)" : ""}<span class="pbody">${(BODIES.find(b => b.id === p.body) || BODIES[0]).name}${p.look && p.look.number != null ? " · #" + p.look.number : ""}</span>${lookTitle(p)}</span>
 			<span>${tags}${netTag(p)}</span>`;
 		if(!p.bot && p.id !== net.uid){
 			const muted = chat.isMuted(p.id);

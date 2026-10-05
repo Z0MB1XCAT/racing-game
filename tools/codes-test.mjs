@@ -80,9 +80,13 @@ for(const livery of all.livery) for(const [num, glow, horn] of [[null, "none", "
 	if(!back || Object.keys(look).some(k => back[k] !== look[k])) bad++;
 }
 ok(bad === 0, `${n} looks (every paint) go to a code and come back identical, e.g. ${lookToCode({ livery: "flames", number: 7, glow: "none" })}`);
-ok(lookToCode({}) === "GPL1.factory.-.none.white.warm.rookie.classic" && parseLookCode(lookToCode({}))?.number === null, "the default look is GPL1.factory.-.none.white.warm.rookie.classic");
+ok(lookToCode({}) === "GPL1.factory.-.none.white.warm.rookie.classic.classic.none.classic" && parseLookCode(lookToCode({}))?.number === null, "the default look is GPL1.factory.-.none.white.warm.rookie.classic.classic.none.classic");
+const legacy = parseLookCode("GPL1.flames.7.none.white.warm.rookie.classic");
+ok(legacy && legacy.livery === "flames" && legacy.numstyle === "classic" && legacy.namefx === "none" && legacy.startlights === "classic", "an older code that stops at the horn still works (the rest take their defaults)");
+const full = parseLookCode("GPL1.flames.7.none.white.warm.rookie.classic.gold.flame.pumpkin");
+ok(full && full.numstyle === "gold" && full.namefx === "flame" && full.startlights === "pumpkin", "and a full one carries the number style, name effect and start lights"); 
 let accepted = 0;
-const junk = ["", "hello", "GPL1", "GPL1.a.b.c", "GPL2.factory.-.none.white.warm.rookie.classic", "GPL1.nope.-.none.white.warm.rookie.classic", "GPL1.factory.0.none.white.warm.rookie.classic", "GPL1.factory.100.none.white.warm.rookie.classic", "GPL1.factory.-1.none.white.warm.rookie.classic", "GPL1.factory.x.none.white.warm.rookie.classic", "GPL1.factory.-.none.white.warm.rookie.classic.extra", "<script>", "GPL1.factory.-.none.white.warm.rookie.<img>", "__proto__", "GPL1.constructor.-.none.white.warm.rookie.classic", "GPL1.factory.-.none.white.warm.rookie.toString"];
+const junk = ["", "hello", "GPL1", "GPL1.a.b.c", "GPL2.factory.-.none.white.warm.rookie.classic", "GPL1.nope.-.none.white.warm.rookie.classic", "GPL1.factory.0.none.white.warm.rookie.classic", "GPL1.factory.100.none.white.warm.rookie.classic", "GPL1.factory.-1.none.white.warm.rookie.classic", "GPL1.factory.x.none.white.warm.rookie.classic", "GPL1.factory.-.none.white.warm.rookie.classic.classic.none.classic.extra", "GPL1.factory.-.none.white.warm.rookie.classic.nope", "GPL1.factory.-.none.white.warm.rookie.classic.classic.constructor", "<script>", "GPL1.factory.-.none.white.warm.rookie.<img>", "__proto__", "GPL1.constructor.-.none.white.warm.rookie.classic", "GPL1.factory.-.none.white.warm.rookie.toString"];
 for(const j of junk) if(parseLookCode(j)) accepted++;
 ok(accepted === 0, "nothing that isn't a look code gets in (" + junk.length + " tries, including prototype names)");
 ok(parseLookCode("  " + lookToCode({ livery: "stripe" }) + "  ") !== null, "spaces round a pasted code are fine");

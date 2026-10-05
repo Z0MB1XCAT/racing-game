@@ -506,7 +506,7 @@ export class Race {
 		}));
 		return this.standings().map((s, i) => ({
 			id: s.car.id, name: s.car.name, hue: s.car.hue, body: s.car.body, bot: s.car.isBot,
-			pos: i + 1, time: s.car.finish, best: s.car.best,
+			pos: i + 1, time: s.car.finish, best: s.car.best, nf: (s.car.look && s.car.look.namefx) || null,
 			status: s.car.finish !== null ? "finished" : s.car.elim !== null ? "out" : "dnf",
 			gap: s.gap
 		}));

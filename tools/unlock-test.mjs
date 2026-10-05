@@ -5,7 +5,7 @@ import { progress, nextUnlock, CATEGORIES, isUnlocked } from "../js/cosmetics.js
 
 const problems = [];
 const ok = (cond, msg) => { console.log("  " + (cond ? "ok  " : "FAIL") + " " + msg); if(!cond) problems.push(msg); };
-const all = { races: 999, podiums: 999, wins: 999, titles: 99 }, allExtra = { records: 99, weeklyWins: 99, account: true, solo: { race: 1, winRacer: 1, winAce: 1, allTracks: 1, night: 1, rain: 1, beatGhost: 1 } };
+const all = { races: 999, podiums: 999, wins: 999, titles: 99 }, allExtra = { records: 99, weeklyWins: 99, account: true, solo: { race: 1, winRacer: 1, winAce: 1, allTracks: 1, night: 1, rain: 1, beatGhost: 1, winRain: 1, winNight: 1, underdog: 1, cleanRace: 1 } };
 
 // (A date in April: October's limited paint, which is earned by play but only on offer in October, is tested at the end.)
 const APRIL = new Date(2026, 3, 15), OCTOBER = new Date(2026, 9, 15);

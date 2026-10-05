@@ -465,6 +465,8 @@
 						<button data-v="smoke" aria-checked="false">Tyre smoke</button>
 						<button data-v="title" aria-checked="false">Title</button>
 						<button data-v="horn" aria-checked="false">Horn</button>
+						<button data-v="namefx" aria-checked="false">Name</button>
+						<button data-v="startlights" aria-checked="false">Start lights</button>
 					</div>
 					<div class="garage-share">
 						<button class="back-btn" id="lookCopy" type="button" title="Copies a line of text describing your car's look, to send to a friend">Copy look code</button>
@@ -472,11 +474,12 @@
 						<button class="back-btn" type="button" data-open="prize">Prize code</button>
 					</div>
 					<div class="garage-paste" id="lookPaste" hidden>
-						<input id="lookInput" class="text-input" placeholder="GPL1.flames.7.none.white.warm.rookie.classic" autocomplete="off" spellcheck="false" aria-label="A look code from a friend">
+						<input id="lookInput" class="text-input" placeholder="GPL1.flames.7.none.white.warm.rookie.classic.neon.flame.amber" autocomplete="off" spellcheck="false" aria-label="A look code from a friend">
 						<button class="go-btn ghost" id="lookApply" type="button"><span>Use it</span></button>
 					</div>
 					<p class="msg" id="shareMsg" role="status" style="color:var(--mute)" hidden></p>
 					<div class="gitems" id="garageItems"></div>
+					<div class="gitems" id="garageNumStyles" hidden></div>
 					<div class="panel number-panel" id="garageNumberPanel" hidden>
 						<div class="num-big" id="garageNum">–</div>
 						<div class="flex gap-3" style="flex-wrap:wrap;justify-content:center">

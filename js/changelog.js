@@ -3,6 +3,15 @@
 // when a version has something players will notice (version = the VERSION in js/config.js that shipped it).
 export const CHANGELOG = [
 	{
+		version: "2026.10.05-8", date: "5 October 2026", title: "More ways to look good",
+		items: [
+			"Number plates: pick the plate behind your race number in the garage (Blackout, rally Plate, Chequered, Neon, Gold).",
+			"Name effects: Ice, Flame, Neon, Gold or Rainbow on your name in the timing tower, over your car and in the results. Everyone sees them.",
+			"Start lights: choose red, amber, ice, green or neon for the lights before a race.",
+			"Four new titles to win against the bots: Wet Weather Wizard, Night Owl, Underdog and Clean Racer."
+		]
+	},
+	{
 		version: "2026.10.05-7", date: "5 October 2026", title: "Codes and announcements",
 		items: [
 			"Prize codes: got a code from a teacher? Garage > Prize code (or Have a prize code? on the title screen) unlocks the item for good.",

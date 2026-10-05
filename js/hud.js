@@ -1,5 +1,7 @@
 // The in-race overlay: timing tower, lap/time panel, speed, minimap, start lights and banners.
 // Text is only rewritten when it changes, so the page isn't doing layout work every frame.
+import { nameFxClass } from "./cosmetics.js";
+
 const $ = id => document.getElementById(id);
 
 export function fmtTime(ms, withMinutes = true){
@@ -137,6 +139,8 @@ export class Hud {
 			const hue = `hsl(${s.car.hue}, 100%, 55%)`;
 			if(r.chip._h !== hue){ r.chip._h = hue; r.chip.style.background = hue; }
 			setText(r.name, s.car.name);
+			const fx = nameFxClass(s.car.look);
+			if(r.name._fx !== fx){ r.name._fx = fx; r.name.className = "tw-name" + (fx ? " " + fx : ""); }
 			setText(r.gap, s.car.finish !== null ? (i === 0 ? "WIN" : s.gap) : (s.gap || "Leader"));
 			const cls = "tower-row" + (s.car.id === focusId ? " is-me" : "") + (s.car.elim !== null ? " is-out" : "") + (s.car.finish !== null ? " is-done" : "");
 			if(r.row._c !== cls){ r.row._c = cls; r.row.className = cls; }
@@ -208,6 +212,9 @@ export class Hud {
 		if(m._on !== on){ m._on = on; m.classList.toggle("on", on); }
 		fx.style.opacity = on ? String(Math.min(1, q * 1.1)) : "0";
 	}
+
+	// The look of the start lights: red, or one the player has picked in the garage (css/style.css, .lights[data-theme]).
+	setLightTheme(id){ this.el.lights.dataset.theme = id || "classic"; }
 
 	// Five red lights over three seconds, then lights out. n = how many are lit; -1 hides, 6 = out.
 	setLights(n){
