@@ -1,6 +1,8 @@
 // Drives the game in a headless browser and screenshots each step.
 //   node tools/e2e.mjs solo [trackId]     race bots, hold right-ish steering, screenshot HUD + results
 //   node tools/e2e.mjs online             two tabs over ?localnet: host, join, race
+//   node tools/e2e.mjs codes              prize codes (right, wrong, expired, locked out) and look codes between two players
+//   node tools/e2e.mjs announce           the admin's announcement bar: publish, show, dismiss, run out, clear
 //   node tools/e2e.mjs halloween          October's look (clock faked): on 1 Oct, off 1 Nov, the challenge week, the limited paint
 //   node tools/e2e.mjs whatsnew           the What's new popup after an update, and from How to play
 //   node tools/e2e.mjs invite             copy the lobby's invite link and open it as a friend
@@ -862,6 +864,127 @@ if(flow === "halloween"){
 	await autodrive(day);
 	await waitScreen(day, "results", 200); await wait(1500);
 	console.log("a race in daylight does not:", !(await flags(day)).halloween);
+}
+
+if(flow === "codes"){
+	// Prize codes (type one in, an item unlocks for good) and look codes (send your look to a friend).
+	const addCodes = page => page.evaluate(async () => {
+		const m = await import("/js/codes.js");
+		m.CODES.push({ h: await m.hashCode("TIGER-4821"), grants: ["livery:gold", "title:champion"], label: "test" },
+			{ h: await m.hashCode("OLD-ONE-1"), grants: ["livery:lava"], until: "2020-01-01" });
+	});
+	const modal = page => page.evaluate(() => ({ open: !document.getElementById("prize").hidden, msg: document.getElementById("prizeMsg").hidden ? "" : document.getElementById("prizeMsg").textContent, cls: document.getElementById("prizeMsg").className }));
+	const redeem = async (page, text) => { await page.evaluate(t => { const i = document.getElementById("prizeInput"); i.value = t; }, text); await click(page, "#prizeGo"); await wait(500); return modal(page); };
+	const page = await open(base + "?localnet");
+	await addCodes(page);
+	await click(page, '#screen-title [data-open="prize"]'); await wait(300);
+	console.log("'Have a prize code?' on the title opens the box:", (await modal(page)).open);
+	let r = await redeem(page, "NOT-A-CODE");
+	console.log("a wrong code is turned down kindly:", /isn't a code we know/.test(r.msg) && /err/.test(r.cls), "|", r.msg);
+	r = await redeem(page, "OLD-ONE-1");
+	console.log("an expired code says so:", /run out/.test(r.msg), "|", r.msg);
+	for(let i = 0; i < 4; i++) r = await redeem(page, "WRONG-" + i);
+	console.log("five wrong tries in a row make you wait:", /wait 30 seconds/.test(r.msg), "|", r.msg);
+	r = await redeem(page, "TIGER-4821");
+	console.log("even the right code waits while you're locked out:", /Wait a few seconds/.test(r.msg), "|", r.msg);
+	await page.evaluate(() => { /* (the lock is held in the page, so reload to clear it) */ });
+	await page.reload({ waitUntil: "networkidle0" }); await wait(1500); await addCodes(page);
+	await click(page, '#screen-title [data-open="prize"]'); await wait(300);
+	r = await redeem(page, " tiger 4821 ");
+	console.log("the right code, typed sloppily, unlocks both items:", /Unlocked: Gold Rush paint, Champion title/.test(r.msg) && /ok/.test(r.cls), "|", r.msg);
+	await page.evaluate(() => document.querySelector("#prize [data-close]").click());
+	const flags = await page.evaluate(() => JSON.parse(localStorage.getItem("org-gp:solo") || "{}"));
+	console.log("kept as flags on the device (and synced with an account):", flags["prize:livery:gold"] === true && flags["prize:title:champion"] === true, JSON.stringify(flags));
+	await page.reload({ waitUntil: "networkidle0" }); await wait(1500); await addCodes(page);
+	await click(page, '#screen-title [data-open="prize"]'); await wait(300);
+	r = await redeem(page, "TIGER-4821");
+	console.log("after a reload it's still yours, and the code says you have it:", /already have/.test(r.msg), "|", r.msg);
+	await page.evaluate(() => document.querySelector("#prize [data-close]").click());
+	// The garage shows it, and the look code carries it.
+	await click(page, "#btnGarage"); await wait(1200);
+	const garage = await page.evaluate(async () => {
+		const names = () => [...document.querySelectorAll("#garageItems .gitem:not(.locked) .gname")].map(x => x.textContent);
+		const unlockedPaints = names();
+		[...document.querySelectorAll("#garageItems .gitem")].find(b => b.querySelector(".gname").textContent === "Gold Rush").click();
+		await new Promise(r => setTimeout(r, 400));
+		document.getElementById("lookCopy").click();
+		await new Promise(r => setTimeout(r, 500));
+		return { unlockedPaints, equipped: window.__game.profile.look.livery, msg: document.getElementById("shareMsg").textContent };
+	});
+	console.log("the garage has Gold Rush open and it can be worn:", garage.unlockedPaints.includes("Gold Rush") && garage.equipped === "gold");
+	const code = (garage.msg.match(/GPL1\S+/) || [""])[0].replace(/\.$/, "");
+	console.log("Copy look code gives a code:", code, "| matches the look:", code === "GPL1.gold.-.none.white.warm.rookie.classic" || code.startsWith("GPL1.gold."));
+	await shot(page, "garage-share");
+	// A friend with an empty garage (a fresh browser profile) uses it.
+	const ctx = await browser.createBrowserContext();
+	const friend = await ctx.newPage();
+	friend.on("pageerror", e => errors.push("friend pageerror: " + e.message));
+	await friend.setViewport({ width: 1440, height: 900 });
+	await friend.goto(base + "?localnet", { waitUntil: "networkidle0" }); await wait(1500);
+	await click(friend, "#btnGarage"); await wait(1200);
+	await click(friend, "#lookUse"); await wait(200);
+	await friend.evaluate(c => { document.getElementById("lookInput").value = c; }, code);
+	await click(friend, "#lookApply"); await wait(500);
+	const f1 = await friend.evaluate(() => ({ livery: window.__game.profile.look.livery, msg: document.getElementById("shareMsg").textContent }));
+	console.log("a friend with Gold Rush locked: their paint stays, and it says what it takes:", f1.livery === "factory" && /Gold Rush paint \(Win 25 online races\)/.test(f1.msg), "|", f1.msg);
+	await friend.evaluate(() => { document.getElementById("lookInput").value = "hello there"; });
+	await click(friend, "#lookApply"); await wait(300);
+	console.log("something that isn't a look code is refused:", /isn't a look code/.test(await friend.$eval("#shareMsg", e => e.textContent)));
+	await friend.evaluate(() => localStorage.setItem("org-gp:solo", JSON.stringify({ "prize:livery:gold": true })));
+	await friend.reload({ waitUntil: "networkidle0" }); await wait(1500);
+	await click(friend, "#btnGarage"); await wait(1200);
+	await click(friend, "#lookUse"); await wait(200);
+	await friend.evaluate(c => { document.getElementById("lookInput").value = c; }, code);
+	await click(friend, "#lookApply"); await wait(500);
+	const f2 = await friend.evaluate(() => ({ livery: window.__game.profile.look.livery, msg: document.getElementById("shareMsg").textContent }));
+	console.log("once they have it, the same code applies it:", f2.livery === "gold" && /Look applied/.test(f2.msg), "|", f2.msg);
+	await ctx.close();
+}
+
+if(flow === "announce"){
+	// The admin's announcement bar: published from Admin > Announcement, shown on the title screen, dismissable, and it runs out.
+	const page = await open(base + "?localnet");
+	await wait(600);
+	await click(page, "#acctBtn"); await wait(200);
+	await page.evaluate(() => { document.getElementById("bvsId").value = "bvs-11018"; document.getElementById("bvsPw").value = "admin-pass"; });
+	await click(page, "#bvsCreate"); await wait(900);
+	await page.evaluate(() => document.querySelector("#account [data-close]").click());
+	await wait(400);
+	const bar = p => p.evaluate(() => ({ shown: !document.getElementById("announce").hidden, text: document.getElementById("announceText").textContent }));
+	console.log("nothing is showing to begin with:", !(await bar(page)).shown);
+	await click(page, "#btnAdmin"); await wait(1200);
+	await page.evaluate(() => document.querySelector('#adminTab [data-v="news"]').click()); await wait(800);
+	console.log("Admin has an Announcement section saying nothing is showing:", await page.evaluate(() => /Nothing is showing/.test(document.getElementById("adminBody").textContent)));
+	await page.evaluate(() => { document.getElementById("newsText").value = "Tournament at lunch in room 12 <b>bring a friend</b>"; document.getElementById("newsFor").value = "24"; });
+	await page.evaluate(() => [...document.querySelectorAll("#adminBody button")].find(b => b.textContent === "Publish").click()); await wait(1000);
+	const stored = await page.evaluate(async () => { const { connect } = await import("/js/net.js"); const n = await connect(); return await n.store.get("config/announcement"); });
+	console.log("Publish stores it with an end time a day away:", stored && /Tournament at lunch/.test(stored.text) && Math.abs(stored.until - stored.at - 86400000) < 1000);
+	await shot(page, "admin-announce");
+	await page.evaluate(() => document.querySelector("#screen-admin [data-back]").click()); await wait(1500);
+	let b = await bar(page);
+	console.log("back on the title screen it shows (as plain text):", b.shown && b.text === "Tournament at lunch in room 12 <b>bring a friend</b>", JSON.stringify(b.text));
+	await shot(page, "announce-bar");
+	// A different player sees it too, and can dismiss it for good.
+	const guest = await open(base + "?localnet"); await wait(1800);
+	console.log("another player sees it:", (await bar(guest)).shown);
+	await click(guest, "#announceClose"); await wait(300);
+	console.log("Dismiss hides it:", !(await bar(guest)).shown);
+	await guest.reload({ waitUntil: "networkidle0" }); await wait(1800);
+	console.log("and it stays hidden after a reload:", !(await bar(guest)).shown, "| the admin tab still shows it:", (await bar(page)).shown);
+	// A newer announcement shows again.
+	await page.evaluate(async () => { const { connect } = await import("/js/net.js"); const n = await connect(); await n.publishAnnouncement({ text: "Server maintenance tonight", at: Date.now() + 5, until: 0 }); });
+	await guest.reload({ waitUntil: "networkidle0" }); await wait(1800);
+	console.log("a newer announcement shows again, even after a dismiss:", (await bar(guest)).text === "Server maintenance tonight");
+	// One that has run out doesn't show.
+	await page.evaluate(async () => { const { connect } = await import("/js/net.js"); const n = await connect(); await n.publishAnnouncement({ text: "Old news", at: Date.now() + 10, until: Date.now() - 1000 }); });
+	await guest.reload({ waitUntil: "networkidle0" }); await wait(1800);
+	console.log("one past its end time doesn't show:", !(await bar(guest)).shown);
+	// Clear from the admin page.
+	await page.evaluate(async () => { const { connect } = await import("/js/net.js"); const n = await connect(); await n.publishAnnouncement({ text: "Back soon", at: Date.now() + 20, until: 0 }); });
+	await click(page, "#btnAdmin"); await wait(1200);
+	await page.evaluate(() => document.querySelector('#adminTab [data-v="news"]').click()); await wait(800);
+	await page.evaluate(() => [...document.querySelectorAll("#adminBody button")].find(b => b.textContent === "Clear").click()); await wait(900);
+	console.log("Clear removes it:", await page.evaluate(async () => { const { connect } = await import("/js/net.js"); const n = await connect(); return (await n.store.get("config/announcement")) == null; }));
 }
 
 console.log(errors.length ? "ERRORS:\n" + [...new Set(errors)].join("\n") : "no page errors");

@@ -1,6 +1,6 @@
 // The garage: pick paint, number, underglow, tyre smoke, title and horn; see what's locked
 // and how close you are. Also works out the weekly crown holder.
-import { CATEGORIES, DEFAULT_LOOK, progress, isUnlocked, requirement, unlockedIds, cleanLook, item, nextUnlock, shown, CAT_NOUN, MAX_LEVEL } from "./cosmetics.js";
+import { CATEGORIES, DEFAULT_LOOK, progress, isUnlocked, requirement, unlockedIds, cleanLook, item, itemByKey, nextUnlock, shown, lookToCode, parseLookCode, applyLook, CAT_NOUN, MAX_LEVEL } from "./cosmetics.js";
 import { TRACKS, LAYOUTS } from "./tracks.js";
 import { weeklyChallenge } from "./weekly.js";
 import * as store from "./storage.js";
@@ -213,8 +213,48 @@ export function initGarage(ctx){
 		return { unlocked: newlyUnlocked(before, G.P) };
 	}
 
+	// Prize codes (js/codes.js): the named items unlock for good (kept like a solo goal, and synced with an account).
+	// Returns { unlocked: [names of what's new], already: how many you had }.
+	function grant(keys){
+		const before = G.P, out = { unlocked: [], already: 0 };
+		for(const key of keys){
+			const f = itemByKey(key);
+			if(!f) continue;
+			if(isUnlocked(f.item, before)) out.already++;
+			else setSoloFlag("prize:" + key);
+		}
+		G.P = progress(G.stats, { records: G.records || 0, weeklyWins: G.weeklyWins || 0, account: ctx.acct.info.kind !== "guest", solo: soloFlags() });
+		out.unlocked = newlyUnlocked(before, G.P);
+		return out;
+	}
+
+	// Look codes: send your look to a friend as a line of text, or use one they sent.
+	const say = text => { $("shareMsg").hidden = !text; $("shareMsg").textContent = text || ""; };
+	$("lookCopy").addEventListener("click", async () => {
+		const code = lookToCode(ctx.S.profile.look);
+		ctx.audio.sfx.click();
+		try { await navigator.clipboard.writeText(code); say("Copied. Send it to a friend: " + code); }
+		catch { say("Your browser blocked copying. Your look code is " + code); }
+	});
+	$("lookUse").addEventListener("click", () => {
+		ctx.audio.sfx.click();
+		$("lookPaste").hidden = !$("lookPaste").hidden;
+		if(!$("lookPaste").hidden) $("lookInput").focus();
+	});
+	const useLook = () => {
+		const wanted = parseLookCode($("lookInput").value);
+		if(!wanted){ ctx.audio.sfx.error(); say("That isn't a look code. They look like GPL1.flames.7.none.white.warm.rookie.classic"); return; }
+		const { look, skipped } = applyLook(ctx.S.profile.look, wanted, G.P, isCrown());
+		ctx.S.profile.look = cleanLook(look, G.P, isCrown());
+		ctx.saveProfile(); ctx.placeShowcase(); render();
+		ctx.audio.sfx.select();
+		say(skipped.length ? "Used what you've unlocked. Still locked: " + skipped.map(s => `${s.name} ${s.part} (${s.need})`).join("; ") + "." : "Look applied.");
+	};
+	$("lookApply").addEventListener("click", useLook);
+	$("lookInput").addEventListener("keydown", e => { if(e.key === "Enter") useLook(); });
+
 	return {
-		open, refresh, render, afterOnline, afterSolo, soloFlags,
+		open, refresh, render, afterOnline, afterSolo, soloFlags, grant,
 		nextUnlock: () => nextUnlock(G.P),
 		get level(){ return G.P.level; },
 		get crown(){ return G.crown; },

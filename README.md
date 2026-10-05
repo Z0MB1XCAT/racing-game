@@ -193,6 +193,24 @@ original did).
     beat someone else's ghost in time trial.
   - **The #1 number and a crown** go to whoever topped last week's weekly challenge, until the
     next week ends.
+- **Prize codes** (`js/codes.js`, `tools/codes.mjs`): type a code in (Garage > **Prize code**, or **Have a prize code?** on the title
+  screen) and the items it names unlock for good, even ones that are normally earned or out of season, and follow an account. Hand them out
+  as class prizes. The codes themselves aren't in the game's files, only a fingerprint (SHA-256) of each, so reading the source doesn't give
+  them away. A code ignores case, spaces and dashes, can have an end date, and works for everyone who knows it (make one per winner with
+  `random`). Wrong guesses slow down (five in a row make you wait 30 seconds). Manage them with the tool, then commit `js/codes.js`:
+  ```bash
+  node tools/codes.mjs items                                  # what a code can give: livery:gold, title:champion, horn:train ...
+  node tools/codes.mjs add TIGER-4821 livery:gold --label "Year 9 cup" --until 2026-12-18
+  node tools/codes.mjs random 10 horn:cow --label "Class 8B"  # prints ten codes like COBALT-7882: keep them, they aren't stored
+  node tools/codes.mjs list | check CODE | remove <start of hash>
+  ```
+- **Look codes**: Garage > **Copy look code** gives a line like `GPL1.flames.7.none.white.warm.rookie.classic` to send to a friend, and
+  **Use a look code** applies one. They get whatever of it they've unlocked; the rest stays as it was and is listed with what it takes
+  (and #1 is never taken unless it's theirs). Anything that isn't a look code is refused, including made-up item names.
+- **Announcement bar**: **Admin > Announcement** sets a message (up to 200 characters, shown as plain text) for a day, three days, a week or
+  until you clear it. It appears at the top of everyone's title screen, can be dismissed (a newer one shows again), and stops by itself.
+  It's stored under `config/announcement`, which the existing database rules already let everyone read and only the admin write: no
+  rules change.
 - **Room chat**: a chat panel in the lobby, quick messages (GG, Good race!, Rematch? ...), a small
   feed during races (press **Enter** or **T** to type; steering lets go while you do) and a chat
   dock on the results screen. It can be switched off in Settings.
@@ -604,6 +622,7 @@ The last two also need puppeteer installed.
 - `node tools/sky-shots.mjs [trackId] [tod-weather ...]` screenshots a track at different times and weather (e.g. `monza night-rain`).
 - `node tools/scenery-shots.mjs [trackId ...]` takes screenshots of each track (overview, racing with the mirror, looking back, highlights).
 - `node tools/engine-demo.mjs` renders a clip of each engine to WAV (with spectrograms) for tuning the sound. Engine settings are `ENGINES` in `js/audio.js`.
+- `node tools/codes-test.mjs` checks prize codes and look codes, no browser: a code is found however it's typed, wrong, short and expired ones aren't, the shipped list holds no plain codes, the `codes.mjs` tool adds, lists, checks and removes on a copy, a prize unlocks any item for good, and look codes round-trip for every paint and refuse anything else (made-up and prototype names included).
 - `node tools/season-test.mjs` checks the seasons and the Halloween challenge week, no browser: the look comes on at the start of 1 October and goes off at the start of 1 November in every year (a leap year too); `?season=` and the Settings switch change what's drawn but never what can be earned; the Halloween challenge is the week with 31 October in it, on a forest circuit at night in fog, one a year to 2060, never repeating a track next to it, and no ordinary week is touched.
 - `node tools/music-test.mjs` plays the menu songs in a browser: each is audible, never clips, isn't silent for long, and the October one is about as loud as the usual one.
 - `node tools/changelog-test.mjs` checks the What's new changelog: entries are well formed and newest first, none is newer than the game, and versions compare right (-9 before -10). No browser.
@@ -614,7 +633,7 @@ The last two also need puppeteer installed.
 - `node tools/build-voices.mjs [eng] [lead] [col] [--force] [--check]` renders the lines in `js/voicelines.js` into `assets/voice/*.pak` with the Kokoro voice (needs `npm i kokoro-js` in a scratch folder and `KOKORO_DIR` pointing at it, plus ffmpeg); `--check` listens back with a speech recogniser. Only needed when a line or a voice changes.
 - `node tools/build-sfx.mjs <folder>` packs the chosen sounds from Kenney's Impact Sounds, Interface Sounds and UI Audio packs (CC0) into `assets/audio/sfx.pak`.
 - `node tools/contact-test.mjs monaco` compares original and soft car contact (side hit, rear tap, a bot race).
-- `node tools/e2e.mjs solo|online|rematch|invite|whatsnew|halloween|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
+- `node tools/e2e.mjs solo|online|rematch|invite|whatsnew|halloween|codes|announce|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
 
 ## Credits and licence
 

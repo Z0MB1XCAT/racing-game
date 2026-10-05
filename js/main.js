@@ -32,6 +32,7 @@ import { Engineer } from "./radio.js";
 import { Commentary } from "./commentary.js";
 import { build as buildSpeech, carPiece, gapPiece } from "./speechkit.js";
 import { CHANGELOG, entriesSince } from "./changelog.js";
+import { findCode } from "./codes.js";
 import { configureSeason, halloween, season } from "./season.js";
 import { GAME_NAME, MAX_CARS, EDITOR_ENABLED, VOICES_ENABLED, ACCOUNTS, VERSION } from "./config.js";
 import * as phys from "./physics.js";
@@ -291,6 +292,7 @@ function goTitle(){
 	showTrack(defFor(S.setup.trackId), false);
 	camMode = "showcase";
 	loadWeeklyCard();
+	loadAnnouncement();
 }
 
 // Segmented controls and steppers.
@@ -2860,6 +2862,53 @@ function showNextUnlock(){
 	$("nuBar").style.transform = `scaleX(${n.frac})`;
 }
 $("btnGarage").addEventListener("click", () => { audio.sfx.click(); garage.open(); });
+
+// ---------- Announcement bar ----------
+// A message from the admin at the top of the title screen (Admin > Announcement). Shown until it runs out; you can dismiss it, and a
+// newer one shows again.
+async function loadAnnouncement(){
+	const el = $("announce");
+	el.hidden = true;
+	if(!onlineAvailable()) return;
+	try {
+		const net = await connect();
+		const a = await net.announcement();
+		if(!a || !a.text || (a.until && Date.now() > a.until) || store.load("seenAnnouncement", null) === a.at) return;
+		$("announceText").textContent = String(a.text).slice(0, 200);
+		el.dataset.at = a.at;
+		el.hidden = false;
+	} catch {}
+}
+$("announceClose").addEventListener("click", () => { audio.sfx.click(); store.save("seenAnnouncement", Number($("announce").dataset.at)); $("announce").hidden = true; });
+
+// ---------- Prize codes ----------
+// A code from a teacher or a prize (js/codes.js): the items it names unlock for good. Wrong guesses slow down, so a code can't be guessed.
+const prizeTries = { wrong: 0, wait: 0 };
+function prizeSay(text, kind){ const el = $("prizeMsg"); el.hidden = !text; el.textContent = text || ""; el.className = "msg " + (kind || ""); }
+async function redeemPrize(){
+	const text = $("prizeInput").value;
+	if(Date.now() < prizeTries.wait){ audio.sfx.error(); return prizeSay("Too many wrong tries. Wait a few seconds.", "err"); }
+	let found;
+	try { found = await findCode(text); }
+	catch { audio.sfx.error(); return prizeSay("Prize codes need a secure page (https). Try the game's normal web address.", "err"); }
+	if(!found){
+		audio.sfx.error();
+		if(++prizeTries.wrong >= 5){ prizeTries.wrong = 0; prizeTries.wait = Date.now() + 30000; return prizeSay("That isn't a code we know. Too many tries: wait 30 seconds.", "err"); }
+		return prizeSay("That isn't a code we know. Check it and try again.", "err");
+	}
+	if(found.expired){ audio.sfx.error(); return prizeSay("That code has run out.", "err"); }
+	prizeTries.wrong = 0;
+	const res = garage.grant(found.entry.grants);
+	saveProfile();
+	$("titleLevel").textContent = garage.level;
+	if(S.screen === "garage") garage.render();
+	$("prizeInput").value = "";
+	if(res.unlocked.length){ audio.sfx.unlock(); prizeSay("Unlocked: " + res.unlocked.join(", ") + ". It's in your garage.", "ok"); }
+	else prizeSay("You already have everything that code gives.", "");
+}
+$("prizeGo").addEventListener("click", redeemPrize);
+$("prizeInput").addEventListener("keydown", e => { if(e.key === "Enter") redeemPrize(); });
+document.querySelectorAll('[data-open="prize"]').forEach(b => b.addEventListener("click", () => { prizeSay(""); }));
 const admin = initAdmin({
 	connect, escapeHtml, fmtTime, showScreen, audio,
 	setCam: m => { camMode = m; },
@@ -2901,6 +2950,7 @@ showScreen("title");
 	}
 }
 loadWeeklyCard();
+loadAnnouncement();
 {
 	// "What's new": the first time after an update, on the title screen (not when a link took you into a room or a big screen).
 	// A first-ever visit just notes the version. The help screen can open the latest entries again.

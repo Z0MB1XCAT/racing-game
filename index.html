@@ -58,6 +58,12 @@
 				</div>
 			</header>
 
+			<div class="announce" id="announce" role="status" hidden>
+				<span class="an-tag">Announcement</span>
+				<span id="announceText"></span>
+				<button class="link-btn" id="announceClose" type="button">Dismiss</button>
+			</div>
+
 			<div class="title-grid">
 				<div class="stack">
 					<div class="panel kerbed">
@@ -79,6 +85,7 @@
 							<span class="gb-text"><b>Garage</b><small>Paint, numbers, underglow, headlights and titles</small></span>
 							<span class="rb-arrow">&rarr;</span>
 						</button>
+						<button class="link-btn" type="button" data-open="prize">Have a prize code?</button>
 						<div class="field">
 							<span class="eyebrow">Account</span>
 							<div class="acct-row">
@@ -459,6 +466,16 @@
 						<button data-v="title" aria-checked="false">Title</button>
 						<button data-v="horn" aria-checked="false">Horn</button>
 					</div>
+					<div class="garage-share">
+						<button class="back-btn" id="lookCopy" type="button" title="Copies a line of text describing your car's look, to send to a friend">Copy look code</button>
+						<button class="back-btn" id="lookUse" type="button" title="Paste a look code a friend sent you">Use a look code</button>
+						<button class="back-btn" type="button" data-open="prize">Prize code</button>
+					</div>
+					<div class="garage-paste" id="lookPaste" hidden>
+						<input id="lookInput" class="text-input" placeholder="GPL1.flames.7.none.white.warm.rookie.classic" autocomplete="off" spellcheck="false" aria-label="A look code from a friend">
+						<button class="go-btn ghost" id="lookApply" type="button"><span>Use it</span></button>
+					</div>
+					<p class="msg" id="shareMsg" role="status" style="color:var(--mute)" hidden></p>
 					<div class="gitems" id="garageItems"></div>
 					<div class="panel number-panel" id="garageNumberPanel" hidden>
 						<div class="num-big" id="garageNum">–</div>
@@ -485,6 +502,7 @@
 					<button data-v="weekly" aria-checked="false">Weekly</button>
 					<button data-v="rooms" aria-checked="false">Rooms</button>
 					<button data-v="chat" aria-checked="false">Chat</button>
+					<button data-v="news" aria-checked="false">Announcement</button>
 					<button data-v="settings" aria-checked="false">Lap limits &amp; bans</button>
 				</div>
 			</header>
@@ -884,6 +902,18 @@
 			<p class="credit">Physics and the Classic track are from <a href="https://github.com/jchabin/cars" target="_blank" rel="noopener">jchabin/cars</a> (GPL-3.0). Circuit shapes are simplified from the real layouts.</p>
 			<p class="credit"><button class="back-btn" data-open="whatsnew">What's new</button></p>
 			<button class="go-btn" data-close><span>Got it</span></button>
+		</div>
+	</div>
+
+	<!-- Prize codes (js/codes.js): from the garage, or "Have a prize code?" on the title screen -->
+	<div class="modal" id="prize" hidden role="dialog" aria-modal="true" aria-labelledby="prizeTitle">
+		<div class="panel kerbed">
+			<h2 id="prizeTitle">Prize code</h2>
+			<p class="msg" style="color:var(--mute)">Got a code from a teacher or as a prize? Type it in to unlock something for your car.</p>
+			<input id="prizeInput" class="text-input" autocomplete="off" spellcheck="false" placeholder="TIGER-4821" aria-label="Prize code" maxlength="40">
+			<p class="msg" id="prizeMsg" role="status" hidden></p>
+			<button class="go-btn" id="prizeGo"><span>Unlock</span></button>
+			<button class="back-btn" data-close>Close</button>
 		</div>
 	</div>
 

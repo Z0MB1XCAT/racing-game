@@ -147,6 +147,45 @@ export function initAdmin(ctx){
 			box.appendChild(table(["Player", ""], Object.keys(mutes).map(id => tr([esc(id), actions(btn("Unmute chat", "", async () => { await net.setChatBan(id, false); render(); }))]))));
 		}
 
+		if(A.tab === "news"){
+			const cur = await net.announcement();
+			const live = cur && cur.text && (!cur.until || Date.now() < cur.until);
+			const p = document.createElement("p");
+			p.className = "msg";
+			p.textContent = "A message at the top of everyone's title screen until it runs out or you clear it, like: Tournament at lunch in room 12. Players can dismiss it (they'll see a new one). Keep it short.";
+			box.appendChild(p);
+			const ta = document.createElement("textarea");
+			ta.className = "text-input admin-news";
+			ta.id = "newsText";
+			ta.maxLength = 200;
+			ta.rows = 3;
+			ta.placeholder = "Tournament at lunch in room 12";
+			ta.setAttribute("aria-label", "Announcement text");
+			ta.value = cur && cur.text ? cur.text : "";
+			box.appendChild(ta);
+			const sel = document.createElement("select");
+			sel.className = "text-input admin-select";
+			sel.id = "newsFor";
+			sel.setAttribute("aria-label", "How long it shows");
+			for(const [label, hours] of [["For 1 day", 24], ["For 3 days", 72], ["For 1 week", 168], ["Until I clear it", 0]]){ const o = document.createElement("option"); o.value = hours; o.textContent = label; sel.appendChild(o); }
+			box.appendChild(sel);
+			const status = document.createElement("p");
+			status.className = "msg";
+			status.style.color = "var(--mute)";
+			status.textContent = live ? "Showing now" + (cur.until ? " until " + new Date(cur.until).toLocaleString() : ", with no end") + "." : cur && cur.text ? "The last announcement has run out." : "Nothing is showing.";
+			box.appendChild(status);
+			box.appendChild(actions(
+				btn("Publish", "", async () => {
+					const text = ta.value.trim().slice(0, 200);
+					if(!text){ msg("Write something first."); return; }
+					const hours = Number(sel.value), at = Date.now();
+					await net.publishAnnouncement({ text, at, until: hours ? at + hours * 3600000 : 0 });
+					msg("Published. It shows on everyone's title screen."); render();
+				}),
+				btn("Clear", "danger", async () => { await net.publishAnnouncement(null); msg("Cleared."); render(); })
+			));
+		}
+
 		if(A.tab === "settings"){
 			const current = (await net.minLaps()) || {};
 			const map = ctx.minLapMap();

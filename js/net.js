@@ -749,6 +749,9 @@ export class Net {
 	nameLock(uid = this.uid){ return this.store.get("nameLock/" + uid); }
 	isBanned(uid = this.uid){ return this.store.get("banned/" + uid).then(v => !!v); }
 	minLaps(){ return this.store.get("config/minLap"); }
+	// The announcement bar on the title screen: { text, at, until } (until 0 = no end). Everyone signed in can read config/; only the admin can write it.
+	announcement(){ return this.store.get("config/announcement"); }
+	publishAnnouncement(a){ return a ? this.store.set("config/announcement", a) : this.store.remove("config/announcement"); }
 	// Admin only (the database rules refuse these for anyone else).
 	allDrivers(n = 200){ return this.store.top("stats", "races", n, true); }
 	async renameDriver(uid, name, trackKeys, weeks){

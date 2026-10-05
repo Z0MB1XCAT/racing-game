@@ -3,6 +3,14 @@
 // when a version has something players will notice (version = the VERSION in js/config.js that shipped it).
 export const CHANGELOG = [
 	{
+		version: "2026.10.05-7", date: "5 October 2026", title: "Codes and announcements",
+		items: [
+			"Prize codes: got a code from a teacher? Garage > Prize code (or Have a prize code? on the title screen) unlocks the item for good.",
+			"Look codes: Garage > Copy look code gives a line of text to send a friend. Use a look code applies one: you get what you've unlocked.",
+			"Announcements: news from the admin, like a tournament at lunch, shows at the top of the title screen. You can dismiss it."
+		]
+	},
+	{
 		version: "2026.10.05-6", date: "5 October 2026", title: "Halloween",
 		items: [
 			"The game goes spooky all October by itself: misty menus, bats, jack-o'-lanterns by every track and a creepy tune. It switches off on 1 November. Settings > Seasonal look turns it off sooner.",

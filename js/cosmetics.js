@@ -188,7 +188,16 @@ export const SOLO_GOALS = {
 
 const byId = list => Object.fromEntries(list.map(i => [i.id, i]));
 const INDEX = { livery: byId(LIVERIES), glow: byId(GLOWS), smoke: byId(SMOKES), lights: byId(LIGHTS), title: byId(TITLES), horn: byId(HORNS) };
-export function item(cat, id){ return INDEX[cat] && INDEX[cat][id]; }
+// (Only the game's own items: a look from outside can name anything, even "constructor" or "__proto__".)
+const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+export function item(cat, id){ return own(INDEX, cat) && own(INDEX[cat], id) ? INDEX[cat][id] : undefined; }
+// Every item knows its own key ("livery:flames"), which is how a prize code names it (js/codes.js).
+for(const c of CATEGORIES) if(c.items) for(const it of c.items) it.key = c.id + ":" + it.id;
+export function itemByKey(key){
+	const [cat, id] = String(key).split(":");
+	const it = item(cat, id);
+	return it ? { cat, item: it } : null;
+}
 
 // Everything the unlock checks need. `stats` from Firebase, `extra` = { records, weeklyWins, account, solo }.
 export function progress(stats, extra = {}){
@@ -216,7 +225,8 @@ function met(c, P){
 	for(const k of ["wins", "podiums", "races", "titles", "records", "weeklyWins"]) if(c[k]) return P[k] >= c[k];
 	return false;
 }
-export function isUnlocked(it, P){ return !!it && it.unlock.some(c => met(c, P)); }
+// (A prize code (js/codes.js) unlocks any item for good: it's kept as the flag "prize:<key>" beside the solo goals.)
+export function isUnlocked(it, P){ return !!it && (it.unlock.some(c => met(c, P)) || !!(P.solo && P.solo["prize:" + it.key])); }
 
 const PLURAL = { wins: ["Win", "online race", "online races"], podiums: ["Get", "online podium", "online podiums"], races: ["Finish", "online race", "online races"],
 	titles: ["Win", "championship", "championships"], records: ["Hold", "lap record", "lap records"], weeklyWins: ["Win", "weekly challenge", "weekly challenges"] };
@@ -284,6 +294,38 @@ export function cleanLook(look, P, isCrown){
 	if(l.number === 1 && !isCrown) l.number = null;
 	if(l.number != null && (l.number < 1 || l.number > 99 || !Number.isInteger(l.number))) l.number = null;
 	return l;
+}
+
+// ----- Look codes -----
+// A look as one line of text to send a friend: GPL1.<paint>.<number or ->.<underglow>.<smoke>.<headlights>.<title>.<horn>
+// e.g. "GPL1.flames.7.none.white.warm.rookie.classic". Pasting one gives you whatever of it you've unlocked; the rest stays as it was.
+const LOOK_PARTS = ["livery", "glow", "smoke", "lights", "title", "horn"];
+export function lookToCode(look){
+	const l = Object.assign({}, DEFAULT_LOOK, look);
+	return ["GPL1", l.livery, l.number == null ? "-" : l.number, l.glow, l.smoke, l.lights, l.title, l.horn].join(".");
+}
+// The look a code describes, or null if it isn't a look code (or names something that doesn't exist).
+export function parseLookCode(text){
+	const parts = String(text || "").trim().split(".");
+	if(parts.length !== 8 || parts[0] !== "GPL1") return null;
+	const [, livery, number, glow, smoke, lights, title, horn] = parts;
+	const look = { livery, glow, smoke, lights, title, horn, number: number === "-" ? null : /^\d{1,2}$/.test(number) ? Number(number) : NaN };
+	if(Number.isNaN(look.number) || (look.number != null && look.number < 1)) return null;
+	for(const c of LOOK_PARTS) if(!item(c, look[c])) return null;
+	return look;
+}
+// Your look with a code's look applied: { look, skipped: [{ part, name, need }] }. Anything you haven't unlocked (and #1 unless it's
+// yours) is left as it was and listed with what it takes to get it.
+export function applyLook(mine, wanted, P, isCrown){
+	const out = Object.assign({}, DEFAULT_LOOK, mine), skipped = [];
+	for(const c of LOOK_PARTS){
+		const it = item(c, wanted[c]);
+		if(isUnlocked(it, P)) out[c] = it.id;
+		else skipped.push({ part: CAT_NOUN[c], name: it.name, need: requirement(it, P).text });
+	}
+	if(wanted.number === 1 && !isCrown) skipped.push({ part: "number", name: "#1", need: "Win the weekly challenge" });
+	else out.number = wanted.number;
+	return { look: out, skipped };
 }
 
 // Random looks for bots: mostly team colours, some patterns.
