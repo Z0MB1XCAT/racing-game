@@ -3,7 +3,7 @@
 import { GRID } from "./physics.js";
 import { START_Z, seededRandom } from "./trackgen.js";
 import { buildScenerySteps, canvasTexture } from "./scenery.js";
-import { naturalHour, CLIMATES } from "./atmosphere.js";
+import { naturalHour, spookySky, CLIMATES } from "./atmosphere.js";
 import { buildTerrainSteps, buildTunnel, buildBridge, buildSkirts, TUNNEL_WALL } from "./terrain.js";
 import { placeGeoSteps } from "./placegeo.js";
 import { slice, drain } from "./steps.js";
@@ -735,7 +735,7 @@ export function* buildWorldSteps(track, opts = {}){
 			extraSpots.push({ x: rc.x[i] + rc.tz[i] * off * side, z: rc.z[i] - rc.tx[i] * off * side, off: off - rc.hw, i: -1, side, r: rr(), r2: rr(), face: Math.atan2(-rc.tz[i] * side, rc.tx[i] * side) });
 		}
 	}
-	const extras = yield* buildScenerySteps(track, theme, { group, keep, shadows, quality, rand, groundAt, harbour, geo, isWater, extraSpots });
+	const extras = yield* buildScenerySteps(track, theme, { group, keep, shadows, quality, rand, groundAt, harbour, geo, isWater, extraSpots, season: !!opts.season });
 	const occluders = extras.occluders;
 	updaters.push(...extras.updaters);
 	if(theme.trees === "classic"){
@@ -1088,7 +1088,9 @@ export function* buildWorldSteps(track, opts = {}){
 	const skyRadius = farPlane * 0.85;
 	const GREY_TOP = new THREE.Color(0x6c7682), GREY_BOTTOM = new THREE.Color(0xa3acb5), GREY_FOG = new THREE.Color(0x9aa3ad);
 	const skyColor = new THREE.Color(skyBottom);
-	const now = { hour: naturalHour(theme), cloud: 0.08, rain: 0, fog: 0, snow: 0, wind: 0, storm: 0 };
+	// (In October the menus show a misty dusk: opts.season, see js/season.js. A race brings its own sky.)
+	const menuSky = () => opts.season ? spookySky(theme) : { hour: naturalHour(theme), cloud: 0.08, rain: 0, fog: 0, snow: 0, wind: 0, storm: 0 };
+	const now = menuSky();
 	const look = { night: palettes[theme.night ? "night" : "day"].night, dim: 0, rain: 0, wet: 0, lights: 0, warm: 0, fog: 0, snow: 0, wind: 0, storm: 0, cover: 0, rainbow: 0 };
 	const sunTint = new THREE.Color();
 	let wet = 0, flash = 0, flashTimer = 3, applyTimer = 0, lastKey = "";
@@ -1245,7 +1247,7 @@ export function* buildWorldSteps(track, opts = {}){
 		look,
 		// { hour 0-24, cloud 0-1, rain 0-1 }. Cheap to call every frame.
 		setAtmosphere(a){ now.hour = a.hour; now.cloud = a.cloud; now.rain = a.rain; now.fog = a.fog || 0; now.snow = a.snow || 0; now.wind = a.wind || 0; now.storm = a.storm || 0; },
-		defaultAtmosphere(){ return { hour: naturalHour(theme), cloud: 0.08, rain: 0, fog: 0, snow: 0, wind: 0, storm: 0 }; },
+		defaultAtmosphere(){ return menuSky(); },
 		set onThunder(fn){ onThunder = fn; },
 		// (For the screenshot tools and tests: a strike, which stays lit for a screenshot if hold is true; strike(false) lets it go.)
 		strike(hold, az){ if(hold === false){ holdFlash = false; return; } strikeNow(az); holdFlash = !!hold; if(hold) flash = 0.45; },

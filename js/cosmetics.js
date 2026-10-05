@@ -6,6 +6,8 @@
 //  - a few solo achievements, kept on the device (or on your account if signed in).
 // Driver level is worked out from XP, and XP from the online stats.
 
+import { season } from "./season.js";
+
 // ----- Levels -----
 export const MAX_LEVEL = 30;
 export const XP = { race: 60, podium: 90, win: 150, title: 400 };
@@ -81,7 +83,9 @@ export const LIVERIES = [
 	{ id: "lava",    name: "Lava", pattern: "lava", glow: true, main: "#140b08", second: "#140b08", accent: "#ff5a12", unlock: [{ wins: 15 }] },
 	{ id: "record",  name: "Record Breaker", pattern: "record", main: "#6d2bd9", second: "#a95cff", accent: "#f4f6fa", unlock: [{ records: 3 }] },
 	{ id: "chrome",  name: "Chrome", pattern: "chrome", unlock: [{ titles: 1 }] },
-	{ id: "gold",    name: "Gold Rush", pattern: "gold", unlock: [{ wins: 25 }] }
+	{ id: "gold",    name: "Gold Rush", pattern: "gold", unlock: [{ wins: 25 }] },
+	// A limited paint: it's on offer in October only (season: "halloween", see js/season.js), and yours to keep once earned.
+	{ id: "jack",    name: "Jack-o'-Lantern", pattern: "pumpkin", glow: true, main: "#ff7a12", second: "#1b1020", accent: "#ffd23a", season: "halloween", unlock: [{ solo: "halloween" }] }
 ];
 
 export const GLOWS = [
@@ -131,7 +135,8 @@ export const TITLES = [
 	{ id: "rain",     name: "Rain Master", unlock: [{ solo: "rain" }] },
 	{ id: "ghost",    name: "Ghostbuster", unlock: [{ solo: "beatGhost" }] },
 	{ id: "tourist",  name: "Globetrotter", unlock: [{ solo: "allTracks" }] },
-	{ id: "demon",    name: "Speed Demon", unlock: [{ records: 5 }] }
+	{ id: "demon",    name: "Speed Demon", unlock: [{ records: 5 }] },
+	{ id: "spooky",   name: "Trick or Treater", season: "halloween", unlock: [{ solo: "halloween" }] }
 ];
 
 // Headlight colour: the lamps on the car and the beam on the road at night.
@@ -177,7 +182,8 @@ export const SOLO_GOALS = {
 	allTracks: "Set a time trial lap on every track",
 	night: "Finish a race against bots at night",
 	rain: "Finish a race against bots in the rain",
-	beatGhost: "Beat someone else's ghost in time trial"
+	beatGhost: "Beat someone else's ghost in time trial",
+	halloween: "Finish a lap of the Halloween challenge, or a bot race at night in fog (October only)"
 };
 
 const byId = list => Object.fromEntries(list.map(i => [i.id, i]));
@@ -197,6 +203,10 @@ export function progress(stats, extra = {}){
 		account: !!extra.account, solo: extra.solo || {}
 	};
 }
+
+// Items that are only on offer at one time of year (item.season) show up in the garage then, or once you have them.
+export const inSeason = (it, now) => !it.season || season(now) === it.season;
+export const shown = (it, P, now) => inSeason(it, now) || isUnlocked(it, P);
 
 function met(c, P){
 	if(c.free) return true;
@@ -237,10 +247,10 @@ export const CAT_NOUN = { livery: "paint", glow: "underglow", smoke: "tyre smoke
 const COST_PER = { races: 60, podiums: 90, wins: 150, titles: 400, records: 400, weeklyWins: 700 };
 // The locked item that's cheapest to get, with how far along you are: { cat, id, name, noun, text, have, need, unit, frac, left }.
 // (Levels count in XP, so "level 12" shows how much XP is left, not "level 10 of 12". Signing in isn't something a race gets you, so it's skipped.)
-export function nextUnlock(P){
+export function nextUnlock(P, now){
 	let best = null;
 	for(const c of CATEGORIES) if(c.items) for(const it of c.items){
-		if(isUnlocked(it, P)) continue;
+		if(isUnlocked(it, P) || !inSeason(it, now)) continue;
 		for(const cond of it.unlock){
 			if(cond.free || cond.account) continue;
 			let text = "", have = 0, need = 1, unit = "", cost = 0;

@@ -173,6 +173,22 @@ export function patternCanvas(pattern, main, second, accent){
 				g.lineTo(x + 30 * s, 48); g.lineTo(x + 14 * s, 52); g.lineTo(x + 32 * s, 4); g.closePath(); g.fill();
 			}
 		});
+	}else if(pattern === "pumpkin"){
+		// An orange skin with darker ribs, and a carved face (triangle eyes, a jagged grin) that glows.
+		draw(128, 128, (g, w, h) => {
+			g.fillStyle = main; g.fillRect(0, 0, w, h);
+			g.fillStyle = shade(main, -0.09);
+			for(let x = 4; x < w; x += 32) g.fillRect(x, 0, 11, h);
+			g.lineJoin = "round";
+			const face = [
+				[[30, 46], [56, 46], [43, 22]],                                  // left eye
+				[[72, 46], [98, 46], [85, 22]],                                  // right eye
+				[[64, 56], [57, 68], [71, 68]],                                  // nose
+				[[18, 82], [30, 76], [40, 90], [52, 78], [64, 92], [76, 78], [88, 90], [98, 76], [110, 82], [100, 104], [86, 98], [74, 108], [64, 100], [54, 108], [42, 98], [28, 104]]   // grin
+			];
+			g.fillStyle = accent; g.strokeStyle = second; g.lineWidth = 4; g.shadowColor = accent; g.shadowBlur = 8;
+			for(const pts of face){ g.beginPath(); g.moveTo(...pts[0]); for(const q of pts.slice(1)) g.lineTo(...q); g.closePath(); g.stroke(); g.fill(); }
+		});
 	}else if(pattern === "lava"){
 		// Glowing cracks: branching lines, blurred underneath for the glow.
 		draw(128, 128, (g, w, h) => {

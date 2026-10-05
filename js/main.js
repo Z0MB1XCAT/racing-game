@@ -8,7 +8,7 @@ import { PLACE_VENUES, loadPlaces, placesLoaded } from "./placegeo.js";
 import { preload as preloadAssets, assetsStamp } from "./assets.js";
 import { Gfx } from "./gfx.js";
 import { ghostSectors } from "./ghosts.js";
-import { makeAtmosphere, kindOf, CLIMATE_NOTES, WEATHERS } from "./atmosphere.js";
+import { makeAtmosphere, kindOf, CLIMATE_NOTES, WEATHERS, TIMES } from "./atmosphere.js";
 import { Lens } from "./lens.js";
 import { makeCar, disposeCar, animateCar, BODIES } from "./cars.js";
 import { Race, COUNTDOWN, QUALI_LAPS } from "./race.js";
@@ -32,6 +32,7 @@ import { Engineer } from "./radio.js";
 import { Commentary } from "./commentary.js";
 import { build as buildSpeech, carPiece, gapPiece } from "./speechkit.js";
 import { CHANGELOG, entriesSince } from "./changelog.js";
+import { configureSeason, halloween, season } from "./season.js";
 import { GAME_NAME, MAX_CARS, EDITOR_ENABLED, VOICES_ENABLED, ACCOUNTS, VERSION } from "./config.js";
 import * as phys from "./physics.js";
 
@@ -62,6 +63,15 @@ const S = {
 	input: { left: false, right: false, tl: false, tr: false, tilt: null }
 };
 S.profile.look = Object.assign({}, DEFAULT_LOOK, S.profile.look);
+// October's look and sound (js/season.js): by the calendar, unless the player switched it off in Settings.
+configureSeason({ search: location.search, decorations: S.settings.seasonal !== false });
+const menuSong = () => halloween() ? "spooky" : "menu";
+// What changes on the title screen with the season: the little banner under the name.
+function applySeasonLook(){
+	document.body.classList.toggle("halloween", halloween());
+	const ed = document.querySelector(".edition");
+	if(ed) ed.textContent = halloween() ? "Halloween edition" : "Grand Prix edition";
+}
 const CROWN_SVG = '<svg class="crown-ico" viewBox="0 0 24 24" aria-label="Weekly champion"><path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5z" fill="currentColor"/></svg>';
 const mobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.userAgent));
 
@@ -128,7 +138,7 @@ function getTrack(def, reverse){
 
 // What a world was built with: its venue's real surroundings (placegeo.js) and the assets loaded so far
 // (assets.js). A world built under an older stamp is built again the next time its track is shown.
-const worldStamp = def => (def && placesLoaded(venueOf(def.id)) ? 1 : 0) + "/" + assetsStamp();
+const worldStamp = def => (def && placesLoaded(venueOf(def.id)) ? 1 : 0) + "/" + assetsStamp() + (halloween() ? "/h" : "");
 
 // The world on show goes off the scene (the next one is about to take its place); it's handed back to be cleared away
 // once the new one is up (see installWorld).
@@ -180,7 +190,7 @@ function showTrack(def, reverse){
 	if(S.trackKey === entry.key && S.world && S.worldStamp === worldStamp(entry.def)) return entry;
 	const stamp = worldStamp(entry.def);
 	const old = retireWorld();
-	installWorld(entry, buildWorld(entry.track, { quality: quality() }), stamp, false, old);
+	installWorld(entry, buildWorld(entry.track, { quality: quality(), season: halloween() }), stamp, false, old);
 	return entry;
 }
 
@@ -214,7 +224,7 @@ function previewTrack(def, reverse, { quiet = false } = {}){
 	previewTimer = setTimeout(() => {
 		previewTimer = 0;
 		const entry = getTrack(def, reverse), sink = {};
-		const job = runSliced(buildWorldSteps(entry.track, { quality: quality(), sink }), {
+		const job = runSliced(buildWorldSteps(entry.track, { quality: quality(), season: halloween(), sink }), {
 			onSlice: () => gfx.stall(1500),                       // (a build in slices isn't a slow computer)
 			onDone: world => {
 				// The textures go to the graphics chip a few at a time first (the 2048-wide billboard texture alone takes a
@@ -262,8 +272,9 @@ function carNumber(){ const n = S.profile.look && S.profile.look.number; return 
 function showScreen(name){
 	if(name !== "garage" && S.beamPreview) showcaseBeam(false);
 	S.screen = name;
+	document.body.dataset.view = name;
 	setTimeout(() => { if(typeof showUpdateBar === "function") showUpdateBar(); }, 0);
-	audio.playMusic("menu");
+	audio.playMusic(menuSong());
 	document.querySelectorAll("[data-screen]").forEach(s => { s.hidden = s.dataset.screen !== name; });
 }
 function openModal(id){ audio.sfx.open(); $(id).hidden = false; const f = $(id).querySelector("button, input"); if(f) f.focus(); }
@@ -365,6 +376,13 @@ seg($("setAdaptive"), S.settings.adaptive === false ? "0" : "1", v => { S.settin
 seg($("setFps"), S.settings.fps ? "1" : "0", v => { S.settings.fps = v === "1"; saveSettings(); gfx.setCounter(S.settings.fps); });
 seg($("setCamera"), S.settings.camera, v => { S.settings.camera = v; saveSettings(); });
 seg($("setRaceMusic"), S.settings.raceMusic ? "1" : "0", v => { S.settings.raceMusic = v === "1"; saveSettings(); if(S.screen === "race" && S.race && S.race.phase !== "countdown") audio.playMusic(S.settings.raceMusic ? raceSongFor() : null); });
+seg($("setSeason"), S.settings.seasonal === false ? "0" : "1", v => {
+	S.settings.seasonal = v === "1"; saveSettings();
+	configureSeason({ search: location.search, decorations: S.settings.seasonal });
+	applySeasonLook();
+	if(S.screen !== "race") audio.playMusic(menuSong());
+	if(!S.race) refreshWorld();            // (the menus' track is built again without, or with, the pumpkins and the mist)
+});
 seg($("setShake"), S.settings.shake ? "1" : "0", v => { S.settings.shake = v === "1"; saveSettings(); });
 seg($("setMirror"), S.settings.mirror ? "1" : "0", v => { S.settings.mirror = v === "1"; saveSettings(); });
 seg($("setChat"), S.settings.chat === false ? "0" : "1", v => { S.settings.chat = v === "1"; saveSettings(); chat.render(); });
@@ -713,8 +731,10 @@ function startChampRound(qualiGrid){
 // Weekly challenge: a time trial on this week's track.
 function startChallenge(rival){
 	const wk = weeklyChallenge();
-	startTrial(wk.def, wk.reverse, { weekly: wk.id, rival });
+	startTrial(wk.def, wk.reverse, { weekly: wk.id, rival, tod: wk.tod, weather: wk.weather });     // (the Halloween week: night and fog)
 }
+// A week's set conditions as words ("Night · Fog"), or "" for an ordinary week.
+const weekConditions = wk => [wk.tod && TIMES[wk.tod], wk.weather && WEATHERS[wk.weather]].filter(Boolean).join(" · ");
 // Time trial, optionally the weekly challenge (opts.weekly) and optionally chasing someone
 // else's ghost (opts.rival: { name, hue, body, look, ms, s }).
 function startTrial(def, reverse, opts = {}){
@@ -853,6 +873,7 @@ function beginRace(opts){
 	}
 	document.querySelectorAll("[data-screen]").forEach(s => { s.hidden = true; });
 	S.screen = "race";
+	document.body.dataset.view = "race";
 	hud.setup(entry.track, entry.tracker, opts.laps, opts.mode);
 	hud.show(true);
 	hud.spectating(S.race.me || S.watch ? "" : "Spectating · you'll be in the next race");
@@ -1059,6 +1080,8 @@ function onRaceEvent(type, d){
 						saveGhostToAccount("weekly", r.lastLap, { week: wk.id });
 					}
 				}
+				// A lap of the Halloween challenge earns the limited paint (and title).
+				if(S.ctx.weekly && S.ctx.weekly === wk.id && wk.theme === "halloween") garageNote(garage.afterSolo(["halloween"]), true);
 			}
 			const sessionPrev = d.car.lapTimes.length > 1 ? Math.min(...d.car.lapTimes.slice(0, -1)) : null;
 			S.lastDelta = sessionPrev == null ? null : d.ms - sessionPrev;
@@ -1092,7 +1115,7 @@ function onRaceEvent(type, d){
 		case "finish":
 			if(S.world && (d.position === 1 || d.car.me)) S.world.cheer(0.9);
 			// What the sky was doing as you crossed the line (for the night and rain garage goals).
-			if(d.car.me && S.world && S.world.look) S.finishSky = { at: r.startAt, night: S.world.look.night > 0.5, rain: S.world.look.rain > 0.3 };
+			if(d.car.me && S.world && S.world.look) S.finishSky = { at: r.startAt, night: S.world.look.night > 0.5, rain: S.world.look.rain > 0.3, fog: S.world.look.fog > 0.4 };
 			// The winner sounds their horn as they cross the line.
 			if(r.mode === "race" && r.finishers && r.finishers[0] === d.car.id && hornAllowed()){ const hp = hornPlace(d.car, !tv.live); audio.hornFanfare(hornKind(d.car), Math.max(0.35, hp.gain), hp.pan); }
 			if(d.car.me){
@@ -1289,6 +1312,7 @@ function showResults(results, online, opts = {}){
 			const sky = S.finishSky && S.race && S.finishSky.at === S.race.startAt ? S.finishSky : null;
 			if(sky && sky.night) flags.push("night");
 			if(sky && sky.rain) flags.push("rain");
+			if(sky && sky.night && sky.fog && season() === "halloween") flags.push("halloween");        // the limited Halloween paint
 		}
 		const lvl = S.setup.level;
 		if(me.pos === 1 && me.status !== "dnf"){ if(lvl === "medium" || lvl === "hard") flags.push("winRacer"); if(lvl === "hard") flags.push("winAce"); }
@@ -1649,6 +1673,7 @@ function startReplay(kind, then){
 	S.replayThen = then;
 	document.querySelectorAll("[data-screen]").forEach(el => { el.hidden = true; });
 	S.screen = "replay";
+	document.body.dataset.view = "replay";
 	hud.show(false);
 	director().newFocus();
 	showTv(kind);
@@ -2522,6 +2547,9 @@ const boardRows = (rows, uid) => rows.map((r, i) => `<li class="${i ? "" : "firs
 async function loadWeeklyCard(){
 	const wk = weeklyChallenge();
 	$("weeklyTitle").textContent = wk.def.name + (wk.reverse ? " reversed" : "");
+	$("weeklyCard").dataset.theme = wk.theme || "";
+	$("weeklyTag").hidden = !wk.theme;
+	$("weeklyTag").textContent = wk.theme ? `${wk.label} · ${weekConditions(wk)}` : "";
 	$("weeklyEnds").textContent = "New track in " + timeLeft(wk.end - Date.now());
 	const mine = store.getBest("weekly:" + wk.id);
 	const board = $("weeklyBoard");
@@ -2554,7 +2582,7 @@ async function loadWeeklyBoard(){
 	const token = ++boards.token;
 	const wk = weeklyChallenge(), prev = weeklyChallenge(Date.now(), 1);
 	$("wkName").textContent = wk.def.name + (wk.reverse ? " reversed" : "");
-	$("wkPlace").textContent = "This week · " + wk.id;
+	$("wkPlace").textContent = "This week · " + wk.id + (wk.theme ? ` · ${wk.label}: ${weekConditions(wk).toLowerCase()}` : "");
 	$("wkEnds").textContent = "New track in " + timeLeft(wk.end - Date.now());
 	$("wkLastName").textContent = prev.def.name + (prev.reverse ? " reversed" : "");
 	previewTrack(wk.def, wk.reverse);
@@ -2843,6 +2871,7 @@ const admin = initAdmin({
 $("btnAdmin").addEventListener("click", () => { audio.sfx.click(); admin.open(); });
 
 // ---------- Boot ----------
+applySeasonLook();
 showTrack(defFor(S.setup.trackId), false);
 showScreen("title");
 {

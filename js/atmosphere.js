@@ -146,4 +146,8 @@ function jitter(kind, rand){
 }
 
 // The hour a track looks like by default (Jeddah is a night race, Crossroads is at dusk).
+// The menus' sky in October (js/season.js): dusk with mist, or night with mist on the circuits that are already at night.
+export function spookySky(theme){
+	return { hour: theme.night ? HOUR.night : 18.8, cloud: 0.72, rain: 0, fog: 0.4, snow: 0, wind: 0.12, storm: 0 };
+}
 export function naturalHour(theme){ return theme.night ? HOUR.night : theme.tod === "sunset" ? HOUR.sunset : HOUR.day; }

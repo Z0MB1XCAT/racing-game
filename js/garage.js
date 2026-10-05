@@ -1,6 +1,6 @@
 // The garage: pick paint, number, underglow, tyre smoke, title and horn; see what's locked
 // and how close you are. Also works out the weekly crown holder.
-import { CATEGORIES, DEFAULT_LOOK, progress, isUnlocked, requirement, unlockedIds, cleanLook, item, nextUnlock, CAT_NOUN, MAX_LEVEL } from "./cosmetics.js";
+import { CATEGORIES, DEFAULT_LOOK, progress, isUnlocked, requirement, unlockedIds, cleanLook, item, nextUnlock, shown, CAT_NOUN, MAX_LEVEL } from "./cosmetics.js";
 import { TRACKS, LAYOUTS } from "./tracks.js";
 import { weeklyChallenge } from "./weekly.js";
 import * as store from "./storage.js";
@@ -112,7 +112,7 @@ export function initGarage(ctx){
 		$("garageXpBar").style.transform = `scaleX(${P.nextXp ? Math.min(1, (P.xp - P.levelXp) / span) : 1})`;
 		$("garageXp").textContent = P.nextXp ? `${P.xp.toLocaleString()} / ${P.nextXp.toLocaleString()} XP` : `${P.xp.toLocaleString()} XP · max level`;
 		const unlocked = unlockedIds(P).size;
-		const total = CATEGORIES.reduce((a, c) => a + (c.items ? c.items.length : 0), 0);
+		const total = CATEGORIES.reduce((a, c) => a + (c.items ? c.items.filter(it => shown(it, P)).length : 0), 0);
 		$("garageCount").textContent = `${unlocked} of ${total} unlocked`;
 		$("garageCrown").hidden = !isCrown();
 		$("garageNumberPanel").hidden = G.tab !== "number";
@@ -129,6 +129,7 @@ export function initGarage(ctx){
 		const grid = $("garageItems");
 		grid.innerHTML = "";
 		for(const it of cat.items){
+			if(!shown(it, P)) continue;           // (a seasonal item, out of season, that you never got)
 			const open = isUnlocked(it, P);
 			const on = look[cat.id] === it.id;
 			const b = document.createElement("button");

@@ -120,6 +120,24 @@ original did).
     weather), with a line like "Rain in 1 min", and a short banner appears when something is about
     to arrive. Fixed weather has no forecast. Every screen in a room sees the same sky at the same
     time. It's looks only: the handling is the same.
+- **Halloween** (`js/season.js`): every October, by the player's own calendar, the game goes spooky by itself: it comes on at the start of
+  1 October and goes off at the start of 1 November, every year, with nothing to switch. The menus get a misty purple dusk (the 3D
+  track behind them), orange-and-black kerb stripes, a "Halloween edition" banner, drifting mist and a few bats on the title screen,
+  and a slow spooky menu tune (a heartbeat under a minor chord with a flat second, and sparse bells: `spooky` in `js/music.js`).
+  Every circuit gets big jack-o'-lanterns behind the barriers (`pumpkin` in `assets/`, made by `tools/build-models.mjs`: their
+  carved faces glow, they stand where nothing else is, and face the road; High quality only), a group at the tight corners and some
+  along the straights. **Settings > Seasonal look: Off** turns the decorations off for anyone who doesn't want them. It's looks
+  and sound only, and it never changes a race's own time of day or weather: races use what the host picked.
+  - **The Halloween challenge**: the weekly challenge in the week with 31 October in it (Monday 26 October to Sunday 1 November in
+    2026) is set at **night in fog** (looks only: the handling is the same, so the board stays fair), on Spa in 2026 and a forest
+    circuit (Spa, Suzuka or Monza) in other years, with a board of its own. The card says "Halloween week · Night · Fog". The weeks
+    either side are ordinary. (`HALLOWEEN` in `js/weekly.js`; the week runs on to Monday 00:00 UTC, so it still has its fog on 1 November
+    while the decorations have gone.)
+  - **A limited paint and title**: **Jack-o'-Lantern** (orange, with a carved face that glows at night) and the title **Trick or Treater**.
+    They're earned in October, by finishing a lap of the Halloween challenge, or a bot race at night in fog. They're on offer in the
+    garage in October only, and yours to keep once earned (they stay in the garage all year). Out of October, a seasonal item you
+    never got isn't shown or counted. `?season=halloween` or `?season=off` in the address shows or hides the look (for checking it),
+    and never changes what can be earned.
 - **Weekly challenge**: every Monday at 00:00 UTC a new track and direction are picked
   automatically from the date, with a fresh leaderboard. Last week's winner shows on the title
   screen. You never need to update anything. The challenge has its own ghost and delta bar: your
@@ -586,6 +604,8 @@ The last two also need puppeteer installed.
 - `node tools/sky-shots.mjs [trackId] [tod-weather ...]` screenshots a track at different times and weather (e.g. `monza night-rain`).
 - `node tools/scenery-shots.mjs [trackId ...]` takes screenshots of each track (overview, racing with the mirror, looking back, highlights).
 - `node tools/engine-demo.mjs` renders a clip of each engine to WAV (with spectrograms) for tuning the sound. Engine settings are `ENGINES` in `js/audio.js`.
+- `node tools/season-test.mjs` checks the seasons and the Halloween challenge week, no browser: the look comes on at the start of 1 October and goes off at the start of 1 November in every year (a leap year too); `?season=` and the Settings switch change what's drawn but never what can be earned; the Halloween challenge is the week with 31 October in it, on a forest circuit at night in fog, one a year to 2060, never repeating a track next to it, and no ordinary week is touched.
+- `node tools/music-test.mjs` plays the menu songs in a browser: each is audible, never clips, isn't silent for long, and the October one is about as loud as the usual one.
 - `node tools/changelog-test.mjs` checks the What's new changelog: entries are well formed and newest first, none is newer than the game, and versions compare right (-9 before -10). No browser.
 - `node tools/unlock-test.mjs` checks the results screen's "Next unlock" logic: it always names a locked item with something left to do, level goals count in XP, and nothing shows once everything is open. No browser.
 - `node tools/horn-test.mjs` checks the horn in a real browser: every horn sound is audible and about as loud as the others, a press (even a 15 ms tap) in one tab is heard in the other over `?localnet`, and with the room's Horn switched Off nothing happens.
@@ -594,7 +614,7 @@ The last two also need puppeteer installed.
 - `node tools/build-voices.mjs [eng] [lead] [col] [--force] [--check]` renders the lines in `js/voicelines.js` into `assets/voice/*.pak` with the Kokoro voice (needs `npm i kokoro-js` in a scratch folder and `KOKORO_DIR` pointing at it, plus ffmpeg); `--check` listens back with a speech recogniser. Only needed when a line or a voice changes.
 - `node tools/build-sfx.mjs <folder>` packs the chosen sounds from Kenney's Impact Sounds, Interface Sounds and UI Audio packs (CC0) into `assets/audio/sfx.pak`.
 - `node tools/contact-test.mjs monaco` compares original and soft car contact (side hit, rear tap, a bot race).
-- `node tools/e2e.mjs solo|online|rematch|invite|whatsnew|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
+- `node tools/e2e.mjs solo|online|rematch|invite|whatsnew|halloween|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
 
 ## Credits and licence
 

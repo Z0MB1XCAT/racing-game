@@ -1,6 +1,7 @@
 // Drives the game in a headless browser and screenshots each step.
 //   node tools/e2e.mjs solo [trackId]     race bots, hold right-ish steering, screenshot HUD + results
 //   node tools/e2e.mjs online             two tabs over ?localnet: host, join, race
+//   node tools/e2e.mjs halloween          October's look (clock faked): on 1 Oct, off 1 Nov, the challenge week, the limited paint
 //   node tools/e2e.mjs whatsnew           the What's new popup after an update, and from How to play
 //   node tools/e2e.mjs invite             copy the lobby's invite link and open it as a friend
 //   node tools/e2e.mjs rematch            four tabs: race, then vote for a rematch on the results screen
@@ -784,6 +785,83 @@ if(flow === "whatsnew"){
 	await first.evaluate(() => localStorage.setItem("org-gp:seenVersion", JSON.stringify("2026.10.01-4")));
 	const inv = await open(base + "?localnet&room=ABCD"); await wait(1500);
 	console.log("an invite link isn't interrupted, and it will show next time:", !(await shown(inv)) && await seenOf(inv) === "2026.10.01-4");
+}
+
+if(flow === "halloween"){
+	// October's look comes on at the start of 1 October and goes off at the start of 1 November (by the clock), with the
+	// Halloween challenge in the week with 31 October in it, and the limited paint earned by playing. The clock is faked.
+	const fake = (page, iso) => page.evaluateOnNewDocument(iso => {
+		const Real = Date, offset = new Real(iso).getTime() - Real.now();
+		class Fake extends Real { constructor(...a){ if(a.length === 0) super(Real.now() + offset); else super(...a); } static now(){ return Real.now() + offset; } }
+		window.Date = Fake;
+	}, iso);
+	const at = async iso => {
+		const page = await browser.newPage();
+		await page.setViewport({ width: 1440, height: 900 });
+		page.on("pageerror", e => errors.push("pageerror: " + e.message));
+		page.on("console", m => { if(m.type() === "error" && !/Failed to load resource/.test(m.text())) errors.push("console: " + m.text()); });
+		await fake(page, iso);
+		await page.goto(base, { waitUntil: "networkidle0", timeout: 60000 });
+		await wait(3500);
+		return page;
+	};
+	const look = p => p.evaluate(async () => { const a = await import("/js/audio.js"), g = window.__game; return { on: document.body.classList.contains("halloween"), edition: document.querySelector(".edition").textContent, tag: document.getElementById("weeklyTag").hidden ? "" : document.getElementById("weeklyTag").textContent, pumpkins: g.world.info.trackside.pumpkins, song: a._test.song(), fog: g.world.defaultAtmosphere().fog }; });
+	const early = await at("2026-10-01T00:00:30"), l1 = await look(early);
+	console.log("1 October, just after midnight, it's on:", l1.on && l1.edition === "Halloween edition" && l1.pumpkins > 0 && l1.song === "spooky" && l1.fog > 0, JSON.stringify(l1));
+	const eve = await at("2026-09-30T23:59:30"), l2 = await look(eve);
+	console.log("30 September, a minute before, it's off:", !l2.on && l2.edition === "Grand Prix edition" && l2.pumpkins === 0 && l2.song === "menu" && l2.fog === 0, JSON.stringify(l2));
+	const late = await at("2026-10-31T23:59:30"), l3 = await look(late);
+	console.log("31 October, a minute before midnight, still on:", l3.on, "| Halloween week card:", l3.tag);
+	const nov = await at("2026-11-01T00:00:30"), l4 = await look(nov);
+	console.log("1 November, just after midnight, it's off:", !l4.on && l4.pumpkins === 0 && l4.song === "menu", "| the challenge week runs on to Monday:", l4.tag, JSON.stringify(l4));
+	const mid = await at("2026-10-28T12:00:00"), l5 = await look(mid);
+	console.log("28 October: the weekly card says Halloween week, night and fog:", /Halloween week · Night · Fog/.test(l5.tag), "| the card is Spa:", await mid.$eval("#weeklyTitle", e => e.textContent));
+	await shot(mid, "halloween-title");
+	// The Settings switch turns the look off, and on again, without a reload.
+	await mid.evaluate(() => document.querySelector('[data-open="settings"]').click()); await wait(300);
+	await mid.evaluate(() => document.querySelector('#setSeason [data-v="0"]').click()); await wait(4500);
+	const off = await look(mid);
+	console.log("Settings > Seasonal look: Off removes it:", !off.on && off.edition === "Grand Prix edition" && off.pumpkins === 0 && off.song === "menu", JSON.stringify(off));
+	await mid.evaluate(() => document.querySelector('#setSeason [data-v="1"]').click()); await wait(4500);
+	const back = await look(mid);
+	console.log("and On brings it back:", back.on && back.pumpkins > 0 && back.song === "spooky", JSON.stringify(back));
+	await mid.evaluate(() => document.querySelector('#settings [data-close]').click());
+	// The paint is on offer in October, hidden outside it, and kept once earned.
+	const paintShown = p => p.evaluate(async () => { document.querySelector("#btnGarage").click(); await new Promise(r => setTimeout(r, 900)); const g = document.getElementById("garageItems"); const names = [...g.querySelectorAll(".gname")].map(x => x.textContent); const r = { shown: names.includes("Jack-o'-Lantern"), count: document.getElementById("garageCount").textContent }; document.querySelector("#screen-garage [data-back]").click(); return r; });
+	console.log("the paint is on offer in October:", (await paintShown(mid)).shown);
+	const spring = await at("2026-04-15T12:00:00");
+	console.log("hidden in April, and not counted:", !(await paintShown(spring)).shown);
+	await spring.evaluate(() => localStorage.setItem("org-gp:solo", JSON.stringify({ halloween: true })));
+	await spring.reload({ waitUntil: "networkidle0" }); await wait(2500);
+	console.log("but kept once earned, even in April:", (await paintShown(spring)).shown);
+	// Earning it, route 1: a lap of the Halloween challenge (night and fog on Spa).
+	const flags = p => p.evaluate(() => JSON.parse(localStorage.getItem("org-gp:solo") || "{}"));
+	const run = await at("2026-10-28T12:00:00");
+	await run.evaluate(() => { localStorage.removeItem("org-gp:solo"); });
+	await run.evaluate(() => document.querySelector("#weeklyGo").click()); await wait(5000);
+	const cond = await run.evaluate(() => { const g = window.__game; return { track: g.race.track.def.id, mode: g.race.mode, night: g.world.look.night, fog: g.world.look.fog, weekly: g.ctx.weekly }; });
+	console.log("the challenge runs on Spa at night in fog:", cond.track === "spa" && cond.mode === "trial" && cond.night > 0.9 && cond.fog > 0.5 && cond.weekly === "2026-W44", JSON.stringify(cond));
+	await autodrive(run);
+	for(let i = 0; i < 150; i++){ if((await flags(run)).halloween) break; await wait(1000); }
+	console.log("finishing the lap earns the limited paint:", !!(await flags(run)).halloween);
+	// Route 2: a bot race at night in fog in October.
+	const race = await at("2026-10-12T12:00:00");
+	await race.click("#btnBots"); await wait(500);
+	await race.evaluate(() => { const g = window.__game; g.setup.laps = 1; g.setup.bots = 2; g.setup.tod = "night"; g.setup.weather = "fog"; });
+	await click(race, "#setupGo"); await wait(2500);
+	await autodrive(race);
+	console.log("the race finishes:", await waitScreen(race, "results", 200));
+	await wait(1500);
+	console.log("finishing a bot race at night in fog earns it too:", !!(await flags(race)).halloween);
+	// And the same race in daylight doesn't.
+	const day = await at("2026-10-12T12:00:00");
+	await day.evaluate(() => { localStorage.removeItem("org-gp:solo"); });
+	await day.click("#btnBots"); await wait(500);
+	await day.evaluate(() => { const g = window.__game; g.setup.laps = 1; g.setup.bots = 2; g.setup.tod = "day"; g.setup.weather = "clear"; });
+	await click(day, "#setupGo"); await wait(2500);
+	await autodrive(day);
+	await waitScreen(day, "results", 200); await wait(1500);
+	console.log("a race in daylight does not:", !(await flags(day)).halloween);
 }
 
 console.log(errors.length ? "ERRORS:\n" + [...new Set(errors)].join("\n") : "no page errors");

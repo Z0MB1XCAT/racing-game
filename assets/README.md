@@ -42,6 +42,7 @@ The models that are used today, and where:
 | `floodlight-pole`, `floodlight-head` | the floodlights round every circuit (`js/world.js`). The pole is one unit tall and is stretched up to the head. |
 | `gantry` | the start/finish gantry over the line (`js/world.js`): its width and height are read from the model (`modelSize`), and the banner hangs at its height |
 | `marshal-post-red`, `marshal-post-green`, `cone`, `flag-red`, `flag-green`, `flag-checkers` | marshal posts with a flag and three cones at the outside of the tight corners, and flags along the pit roof (`js/trackside.js`); High quality only |
+| `pumpkin` | jack-o'-lanterns behind the barriers in October (`js/trackside.js`, `js/season.js`); built by `tools/build-models.mjs` (its face is a `glow` part that stays lit); High quality only |
 | `tent`, `tent-closed`, `tent-long` | paddock tents behind the pit garages (`js/trackside.js`); High quality only |
 
 `tools/build-models.mjs` builds the lamp and floodlight models from code, so there's a real file to load.

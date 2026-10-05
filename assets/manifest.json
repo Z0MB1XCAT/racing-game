@@ -12,7 +12,8 @@
 		"tent-long": { "file": "models/kenney/tentLong.glb", "scale": "game", "min": "high", "maxTris": 120, "maxKB": 12 },
 		"flag-red": { "file": "models/kenney/flagRed.glb", "scale": "game", "min": "high", "maxTris": 200, "maxKB": 20 },
 		"flag-green": { "file": "models/kenney/flagGreen.glb", "scale": "game", "min": "high", "maxTris": 200, "maxKB": 20 },
-		"flag-checkers": { "file": "models/kenney/flagCheckers.glb", "scale": "game", "min": "high", "maxTris": 200, "maxKB": 20 }
+		"flag-checkers": { "file": "models/kenney/flagCheckers.glb", "scale": "game", "min": "high", "maxTris": 200, "maxKB": 20 },
+		"pumpkin": { "file": "models/pumpkin.glb", "scale": "game", "min": "high", "maxTris": 120, "maxKB": 12 }
 	},
 	"textures": {}
 }

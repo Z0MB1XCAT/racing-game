@@ -839,6 +839,8 @@ export const _test = {
 		for(const x of b){ peak = Math.max(peak, Math.abs(x)); sum += x * x; }
 		return { peak, rms: Math.sqrt(sum / b.length) };
 	},
+	// The song the game last asked for (it plays once the sound is unlocked): "menu", "spooky", "race"... or null.
+	song(){ return wantSong; },
 	// Which horns are sounding or have sounded: [{ id, kind, holding, starts }].
 	horns(){ return [...hornVoices.entries()].map(([id, v]) => ({ id, kind: v.kind, holding: !!v.hold, starts: v.starts || 0 })); },
 	// Whether the recorded effects and the voices have loaded.

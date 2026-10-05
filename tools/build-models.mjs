@@ -119,6 +119,26 @@ const models = {};
 	models["floodlight-head"] = m;
 }
 
+// A jack-o'-lantern for Halloween (js/trackside.js puts them behind the barriers in October). One unit tall, its carved face towards +z
+// (the game turns it to face the road). "glow" is the face: it stays lit, a candle behind it.
+{
+	const m = new Model("pumpkin");
+	const skin = 0xff7a12, rib = 0xe5620b;
+	// Three rings stacked into a squat sphere, the middle one a touch darker, like a pumpkin's ribs.
+	m.prism("skin", skin, 0, 0, 0.0, 0.26, 0.28, 0.5, 8, false);
+	m.prism("rib", rib, 0, 0, 0.26, 0.62, 0.5, 0.5, 8, false);
+	m.prism("skin", skin, 0, 0, 0.62, 0.86, 0.5, 0.26, 8, true);
+	m.prism("stem", 0x4f5f22, 0, 0, 0.84, 1.0, 0.1, 0.07, 4, true);
+	// The face: two triangle eyes and a jagged grin, just in front of the front ridge.
+	const g = m.mat("glow", 0xffb02e), z = 0.512;
+	m.poly(g, [[-0.22, 0.5, z], [-0.08, 0.5, z], [-0.15, 0.64, z]]);
+	m.poly(g, [[0.08, 0.5, z], [0.22, 0.5, z], [0.15, 0.64, z]]);
+	m.poly(g, [[-0.04, 0.44, z + 0.002], [0.04, 0.44, z + 0.002], [0.0, 0.38, z + 0.002]]);
+	const teeth = [-0.26, -0.17, -0.08, 0.01, 0.1, 0.19];
+	teeth.forEach((x, k) => { const y0 = 0.22 + (k % 2 ? 0 : 0.05); m.poly(g, [[x, y0, z], [x + 0.09, y0, z], [x + 0.09, y0 + 0.1, z], [x, y0 + 0.1, z]]); });
+	models["pumpkin"] = m;
+}
+
 mkdirSync(OUT, { recursive: true });
 for(const [name, m] of Object.entries(models)){
 	const buf = m.glb();

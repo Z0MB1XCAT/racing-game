@@ -513,7 +513,7 @@ export function* buildScenerySteps(track, theme, ctx){
 
 	if(slice.over()) yield "scenery: corner fans";
 	// --- Life along the track from the models in assets/: marshal posts, flags, cones and paddock tents (none if they aren't loaded).
-	const trackside = buildTrackside({ track, sp, hw, G, group, rand, pitSide, garages: garageFrames, quality: ctx.quality, place });
+	const trackside = buildTrackside({ track, sp, hw, G, group, rand, pitSide, garages: garageFrames, quality: ctx.quality, season: ctx.season, place });
 
 	if(slice.over()) yield "scenery: trackside";
 	// --- Billboards along the straights, just behind the barriers.

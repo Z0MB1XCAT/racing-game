@@ -179,6 +179,31 @@ export function createMusic(ctx, dest, noise){
 					pluck(bus, t, chordNotes(root, q, 84)[n === 6 ? 1 : n === 12 ? 2 : 0], s * 5, 0.035, "sine", 5000);
 			}
 		},
+		// October's menu music: slow and low, a heartbeat under a minor chord with a flat second, and sparse bells.
+		spooky: {
+			bpm: 76, gain: 1.25, echo: 6,
+			// A minor with the flat second, the way a haunted house sounds: Am Bb Am E | Am Bb E Am
+			bars: [[9, "m"], [10, "M"], [9, "m"], [4, "M"], [9, "m"], [10, "M"], [4, "M"], [9, "m"]],
+			step(bus, i, t, s){
+				const bar = Math.floor(i / 16) % this.bars.length, n = i % 16, loop = Math.floor(i / (16 * this.bars.length));
+				const [root, q] = this.bars[bar];
+				if(n === 0){
+					pad(bus, t, chordNotes(root, q, 48), s * 16, 0.03, 520);
+					bass(bus, t, 24 + root, s * 15, 0.1, 0.15);
+					if(bar % 2 === 1) hiss(bus, t, 0.03, "bandpass", 520 + (bar % 4) * 140, 0.7, s * 30, true);     // wind
+				}
+				// A slow heartbeat, from the second bar.
+				if(i >= 16 && (n === 0 || n === 3)) kick(bus, t, n === 0 ? 0.3 : 0.18);
+				// Bells on the A harmonic minor scale, sparse; the tune comes back every other time round.
+				const r = rng(bar * 313 + (loop % 2) * 71 + n * 7 + 11)();
+				if([0, 3, 6, 8, 11, 14].includes(n) && r < (i < 32 ? 0.3 : 0.5)){
+					const HARM = [0, 2, 3, 5, 7, 8, 11], d = Math.floor(rng(bar * 29 + n * 5 + (loop % 2) * 17 + 5)() * HARM.length);
+					const m = 81 + HARM[d] - (d > 4 ? 12 : 0);
+					pluck(bus, t, m, s * 7, 0.04, "sine", 7000);
+					pluck(bus, t, m + 12, s * 5, 0.012, "sine", 9000);
+				}
+			}
+		},
 		race: raceSong({
 			bpm: 138, gain: 1.6, lift: 2, bass: "roll", arp: [0, 2, 1, 2, 0, 2, 1, 3, 0, 2, 1, 2, 0, 1, 2, 3],
 			// E minor: Em C G D | Em C Am B
@@ -235,6 +260,8 @@ export function createMusic(ctx, dest, noise){
 		intensity(v){ final = v >= 1; retarget(); },
 		state(st){ if(st){ progress = Math.max(0, Math.min(1, st.progress || 0)); battle = !!st.battle; retarget(); } },
 		duck(on){ duckGain.gain.setTargetAtTime(on ? 0.3 : 1, ctx.currentTime, 0.15); },
+		// Which song is on (for the checks).
+		name(){ return current; },
 		// Stop at once (the audio is being rebuilt).
 		dispose(){ if(song) clearInterval(song.timer); song = null; current = null; }
 	};

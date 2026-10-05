@@ -3,6 +3,15 @@
 // when a version has something players will notice (version = the VERSION in js/config.js that shipped it).
 export const CHANGELOG = [
 	{
+		version: "2026.10.05-6", date: "5 October 2026", title: "Halloween",
+		items: [
+			"The game goes spooky all October by itself: misty menus, bats, jack-o'-lanterns by every track and a creepy tune. It switches off on 1 November. Settings > Seasonal look turns it off sooner.",
+			"The Halloween challenge: the weekly challenge for 26 October to 1 November is Spa at night in fog.",
+			"A limited Halloween paint, Jack-o'-Lantern (it glows in the dark), and the title Trick or Treater. Finish a lap of the Halloween challenge, or a bot race at night in fog, in October. Yours to keep.",
+			"Time of day and weather in races are still whatever the host picks: only the menus and the scenery turn spooky."
+		]
+	},
+	{
 		version: "2026.10.05-5", date: "5 October 2026", title: "Horn, rematch and invite links",
 		items: [
 			"Horn: hold H to honk. Pick your horn in the garage (the bicycle bell, duck, air horn, cow and train horn unlock as you level up). Everyone in the race hears it from where your car is.",
