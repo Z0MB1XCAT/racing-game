@@ -190,11 +190,16 @@ original did).
   - **Underglow** adds red, purple, toxic, gold and flashing **Blues and Twos**; **tyre smoke**
     adds black, green, pink and orange; new titles include Monster, Night Rider, Rain Master,
     Ghostbuster, Globetrotter and Speed Demon, and four bot-race titles: **Wet Weather Wizard** (win in the rain), **Night Owl** (win at night), **Underdog** (win after starting at the back, against at least three bots) and **Clean Racer** (finish without touching another car, against at least two bots).
-  - **Earning items:** your **driver level** (1–30) comes from XP in online races, plus
+  - **Earning items:** your **driver level** (1–100) comes from XP in online races, plus
     achievements (wins, podiums, championships, lap records, weekly wins). Every results screen ends with a
     **Next unlock** panel: the cheapest garage item you don't have yet, what it needs ("Reach level 7 · 240 XP to go",
     "Win 10 online races · 7 of 10") and a progress bar. Level goals count in XP, so it says how much is left, not
-    "level 6 of 7". It updates when the race's XP lands. Signing in isn't offered (a race can't earn it). A few starter items
+    "level 6 of 7". It updates when the race's XP lands. Signing in isn't offered (a race can't earn it).
+  - **Levels go to 100.** Up to level 30 the XP needed is exactly what it always was (16,965 XP for level 30, so nothing already
+    earned moves); every level after that is a flat 500 XP more, to level 100 at 51,965 XP (about 173 online wins). Past 30 the level
+    badge turns gold, and there's something at 31 (the **Gold Border** name effect: your name in a gold frame), 50 (the **Platinum**
+    paint and the **Hall of Famer** title), 75 (the **Obsidian** paint and the **Immortal** title) and 100 (the **Centurion** title).
+    The level is worked out on your screen from your database-verified stats, so no rules change. A few starter items
     unlock from solo play, including new goals: finish a bot race at night, or in the rain, and
     beat someone else's ghost in time trial.
   - **The #1 number and a crown** go to whoever topped last week's weekly challenge, until the
@@ -628,6 +633,7 @@ The last two also need puppeteer installed.
 - `node tools/sky-shots.mjs [trackId] [tod-weather ...]` screenshots a track at different times and weather (e.g. `monza night-rain`).
 - `node tools/scenery-shots.mjs [trackId ...]` takes screenshots of each track (overview, racing with the mirror, looking back, highlights).
 - `node tools/engine-demo.mjs` renders a clip of each engine to WAV (with spectrograms) for tuning the sound. Engine settings are `ENGINES` in `js/audio.js`.
+- `node tools/levels-test.mjs` checks driver levels to 100, no browser: levels 1 to 30 need exactly the XP they always did, every level after is 500 XP more, the level from any XP is right at every boundary and stops at 100, and the rewards past 30 exist and aren't open early.
 - `node tools/looks-test.mjs` checks the garage's number plates, name effects, start-light themes and the new titles, no browser: every item has a free default and a real way to get it, every effect and theme has its CSS, made-up and prototype names give nothing, and the solo-goal rules (`soloGoals` in `js/cosmetics.js`) tick off exactly what they should: Night Owl, Wet Weather Wizard, Underdog, Clean Racer and the Halloween paint.
 - `node tools/codes-test.mjs` checks prize codes and look codes, no browser: a code is found however it's typed, wrong, short and expired ones aren't, the shipped list holds no plain codes, the `codes.mjs` tool adds, lists, checks and removes on a copy, a prize unlocks any item for good, and look codes round-trip for every paint and refuse anything else (made-up and prototype names included).
 - `node tools/season-test.mjs` checks the seasons and the Halloween challenge week, no browser: the look comes on at the start of 1 October and goes off at the start of 1 November in every year (a leap year too); `?season=` and the Settings switch change what's drawn but never what can be earned; the Halloween challenge is the week with 31 October in it, on a forest circuit at night in fog, one a year to 2060, never repeating a track next to it, and no ordinary week is touched.

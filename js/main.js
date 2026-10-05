@@ -2725,7 +2725,7 @@ async function afterSignIn(net, uidBefore){
 	await net.saveProfile(profileForSync()).catch(() => {});
 	acct.info = net.account();
 	$("btnAdmin").hidden = !net.isAdmin();
-	garage.refresh(true).then(() => { $("titleLevel").textContent = garage.level; });
+	garage.refresh(true).then(() => { paintTitleLevel(); });
 	renderAccount();
 	openAccount();
 	acctMsg("Account ready. Your stats now follow you to any computer.", true);
@@ -2849,8 +2849,13 @@ function garageNote(res, toast){
 	if(toast && S.race && !S.frozen) hud.toast(bits.join(" "), 3500);
 	else if(S.screen !== "results"){ (S.pendingNote = S.pendingNote || []).push(...bits); }
 	else{ const note = $("resultsNote"); note.textContent = [note.textContent, ...bits].filter(Boolean).join(" "); }
-	$("titleLevel").textContent = garage.level;
+	paintTitleLevel();
 	if(S.screen === "results") showNextUnlock();
+}
+// The level on the title screen's Garage button (gold past level 30).
+function paintTitleLevel(){
+	$("titleLevel").textContent = garage.level;
+	$("titleLevel").closest(".gb-level").classList.toggle("past", garage.level > 30);
 }
 // The results screen's "Next unlock": the cheapest garage item you don't have yet, and how far along you are.
 function showNextUnlock(){
@@ -2900,7 +2905,7 @@ async function redeemPrize(){
 	prizeTries.wrong = 0;
 	const res = garage.grant(found.entry.grants);
 	saveProfile();
-	$("titleLevel").textContent = garage.level;
+	paintTitleLevel();
 	if(S.screen === "garage") garage.render();
 	$("prizeInput").value = "";
 	if(res.unlocked.length){ audio.sfx.unlock(); prizeSay("Unlocked: " + res.unlocked.join(", ") + ". It's in your garage.", "ok"); }
@@ -2970,7 +2975,7 @@ loadAnnouncement();
 		store.save("seenVersion", VERSION);
 	}
 }
-refreshAccount().then(() => garage.refresh(true)).then(() => { $("titleLevel").textContent = garage.level; });
+refreshAccount().then(() => garage.refresh(true)).then(() => { paintTitleLevel(); });
 requestAnimationFrame(frame);
 window.__game = S;   // handy for debugging in the console
 S.gfx = gfx;

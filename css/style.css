@@ -348,6 +348,9 @@ a.race-btn{ color: inherit; text-decoration: none; }
 .gb-level > *{ transform: skewX(calc(var(--skew) * -1)); }
 .gb-level small{ font-family: var(--f-display); font-weight: 700; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; line-height: 1.2; }
 .gb-level b{ font-family: var(--f-display); font-weight: 900; font-style: italic; font-size: 26px; line-height: 1; }
+/* Past level 30 the badge turns gold. */
+.gb-level.past, .lv-num.past{ background: linear-gradient(135deg, #f5d76e, #c9a227 60%, #f5d76e); }
+.gb-level.past b, .lv-num.past b{ font-size: 24px; letter-spacing: -.02em; }
 .gb-text{ display: flex; flex-direction: column; line-height: 1.25; }
 .gb-text b{ font-family: var(--f-display); font-weight: 800; font-style: italic; text-transform: uppercase; font-size: 20px; }
 .gb-text small{ font-size: 12px; color: var(--mute); }
@@ -449,6 +452,8 @@ a.race-btn{ color: inherit; text-decoration: none; }
 .nfx-neon{ background-image: linear-gradient(90deg, #35e0ff, #ff3bd8); }
 .nfx-gold{ background-image: linear-gradient(90deg, #f5d76e, #fff3b8 50%, #d4a017); }
 .nfx-rainbow{ background-image: linear-gradient(90deg, #ff5a5a, #ffd23a, #5aff8a, #3ac8ff, #b86bff); }
+/* Gold Border (reached by going past level 30): the name in a gold frame. */
+.nfx-border{ color: #fff1b8; padding: 0 5px; border: 1px solid #f5c542; border-radius: 3px; box-shadow: 0 0 7px rgba(245,197,66,.45), inset 0 0 6px rgba(245,197,66,.18); }
 .gswatch .nfx-ice, .gswatch .nfx-flame, .gswatch .nfx-neon, .gswatch .nfx-gold, .gswatch .nfx-rainbow{ font-size: 20px; }
 /* The admin's announcement on the title screen. */
 .announce{ display: flex; align-items: center; gap: var(--s3); margin-top: var(--s4); padding: 10px 14px; max-width: 780px; background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--wall); box-shadow: var(--elev-1); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }

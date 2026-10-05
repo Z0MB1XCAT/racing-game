@@ -112,6 +112,7 @@ export function initGarage(ctx){
 	function render(){
 		const P = G.P;
 		$("garageLevel").textContent = P.level;
+		$("garageLevel").closest(".lv-num").classList.toggle("past", P.level > 30);
 		const span = P.nextXp ? P.nextXp - P.levelXp : 1;
 		$("garageXpBar").style.transform = `scaleX(${P.nextXp ? Math.min(1, (P.xp - P.levelXp) / span) : 1})`;
 		$("garageXp").textContent = P.nextXp ? `${P.xp.toLocaleString()} / ${P.nextXp.toLocaleString()} XP` : `${P.xp.toLocaleString()} XP · max level`;

@@ -3,6 +3,13 @@
 // when a version has something players will notice (version = the VERSION in js/config.js that shipped it).
 export const CHANGELOG = [
 	{
+		version: "2026.10.05-9", date: "5 October 2026", title: "Levels to 100",
+		items: [
+			"Driver levels now go all the way to 100 (they stopped at 30). Past 30 your level badge turns gold.",
+			"New rewards: a Gold Border for your name at level 31, the Platinum paint and Hall of Famer title at 50, the Obsidian paint and Immortal title at 75, and the Centurion title at 100."
+		]
+	},
+	{
 		version: "2026.10.05-8", date: "5 October 2026", title: "More ways to look good",
 		items: [
 			"Number plates: pick the plate behind your race number in the garage (Blackout, rally Plate, Chequered, Neon, Gold).",

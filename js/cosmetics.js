@@ -9,17 +9,21 @@
 import { season } from "./season.js";
 
 // ----- Levels -----
-export const MAX_LEVEL = 30;
+// The curve below runs to level 30 (where it stays exactly as it always was); every level after that, up to 100, is a flat
+// LEVEL_STEP more XP. Level 100 is about 52,000 XP: a few hundred online wins.
+export const MAX_LEVEL = 100;
+export const CURVE_END = 30;
+export const LEVEL_STEP = 500;
 export const XP = { race: 60, podium: 90, win: 150, title: 400 };
 
 export function xpFromStats(s){
 	s = s || {};
 	return (s.races || 0) * XP.race + (s.podiums || 0) * XP.podium + (s.wins || 0) * XP.win + (s.titles || 0) * XP.title;
 }
-// XP needed to reach a level: gentle at first, about 150 online races to max out.
+// XP needed to reach a level: gentle at first (about 150 online races to level 30), then a steady 500 a level.
 export function xpForLevel(level){
-	const n = level - 1;
-	return 150 * n + 15 * n * n;
+	const n = Math.min(level, CURVE_END) - 1;
+	return 150 * n + 15 * n * n + Math.max(0, level - CURVE_END) * LEVEL_STEP;
 }
 export function levelFromXp(xp){
 	let l = 1;
@@ -85,6 +89,8 @@ export const LIVERIES = [
 	{ id: "chrome",  name: "Chrome", pattern: "chrome", unlock: [{ titles: 1 }] },
 	{ id: "gold",    name: "Gold Rush", pattern: "gold", unlock: [{ wins: 25 }] },
 	// A limited paint: it's on offer in October only (season: "halloween", see js/season.js), and yours to keep once earned.
+	{ id: "platinum", name: "Platinum", pattern: "gloss", main: "#cfd6dd", second: "#8a929b", accent: "#ffffff", unlock: [{ level: 50 }] },
+	{ id: "obsidian", name: "Obsidian", pattern: "team", main: "#0d0e12", second: "#d4af37", accent: "#d4af37", unlock: [{ level: 75 }] },
 	{ id: "jack",    name: "Jack-o'-Lantern", pattern: "pumpkin", glow: true, main: "#ff7a12", second: "#1b1020", accent: "#ffd23a", season: "halloween", unlock: [{ solo: "halloween" }] }
 ];
 
@@ -140,7 +146,10 @@ export const TITLES = [
 	{ id: "wizard",   name: "Wet Weather Wizard", unlock: [{ solo: "winRain" }] },
 	{ id: "owl",      name: "Night Owl", unlock: [{ solo: "winNight" }] },
 	{ id: "underdog", name: "Underdog", unlock: [{ solo: "underdog" }] },
-	{ id: "clean",    name: "Clean Racer", unlock: [{ solo: "cleanRace" }] }
+	{ id: "clean",    name: "Clean Racer", unlock: [{ solo: "cleanRace" }] },
+	{ id: "hof",      name: "Hall of Famer", unlock: [{ level: 50 }] },
+	{ id: "immortal", name: "Immortal", unlock: [{ level: 75 }] },
+	{ id: "centurion", name: "Centurion", unlock: [{ level: 100 }] }
 ];
 
 // Headlight colour: the lamps on the car and the beam on the road at night.
@@ -184,6 +193,7 @@ export const NAMEFX = [
 	{ id: "flame",   name: "Flame", cls: "nfx-flame", unlock: [{ wins: 10 }] },
 	{ id: "neon",    name: "Neon", cls: "nfx-neon", unlock: [{ level: 18 }] },
 	{ id: "gold",    name: "Gold", cls: "nfx-gold", unlock: [{ titles: 1 }, { wins: 25 }] },
+	{ id: "border",  name: "Gold Border", cls: "nfx-border", unlock: [{ level: 31 }] },
 	{ id: "rainbow", name: "Rainbow", cls: "nfx-rainbow", unlock: [{ weeklyWins: 1 }] }
 ];
 
