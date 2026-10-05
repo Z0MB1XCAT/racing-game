@@ -167,7 +167,10 @@ original did).
     adds black, green, pink and orange; new titles include Monster, Night Rider, Rain Master,
     Ghostbuster, Globetrotter and Speed Demon.
   - **Earning items:** your **driver level** (1–30) comes from XP in online races, plus
-    achievements (wins, podiums, championships, lap records, weekly wins). A few starter items
+    achievements (wins, podiums, championships, lap records, weekly wins). Every results screen ends with a
+    **Next unlock** panel: the cheapest garage item you don't have yet, what it needs ("Reach level 7 · 240 XP to go",
+    "Win 10 online races · 7 of 10") and a progress bar. Level goals count in XP, so it says how much is left, not
+    "level 6 of 7". It updates when the race's XP lands. Signing in isn't offered (a race can't earn it). A few starter items
     unlock from solo play, including new goals: finish a bot race at night, or in the rain, and
     beat someone else's ghost in time trial.
   - **The #1 number and a crown** go to whoever topped last week's weekly challenge, until the
@@ -580,6 +583,7 @@ The last two also need puppeteer installed.
 - `node tools/sky-shots.mjs [trackId] [tod-weather ...]` screenshots a track at different times and weather (e.g. `monza night-rain`).
 - `node tools/scenery-shots.mjs [trackId ...]` takes screenshots of each track (overview, racing with the mirror, looking back, highlights).
 - `node tools/engine-demo.mjs` renders a clip of each engine to WAV (with spectrograms) for tuning the sound. Engine settings are `ENGINES` in `js/audio.js`.
+- `node tools/unlock-test.mjs` checks the results screen's "Next unlock" logic: it always names a locked item with something left to do, level goals count in XP, and nothing shows once everything is open. No browser.
 - `node tools/horn-test.mjs` checks the horn in a real browser: every horn sound is audible and about as loud as the others, a press (even a 15 ms tap) in one tab is heard in the other over `?localnet`, and with the room's Horn switched Off nothing happens.
 - `node tools/sound-test.mjs [track] [--voices]` plays a short race in a real browser and listens to the mix: the recorded effects load, nothing clips or goes silent, and the voices stay out of sight (no settings, subtitles or voice files); with `--voices` it turns them on and checks the engineer and commentators speak, with subtitles.
 - `node tools/voice-test.mjs [--browser]` plays a made-up race through the engineer and commentators and prints what they would say; with `--browser` it also decodes every clip in the voice packs.

@@ -701,7 +701,10 @@ if(flow === "rematch"){
 	let v = await Promise.all(all.map(view));
 	console.log("box on every screen, one light lit (the host):", v.every(x => x.shown && x.dots === 4 && x.lit === 1), "|", v[1].text);
 	console.log("guests have a Rematch button, the host has Race again:", v.slice(1).every(x => x.buttons[0] === "Rematch") && v[0].buttons.includes("Race again") && !v[0].buttons.includes("Rematch"));
-	await guests[0].evaluate(() => document.getElementById("rematchBox").scrollIntoView({ block: "end" }));
+	// ("Next unlock": the cheapest garage item still locked, with how far along you are.)
+	const nu = await guests[0].evaluate(() => ({ shown: !document.getElementById("nextUnlock").hidden, name: document.getElementById("nuName").textContent, need: document.getElementById("nuNeed").textContent, bar: document.getElementById("nuBar").style.transform }));
+	console.log("results show a next unlock:", nu.shown && !!nu.name && !!nu.need, "|", nu.name, "|", nu.need, "|", nu.bar);
+	await guests[0].evaluate(() => document.getElementById("nextUnlock").scrollIntoView({ block: "end" }));
 	await shot(guests[0], "rematch-before");
 	await tap(guests[0]); await wait(900);
 	await guests[1].evaluate(() => document.getElementById("rematchBox").scrollIntoView({ block: "end" }));

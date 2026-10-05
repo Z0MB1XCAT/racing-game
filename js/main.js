@@ -1277,6 +1277,7 @@ function showResults(results, online, opts = {}){
 		addBtn("Full replay", "ghost", () => startReplay("replay", () => showResults(results, online, again)));
 	}
 	showScreen("results");
+	showNextUnlock();
 	if(online && S.room) updateRematchUi(S.room);
 	camMode = "winner";
 	// Solo results tick off solo goals in the garage (once per race).
@@ -2818,6 +2819,16 @@ function garageNote(res, toast){
 	else if(S.screen !== "results"){ (S.pendingNote = S.pendingNote || []).push(...bits); }
 	else{ const note = $("resultsNote"); note.textContent = [note.textContent, ...bits].filter(Boolean).join(" "); }
 	$("titleLevel").textContent = garage.level;
+	if(S.screen === "results") showNextUnlock();
+}
+// The results screen's "Next unlock": the cheapest garage item you don't have yet, and how far along you are.
+function showNextUnlock(){
+	const n = garage.nextUnlock();
+	$("nextUnlock").hidden = !n;
+	if(!n) return;
+	$("nuName").textContent = `${n.name} ${n.noun}`;
+	$("nuNeed").textContent = n.unit ? `${n.text} · ${n.left.toLocaleString()} ${n.unit} to go` : n.need > 1 ? `${n.text} · ${n.have} of ${n.need}` : n.text;
+	$("nuBar").style.transform = `scaleX(${n.frac})`;
 }
 $("btnGarage").addEventListener("click", () => { audio.sfx.click(); garage.open(); });
 const admin = initAdmin({

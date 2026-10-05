@@ -1,6 +1,6 @@
 // The garage: pick paint, number, underglow, tyre smoke, title and horn; see what's locked
 // and how close you are. Also works out the weekly crown holder.
-import { CATEGORIES, DEFAULT_LOOK, progress, isUnlocked, requirement, unlockedIds, cleanLook, item, MAX_LEVEL } from "./cosmetics.js";
+import { CATEGORIES, DEFAULT_LOOK, progress, isUnlocked, requirement, unlockedIds, cleanLook, item, nextUnlock, CAT_NOUN, MAX_LEVEL } from "./cosmetics.js";
 import { TRACKS, LAYOUTS } from "./tracks.js";
 import { weeklyChallenge } from "./weekly.js";
 import * as store from "./storage.js";
@@ -189,7 +189,7 @@ export function initGarage(ctx){
 		for(const key of b) if(!a.has(key)){
 			const [cat, id] = key.split(":");
 			const it = item(cat, id);
-			const label = { livery: "paint", glow: "underglow", smoke: "tyre smoke", lights: "headlights", title: "title", horn: "horn" }[cat];
+			const label = CAT_NOUN[cat];
 			if(it) out.push(`${it.name} ${label}`);
 		}
 		return out;
@@ -214,6 +214,7 @@ export function initGarage(ctx){
 
 	return {
 		open, refresh, render, afterOnline, afterSolo, soloFlags,
+		nextUnlock: () => nextUnlock(G.P),
 		get level(){ return G.P.level; },
 		get crown(){ return G.crown; },
 		get maxLevel(){ return MAX_LEVEL; }

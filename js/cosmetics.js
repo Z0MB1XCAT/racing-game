@@ -230,6 +230,33 @@ export function requirement(it, P){
 	return best || { text: "", have: 1, need: 1, frac: 1 };
 }
 
+// What each kind of item is called in a sentence ("Flames paint").
+export const CAT_NOUN = { livery: "paint", glow: "underglow", smoke: "tyre smoke", lights: "headlights", title: "title", horn: "horn" };
+
+// Roughly how much play each requirement still needs, in XP (a race is worth 60, a win 150): used to pick what's closest.
+const COST_PER = { races: 60, podiums: 90, wins: 150, titles: 400, records: 400, weeklyWins: 700 };
+// The locked item that's cheapest to get, with how far along you are: { cat, id, name, noun, text, have, need, unit, frac, left }.
+// (Levels count in XP, so "level 12" shows how much XP is left, not "level 10 of 12". Signing in isn't something a race gets you, so it's skipped.)
+export function nextUnlock(P){
+	let best = null;
+	for(const c of CATEGORIES) if(c.items) for(const it of c.items){
+		if(isUnlocked(it, P)) continue;
+		for(const cond of it.unlock){
+			if(cond.free || cond.account) continue;
+			let text = "", have = 0, need = 1, unit = "", cost = 0;
+			if(cond.level){ text = `Reach level ${cond.level}`; have = P.xp; need = xpForLevel(cond.level); unit = "XP"; cost = need - have; }
+			else if(cond.solo){ text = SOLO_GOALS[cond.solo] || ""; cost = 200; }
+			else for(const k in PLURAL) if(cond[k]){
+				const [verb, one, many] = PLURAL[k];
+				text = `${verb} ${cond[k]} ${cond[k] === 1 ? one : many}`; have = P[k]; need = cond[k]; cost = (need - have) * COST_PER[k];
+			}
+			if(!text || have >= need) continue;
+			if(!best || cost < best.cost) best = { cat: c.id, id: it.id, name: it.name, noun: CAT_NOUN[c.id], text, have: Math.min(have, need), need, unit, frac: Math.min(1, have / need), left: need - have, cost };
+		}
+	}
+	return best;
+}
+
 export function unlockedIds(P){
 	const out = new Set();
 	for(const c of CATEGORIES) if(c.items) for(const it of c.items) if(isUnlocked(it, P)) out.add(c.id + ":" + it.id);
