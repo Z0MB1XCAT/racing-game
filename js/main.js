@@ -1092,6 +1092,8 @@ function onRaceEvent(type, d){
 			if(S.world && (d.position === 1 || d.car.me)) S.world.cheer(0.9);
 			// What the sky was doing as you crossed the line (for the night and rain garage goals).
 			if(d.car.me && S.world && S.world.look) S.finishSky = { at: r.startAt, night: S.world.look.night > 0.5, rain: S.world.look.rain > 0.3 };
+			// The winner sounds their horn as they cross the line.
+			if(r.mode === "race" && r.finishers && r.finishers[0] === d.car.id && hornAllowed()){ const hp = hornPlace(d.car, !tv.live); audio.hornFanfare(hornKind(d.car), Math.max(0.35, hp.gain), hp.pan); }
 			if(d.car.me){
 				const pos = d.position || (r.standings().findIndex(s => s.car === d.car) + 1);
 				hud.banner(pos === 1 ? "Winner" : "Finished P" + pos, fmtTime(d.ms), "finish", 4000);
@@ -1339,14 +1341,16 @@ addEventListener("keydown", e => {
 	if(k === "ArrowLeft" || k === "KeyA") S.input.left = true;
 	if(k === "ArrowRight" || k === "KeyD") S.input.right = true;
 	if(k === "KeyB") S.input.back = true;
+	if(k === "KeyH") S.input.horn = true;
 	if(k.startsWith("Arrow") && S.race) e.preventDefault();
 	if(e.repeat) return;
+	if(k === "KeyH" && S.race && !S.frozen && !hornAllowed()) hud.toast("The horn is off in this race", 1400);
 	if((k === "Escape" || k === "KeyP") && S.race && !S.frozen){ $("pause").hidden ? pause() : resume(); }
 	else if(k === "Escape"){ document.querySelectorAll(".modal").forEach(m => { if(m.id !== "pause") m.hidden = true; }); }
 	// Chat in an online race: Enter (or T) opens the box; steering lets go while you type.
 	if((k === "Enter" || k === "NumpadEnter" || k === "KeyT") && chatMode() === "race" && $("pause").hidden && chat.openInput()){
 		e.preventDefault();
-		S.input.left = S.input.right = S.input.back = false;
+		S.input.left = S.input.right = S.input.back = S.input.horn = false;
 		return;
 	}
 	if(k === "KeyR" && S.race && !S.paused) S.race.requestRescue();
@@ -1363,8 +1367,9 @@ addEventListener("keyup", e => {
 	if(k === "ArrowLeft" || k === "KeyA") S.input.left = false;
 	if(k === "ArrowRight" || k === "KeyD") S.input.right = false;
 	if(k === "KeyB") S.input.back = false;
+	if(k === "KeyH") S.input.horn = false;
 });
-addEventListener("blur", () => { S.input.left = S.input.right = S.input.back = false; });
+addEventListener("blur", () => { S.input.left = S.input.right = S.input.back = S.input.horn = false; });
 addEventListener("pointerdown", () => { audio.unlock(); setTimeout(() => { $("tvSound").hidden = audio.soundState() === "running"; }, 150); }, { once: false, passive: true });
 // Pointing at a button or a card makes a very soft tick (a mouse only, and only in the menus).
 let lastHover = 0, lastHoverEl = null;
@@ -1755,8 +1760,18 @@ function surfaceOf(r, car){
 }
 const earRight = new THREE.Vector3(), earPrev = new Map();
 S.engineCars = [];
+// Horns. Every car can have one; "Horn: Off" in a room's settings (the serious-race switch) turns them all off.
+const hornAllowed = () => !S.ctx || S.ctx.horn !== false;
+const hornOn = () => !!S.input.horn && hornAllowed() && !S.paused && !S.frozen && $("pause").hidden && !spectating();
+const hornKind = c => { const it = lookItem("horn", c.look && c.look.horn); return it ? it.id : "classic"; };
+// How loud, and which side, a car's horn is heard from the camera (it carries further than an engine).
+function hornPlace(c, onboard){
+	const dx = c.pos.x - camera.position.x, dz = c.pos.z - camera.position.z, dist = Math.hypot(dx, dz);
+	const main = onboard && c === focusCar();
+	return { gain: main ? 1 : Math.max(0, 1 - dist / 140) ** 1.5 * (onboard ? 0.8 : 1), pan: main ? 0 : (dx * earRight.x + dz * earRight.z) / Math.max(8, dist) };
+}
 function engineMix(r, focus, dt){
-	const list = [];
+	const list = [], horns = [], hornsOk = hornAllowed();
 	earRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
 	const onboard = !tv.live;
 	const grid = r.phase !== "racing";
@@ -1764,8 +1779,13 @@ function engineMix(r, focus, dt){
 		if(c.gone || c.elim !== null) continue;
 		const dx = c.pos.x - camera.position.x, dz = c.pos.z - camera.position.z;
 		const dist = Math.hypot(dx, dz);
-		if(dist > 90 && c !== focus) continue;
 		const main = onboard && c === focus;
+		// (Every nearby driver is listed, even before their first press, so that first press is heard as one.)
+		if(hornsOk && !c.isBot){
+			const hp = hornPlace(c, onboard);
+			if(hp.gain > 0.01) horns.push({ id: c.id, kind: hornKind(c), n: c.hornN, held: c.hornHeld, gain: hp.gain, pan: hp.pan });
+		}
+		if(dist > 90 && c !== focus) continue;
 		const rate = earPrev.has(c.id) && dt > 0 ? (dist - earPrev.get(c.id)) / dt : 0;
 		earPrev.set(c.id, dist);
 		const fall = main ? 1 : Math.max(0, 1 - dist / 90) ** 2 * (onboard ? 0.55 : 0.9);
@@ -1779,6 +1799,7 @@ function engineMix(r, focus, dt){
 	}
 	list.sort((a, b) => a.d - b.d);
 	S.engineCars = list;
+	S.hornCars = horns.sort((a, b) => b.gain - a.gain).slice(0, 8);
 }
 
 const rp_t = () => S.replay ? S.replay.t : 0;
@@ -1841,7 +1862,10 @@ function frame(now){
 			const d = focus.data;
 			const speed = Math.hypot(d.xv, d.yv);
 			const slip = speed > 0.05 ? Math.abs(Math.sin(Math.atan2(d.xv, d.yv) - d.dir)) : 0;
+			// Your horn goes out with your car's updates; every car's horn is heard from where it is.
+			r.horn(hornOn());
 			engineMix(r, focus, dt);
+			audio.updateHorns(S.hornCars);
 			audio.updateEngines(S.engineCars, { speed: r.phase === "racing" ? speed : 0, slip, draft: r.draft ? focus.draft || 0 : 0, surface: r.phase === "racing" ? surfaceOf(r, focus) : 0 }, dt);
 			hud.setDraft(r.draft && r.phase === "racing" ? focus.draft || 0 : 0);
 		}
@@ -1915,7 +1939,7 @@ $("codeInput").addEventListener("input", e => { e.target.value = e.target.value.
 $("codeInput").addEventListener("keydown", e => { if(e.key === "Enter") $("joinBtn").click(); });
 
 function lobbyDefaults(){
-	return { track: S.setup.trackId === "classic" ? "classic" : S.setup.trackId, reverse: false, laps: (defFor(S.setup.trackId).laps || 3), mode: "race", custom: null, draft: true, contact: "soft", tod: "default", weather: "clear" };
+	return { track: S.setup.trackId === "classic" ? "classic" : S.setup.trackId, reverse: false, laps: (defFor(S.setup.trackId).laps || 3), mode: "race", custom: null, draft: true, contact: "soft", tod: "default", weather: "clear", horn: true };
 }
 async function withBusy(btn, fn){
 	btn.disabled = true;
@@ -2089,6 +2113,7 @@ function onRoom(room){
 const lobbySettingsControls = {
 	draft: seg($("lobbyDraft"), "1", v => S.net.updateSettings({ draft: v === "1" })),
 	contact: seg($("lobbyContact"), "soft", v => S.net.updateSettings({ contact: v })),
+	horn: seg($("lobbyHorn"), "1", v => S.net.updateSettings({ horn: v === "1" })),
 	tod: seg($("lobbyTod"), "default", v => S.net.updateSettings({ tod: v })),
 	weather: seg($("lobbyWeather"), "clear", v => S.net.updateSettings({ weather: v })),
 	quali: seg($("lobbyQuali"), "0", v => S.net.updateSettings({ quali: v === "1" })),
@@ -2178,6 +2203,7 @@ function renderLobby(room){
 	lobbySettingsControls.dir(st.reverse ? "1" : "0");
 	lobbySettingsControls.draft(st.draft === false ? "0" : "1");
 	lobbySettingsControls.contact(st.contact === "classic" ? "classic" : "soft");
+	lobbySettingsControls.horn(st.horn === false ? "0" : "1");
 	lobbySettingsControls.tod(st.tod || "default");
 	lobbySettingsControls.weather(st.weather || "clear");
 	showClimate("lobbyClimate", st.track, st.weather);
@@ -2187,6 +2213,8 @@ function renderLobby(room){
 	}
 	$("lobbyContact").dataset.locked = host ? "" : "1";
 	$("lobbyContact").querySelectorAll("button").forEach(b => { b.disabled = !host; });
+	$("lobbyHorn").dataset.locked = host ? "" : "1";
+	$("lobbyHorn").querySelectorAll("button").forEach(b => { b.disabled = !host; });
 	lobbySettingsControls.quali(st.quali ? "1" : "0");
 	$("lobbyQuali").dataset.locked = host ? "" : "1";
 	$("lobbyQuali").querySelectorAll("button").forEach(b => { b.disabled = !host; });
@@ -2240,7 +2268,7 @@ function hostStart(){
 		startChampRoundOnline(newChamp(rounds.map(id => ({ track: id })), st.reverse, st.laps || 3));
 		return;
 	}
-	const next = { track: st.track, reverse: !!st.reverse, laps: st.laps || 3, mode: st.mode || "race", custom: st.custom || null, draft: st.draft !== false, contact: st.contact === "classic" ? "classic" : "soft", tod: st.tod || "default", weather: st.weather || "clear" };
+	const next = { track: st.track, reverse: !!st.reverse, laps: st.laps || 3, mode: st.mode || "race", custom: st.custom || null, draft: st.draft !== false, contact: st.contact === "classic" ? "classic" : "soft", tod: st.tod || "default", weather: st.weather || "clear", horn: st.horn !== false };
 	net.startRace(Object.assign({}, next, {
 		id: ((room.race && room.race.id) || S.raceId || 0) + 1,
 		startAt: net.now() + 1800 + COUNTDOWN, grid
@@ -2251,7 +2279,7 @@ function startChampRoundOnline(champ, qualiGrid){
 	const room = S.room, net = S.net, st = room.settings || lobbyDefaults();
 	const ids = Object.entries(room.players || {}).filter(([, p]) => !p.watch).sort((a, b) => (a[1].joined || 0) - (b[1].joined || 0)).map(([id]) => id).slice(0, MAX_CARS);
 	const r = champ.rounds[champ.idx];
-	const next = { track: r.track, reverse: !!champ.reverse && !trackById(r.track).code, laps: champ.laps, mode: "race", custom: null, draft: st.draft !== false, contact: st.contact === "classic" ? "classic" : "soft", tod: st.tod || "default", weather: st.weather || "clear", champ: true };
+	const next = { track: r.track, reverse: !!champ.reverse && !trackById(r.track).code, laps: champ.laps, mode: "race", custom: null, draft: st.draft !== false, contact: st.contact === "classic" ? "classic" : "soft", tod: st.tod || "default", weather: st.weather || "clear", horn: st.horn !== false, champ: true };
 	const base = { id: ((room.race && room.race.id) || S.raceId || 0) + 1, startAt: net.now() + 1800 + COUNTDOWN, grid: champ.idx === 0 ? ids : champGrid(champ, ids) };
 	if(st.quali) net.startRace(Object.assign({}, next, base, { mode: "quali", laps: QUALI_LAPS, draft: false, champ: false, next }), champ);
 	else net.startRace(Object.assign({}, next, base), champ);
@@ -2284,7 +2312,7 @@ function beginOnlineRace(room){
 	const def = defFor(r.track, r.custom);
 	beginRace({
 		source: "online", def, reverse: r.reverse, mode: r.mode, laps: r.mode === "elim" ? 99 : r.laps,
-		entrants, myId: net.uid, startAt: r.startAt, authority: room.host === net.uid, draft: r.draft !== false, contact: r.contact, tod: r.tod, weather: r.weather, champ: !!r.champ, watch: !!S.watchRoom
+		entrants, myId: net.uid, startAt: r.startAt, authority: room.host === net.uid, draft: r.draft !== false, contact: r.contact, tod: r.tod, weather: r.weather, horn: r.horn !== false, champ: !!r.champ, watch: !!S.watchRoom
 	});
 	S.ctx.laps = r.laps;
 }

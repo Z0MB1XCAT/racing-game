@@ -54,6 +54,7 @@ on purpose; `npm run setup` recreates them. If the server is already running, do
 | `remnant-check.mjs [id]` | the closed-off roads of a venue's other layouts never show through the track |
 | `e2e.mjs <flow> [trackId]` | drives the game in headless Chrome (flows: solo, online, tv, midjoin, p2p, quali, champ, migrate, ghost, ...) |
 | `audio-test.mjs` | sound survives bad values and rebuilds itself if it breaks |
+| `horn-test.mjs` | every horn sound is audible and balanced; a press (even a 15 ms tap) in one tab is heard in the other; Horn Off in a room silences it |
 | `cover-test.mjs` | no rain under the Monaco tunnel / Suzuka bridge, and the sound knows it's covered |
 | `weather-test.mjs` | dynamic weather over thousands of made-up races: calm (rain in about 1 race in 4, never twice), slow changes, cloud before rain, forecast, same sky everywhere; no browser |
 | `sky-shots.mjs [id] [tod-weather ...]` | screenshots a track in each time and weather (`day-storm+bolt` holds a lightning strike); into `temporary screenshots/sky/` |

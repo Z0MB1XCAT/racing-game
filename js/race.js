@@ -77,7 +77,8 @@ export class Race {
 				data, pos: new THREE.Vector3(data.x, phys.CAR_Y, data.y),
 				model: makeCar(e.body || "classic", e.hue, { look: e.look, ghost: opts.mode === "quali" && e.id !== opts.myId }),
 				finish: null, elim: null, best: null, lapStart: null, lapTimes: [],
-				vis: { x: 0, z: 0, r: 0 }, bestProg: 0, bestProgT: 0
+				vis: { x: 0, z: 0, r: 0 }, bestProg: 0, bestProgT: 0,
+				hornN: 0, hornHeld: false   // the horn: a press counter (1-999) and whether the key is down
 			};
 			[car.hw, car.hl] = phys.CAR_SIZE[car.body] || phys.CAR_SIZE.classic;   // outline for soft contact
 			car.model.rotation.order = "YXZ";                                          // heading, then pitch and roll on hills
@@ -516,8 +517,20 @@ export class Race {
 		const d = c.data, r = v => Math.round(v * 1000) / 1000;
 		// Stamped with race time (a clock every client shares), so updates stay in order
 		// even when a new host takes over sending the bots.
-		return { q: Math.round(this.raceTime * 10) / 10, x: r(d.x), y: r(d.y), u: Math.round(d.xv * 1e5) / 1e5, v: Math.round(d.yv * 1e5) / 1e5, d: Math.round(d.dir * 1e4) / 1e4,
+		const s = { q: Math.round(this.raceTime * 10) / 10, x: r(d.x), y: r(d.y), u: Math.round(d.xv * 1e5) / 1e5, v: Math.round(d.yv * 1e5) / 1e5, d: Math.round(d.dir * 1e4) / 1e4,
 			s: Math.round(d.steer * 1e4) / 1e4, l: d.lap, c: d.checkpoint, f: c.finish, b: c.best };
+		// The horn rides along: how many times it has been pressed (so a tap shorter than an update is still heard), and whether it's down now.
+		if(c.hornN){ s.hn = c.hornN; s.hh = c.hornHeld ? 1 : 0; }
+		return s;
+	}
+
+	// Your horn: call every frame with whether the key is down.
+	horn(held){
+		const c = this.me;
+		if(!c) return;
+		held = !!held;
+		if(held && !c.hornHeld) c.hornN = (c.hornN % 999) + 1;
+		c.hornHeld = held;
 	}
 
 	applyRemote(id, s){
@@ -561,6 +574,7 @@ export class Race {
 			this.onEvent("finish", { car: c, ms: s.f });
 		}
 		if(s.b != null) c.best = s.b;
+		if(s.hn != null && Number.isFinite(s.hn)){ c.hornN = s.hn | 0; c.hornHeld = !!s.hh; }
 	}
 
 	applyElims(map){

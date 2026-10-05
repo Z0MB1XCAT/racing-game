@@ -381,6 +381,13 @@
 							<button data-v="classic" aria-checked="false">Original</button>
 						</div>
 					</div>
+					<div class="opt-row">
+						<span class="opt-label">Horn</span>
+						<div class="seg" id="lobbyHorn" role="radiogroup" aria-label="Horn" title="Switch the horn off for a serious race">
+							<button data-v="1" aria-checked="true">On</button>
+							<button data-v="0" aria-checked="false">Off</button>
+						</div>
+					</div>
 					<div class="opt-row stacked">
 						<span class="opt-label">Time of day</span>
 						<div class="seg seg-fill" id="lobbyTod" role="radiogroup" aria-label="Time of day">
@@ -440,6 +447,7 @@
 						<button data-v="lights" aria-checked="false">Headlights</button>
 						<button data-v="smoke" aria-checked="false">Tyre smoke</button>
 						<button data-v="title" aria-checked="false">Title</button>
+						<button data-v="horn" aria-checked="false">Horn</button>
 					</div>
 					<div class="gitems" id="garageItems"></div>
 					<div class="panel number-panel" id="garageNumberPanel" hidden>
@@ -654,7 +662,7 @@
 				<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
 			</button>
 		</div>
-		<div class="hud-keys"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> or <kbd>A</kbd> <kbd>D</kbd> steer &middot; <kbd>R</kbd> reset car &middot; <kbd>B</kbd> look back &middot; <kbd>C</kbd> camera &middot; <kbd>Esc</kbd> pause</div>
+		<div class="hud-keys"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> or <kbd>A</kbd> <kbd>D</kbd> steer &middot; <kbd>R</kbd> reset car &middot; <kbd>B</kbd> look back &middot; <kbd>H</kbd> horn &middot; <kbd>C</kbd> camera &middot; <kbd>Esc</kbd> pause</div>
 	</div>
 	<!-- TV coverage: live spectating, highlights and replays -->
 	<div id="tv" hidden>
@@ -849,7 +857,7 @@
 			<h3>Keys</h3>
 			<ul>
 				<li>Hold <kbd>B</kbd> to look behind you. The mirror at the top shows who's close (switch it off in Settings).</li>
-				<li><kbd>C</kbd> change camera &middot; <kbd>M</kbd> mute &middot; <kbd>Esc</kbd> pause</li>
+				<li><kbd>H</kbd> sounds your horn (pick one in the garage). <kbd>C</kbd> change camera &middot; <kbd>M</kbd> mute &middot; <kbd>Esc</kbd> pause</li>
 			</ul>
 			<p class="credit">Physics and the Classic track are from <a href="https://github.com/jchabin/cars" target="_blank" rel="noopener">jchabin/cars</a> (GPL-3.0). Circuit shapes are simplified from the real layouts.</p>
 			<button class="go-btn" data-close><span>Got it</span></button>

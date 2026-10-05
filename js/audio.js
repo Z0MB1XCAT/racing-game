@@ -74,7 +74,7 @@ function rebuild(){
 	const old = ctx, engines = enginesOn;
 	try { if(music) music.dispose(); } catch {}
 	try { if(voice) voice.dispose(); } catch {}
-	voices = new Map(); road = null; rainNodes = null; windNodes = null; modelReady = null; probeBuf = null;
+	voices = new Map(); hornVoices = new Map(); road = null; rainNodes = null; windNodes = null; modelReady = null; probeBuf = null;
 	ctx = null; master = null; buses = null; ducks = null; music = null; probe = null; echo = null; voice = null; bank = null;
 	try { old.onstatechange = null; old.close().catch(() => {}); } catch {}
 	unlock();
@@ -360,6 +360,7 @@ export function startEngine(){
 }
 export function stopEngine(){
 	enginesOn = false;
+	hornStopAll();
 	if(!ctx || ctx.state === "closed") return;
 	for(const v of voices.values()) killVoice(v);
 	voices.clear();
@@ -569,8 +570,8 @@ function burst(dur, vol, type, freq, q = 1, when = 0, dest){
 	s.start(t, Math.random() * 1.5, dur + 0.05);
 }
 // A bell: a few inharmonic partials that ring out.
-function bell(freq, vol, when = 0, len = 1.2){
-	[[1, 1], [2.76, 0.45], [5.4, 0.25], [8.9, 0.1]].forEach(([m, a]) => tone(freq * m, len / m ** 0.3, "sine", vol * a, when));
+function bell(freq, vol, when = 0, len = 1.2, dest){
+	[[1, 1], [2.76, 0.45], [5.4, 0.25], [8.9, 0.1]].forEach(([m, a]) => tone(freq * m, len / m ** 0.3, "sine", vol * a, when, 0, dest));
 }
 // A brassy note for fanfares.
 function brass(freq, dur, vol, when = 0){
@@ -604,6 +605,149 @@ function crowd(len = 2.6, vol = 0.14){
 		tone(fr, 0.25, "sine", vol * 0.22, w, 1.25);
 		tone(fr * 1.2, 0.35, "sine", vol * 0.18, w + 0.28, 0.8);
 	}
+}
+
+// ---------- Horns ----------
+// Every car has one (H in a race), heard from where the car is. A horn is either a note that lasts as long as the key is down
+// (the classic two-tone, the air horn, the train) or a gesture that plays once per press and repeats while it's held (a bicycle
+// bell, a duck, a cow). updateHorns() is told every frame what each car's horn is doing: a press counter that goes up on each
+// press, and whether the key is down. Which horn a car has comes from its look (see HORNS in cosmetics.js).
+const HOLD = {
+	classic: { peak: 0.13, notes: [[420, "sawtooth", 1], [530, "sawtooth", 0.9], [840, "square", 0.1]], lp: 2300, atk: 0.012, rel: 0.07 },
+	air: { peak: 0.15, notes: [[165, "sawtooth", 0.5], [330, "sawtooth", 1], [415, "sawtooth", 0.9], [494, "sawtooth", 0.9]], lp: 3200, atk: 0.03, rel: 0.22, hiss: 0.02 },
+	train: { peak: 0.15, notes: [[98, "sawtooth", 0.6], [196, "sawtooth", 1], [247, "sawtooth", 0.9], [294, "sawtooth", 0.8], [392, "square", 0.15]], lp: 1500, atk: 0.1, rel: 0.45, bend: 0.96 }
+};
+let hornVoices = new Map();
+const HORN_MIN = 0.22, HORN_MAX = 8;
+
+// A note that goes on until release(t) (t no earlier than the end of the attack).
+function holdHorn(def, dest, t0){
+	const g = ctx.createGain(), lp = ctx.createBiquadFilter(), nodes = [];
+	lp.type = "lowpass"; lp.frequency.value = def.lp; lp.Q.value = 0.8;
+	g.gain.setValueAtTime(0.0001, t0);
+	g.gain.exponentialRampToValueAtTime(def.peak, t0 + def.atk);
+	const sum = def.notes.reduce((a, n) => a + n[2], 0);
+	for(const [f, type, a] of def.notes){
+		const o = ctx.createOscillator(), og = ctx.createGain();
+		o.type = type; o.detune.value = (Math.random() - 0.5) * 8;
+		o.frequency.setValueAtTime(f * (def.bend || 1), t0);
+		if(def.bend) o.frequency.exponentialRampToValueAtTime(f, t0 + 0.14);
+		og.gain.value = a / sum * 1.6;
+		o.connect(og); og.connect(lp); o.start(t0);
+		nodes.push(o);
+	}
+	if(def.hiss){
+		const s = noiseSrc(true), bp = ctx.createBiquadFilter(), hg = ctx.createGain();
+		bp.type = "bandpass"; bp.frequency.value = 1700; bp.Q.value = 0.7; hg.gain.value = def.hiss;
+		s.connect(bp); bp.connect(hg); hg.connect(g); s.start(t0); nodes.push(s);
+	}
+	lp.connect(g); g.connect(dest);
+	return { release(t){
+		g.gain.setTargetAtTime(0.0001, t, def.rel / 3);
+		for(const o of nodes) try { o.stop(t + def.rel * 2 + 0.1); } catch {}
+	} };
+}
+
+// Gestures: each plays from t0 and says how long it takes. `fan` is where the repeats go in a winner's fanfare.
+const SHOT = {
+	bicycle: { len: 0.75, again: 0.55, fan: [0, 0.3, 0.6], play(dest, t0){
+		for(const w of [0, 0.17]) [[1, 1], [2.32, 0.5], [3.7, 0.32], [5.1, 0.18]].forEach(([m, a]) => tone(2350 * m, 0.55 / m ** 0.4, "sine", 0.24 * a, t0 + w - ctx.currentTime, 0, dest));
+	} },
+	duck: { len: 0.5, again: 0.6, fan: [0, 0.45, 0.9], play(dest, t0){
+		for(const w of [0, 0.25]){
+			const t = t0 + w, o = ctx.createOscillator(), b1 = ctx.createBiquadFilter(), b2 = ctx.createBiquadFilter(), g = ctx.createGain();
+			o.type = "sawtooth"; o.frequency.setValueAtTime(340, t); o.frequency.exponentialRampToValueAtTime(240, t + 0.17);
+			b1.type = "bandpass"; b1.Q.value = 5; b1.frequency.setValueAtTime(1100, t); b1.frequency.exponentialRampToValueAtTime(650, t + 0.17);
+			b2.type = "bandpass"; b2.Q.value = 6; b2.frequency.setValueAtTime(2300, t); b2.frequency.exponentialRampToValueAtTime(1500, t + 0.17);
+			g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.95, t + 0.012); g.gain.setValueAtTime(0.95, t + 0.1); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.19);
+			o.connect(b1); o.connect(b2); b1.connect(g); b2.connect(g); g.connect(dest);
+			o.start(t); o.stop(t + 0.22);
+		}
+	} },
+	cow: { len: 1.2, again: 1.4, fan: [0], play(dest, t0){
+		const o = ctx.createOscillator(), lfo = ctx.createOscillator(), lg = ctx.createGain(), b1 = ctx.createBiquadFilter(), b2 = ctx.createBiquadFilter(), lp = ctx.createBiquadFilter(), g = ctx.createGain();
+		o.type = "sawtooth";
+		o.frequency.setValueAtTime(96, t0); o.frequency.exponentialRampToValueAtTime(138, t0 + 0.28);
+		o.frequency.exponentialRampToValueAtTime(124, t0 + 0.7); o.frequency.exponentialRampToValueAtTime(82, t0 + 1.1);
+		lfo.frequency.value = 5.2; lg.gain.value = 5; lfo.connect(lg); lg.connect(o.frequency);
+		b1.type = "bandpass"; b1.Q.value = 4; b1.frequency.setValueAtTime(330, t0); b1.frequency.linearRampToValueAtTime(640, t0 + 0.35); b1.frequency.linearRampToValueAtTime(380, t0 + 1);
+		b2.type = "bandpass"; b2.Q.value = 5; b2.frequency.setValueAtTime(900, t0); b2.frequency.linearRampToValueAtTime(1100, t0 + 0.35); b2.frequency.linearRampToValueAtTime(800, t0 + 1);
+		lp.type = "lowpass"; lp.frequency.value = 2200;
+		g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.4, t0 + 0.12); g.gain.setValueAtTime(0.4, t0 + 0.8); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.15);
+		o.connect(b1); o.connect(b2); b1.connect(lp); b2.connect(lp); lp.connect(g); g.connect(dest);
+		o.start(t0); lfo.start(t0); o.stop(t0 + 1.2); lfo.stop(t0 + 1.2);
+	} }
+};
+export const HORN_KINDS = [...Object.keys(HOLD), ...Object.keys(SHOT)];
+
+// The volume and left-right place a horn is heard at.
+function hornChain(gain, pan){
+	const g = ctx.createGain(); g.gain.value = Math.max(0, Math.min(1, fin(gain, 1)));
+	let p = null;
+	if(ctx.createStereoPanner){ p = ctx.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, fin(pan))); g.connect(p); p.connect(out()); }
+	else g.connect(out());
+	return { g, p };
+}
+function dropChain(c){ setTimeout(() => { try { c.g.disconnect(); if(c.p) c.p.disconnect(); } catch {} }, 3500); }
+function startHorn(v, t){
+	v.starts = (v.starts || 0) + 1;
+	if(HOLD[v.kind]) v.hold = holdHorn(HOLD[v.kind], v.chain.g, t);
+	else if(SHOT[v.kind]){ SHOT[v.kind].play(v.chain.g, t); v.nextShot = t + SHOT[v.kind].again; }
+}
+function stopHorn(v, t){ if(v.hold){ v.hold.release(t); v.hold = null; } }
+
+// list: [{ id, kind, n, held, gain 0..1, pan -1..1 }] for the cars whose horns could be heard.
+export function updateHorns(list){
+	if(!ctx || ctx.state !== "running" || !buses) return;
+	const t = ctx.currentTime, frame = (updateHorns.n = (updateHorns.n || 0) + 1);
+	for(const h of list.slice(0, 8)){
+		try {
+			let v = hornVoices.get(h.id);
+			if(!v){
+				if(hornVoices.size >= 8) continue;
+				// (A horn already pressed before this car came into range is not replayed.)
+				v = { n: h.n, kind: h.kind, hold: null, t0: -9, nextShot: 0, chain: hornChain(h.gain, h.pan), seen: frame };
+				hornVoices.set(h.id, v);
+			}
+			v.seen = frame;
+			v.chain.g.gain.setTargetAtTime(Math.max(0, Math.min(1, fin(h.gain))), t, 0.04);
+			if(v.chain.p) v.chain.p.pan.setTargetAtTime(Math.max(-1, Math.min(1, fin(h.pan))), t, 0.05);
+			if(h.n !== v.n){
+				v.n = h.n;
+				// (Pressing faster than about ten times a second is ignored.)
+				if(t - v.t0 > 0.09){ stopHorn(v, t); v.kind = h.kind; v.t0 = t; startHorn(v, t); }
+			}
+			if(v.hold && ((!h.held && t - v.t0 >= HORN_MIN) || t - v.t0 > HORN_MAX)) stopHorn(v, t);
+			else if(!v.hold && h.held && SHOT[v.kind] && t >= v.nextShot && t - v.t0 > 0.1 && t - v.t0 < HORN_MAX) startHorn(v, t);
+		} catch(e){ const v = hornVoices.get(h.id); if(v){ hornVoices.delete(h.id); dropChain(v.chain); } }
+	}
+	for(const [id, v] of hornVoices) if(v.seen !== frame){ stopHorn(v, t); hornVoices.delete(id); dropChain(v.chain); }
+}
+export function hornStopAll(){
+	if(!ctx || ctx.state === "closed"){ hornVoices = new Map(); return; }
+	const t = ctx.currentTime;
+	for(const v of hornVoices.values()){ try { stopHorn(v, t); } catch {} dropChain(v.chain); }
+	hornVoices.clear();
+}
+// The winner's horn as they cross the line: short, short, long (or the gesture, again).
+export function hornFanfare(kind, gain = 1, pan = 0){
+	if(!ctx || ctx.state !== "running" || !buses) return;
+	try {
+		const t = ctx.currentTime + 0.05, chain = hornChain(gain, pan);
+		if(SHOT[kind]) for(const w of SHOT[kind].fan) SHOT[kind].play(chain.g, t + w);
+		else for(const [w, d] of [[0, 0.17], [0.27, 0.17], [0.54, 0.75]]) holdHorn(HOLD[kind] || HOLD.classic, chain.g, t + w).release(t + w + d);
+		dropChain(chain);
+	} catch {}
+}
+// A short sample for the garage.
+export function hornPreview(kind){
+	if(!ctx || ctx.state !== "running" || !buses) return;
+	try {
+		const t = ctx.currentTime + 0.02, chain = hornChain(0.9, 0);
+		if(SHOT[kind]) SHOT[kind].play(chain.g, t);
+		else holdHorn(HOLD[kind] || HOLD.classic, chain.g, t).release(t + 0.6);
+		dropChain(chain);
+	} catch {}
 }
 
 // strength ~0..0.6; near 0..1 (distance); kind "wall" or "car"
@@ -695,6 +839,8 @@ export const _test = {
 		for(const x of b){ peak = Math.max(peak, Math.abs(x)); sum += x * x; }
 		return { peak, rms: Math.sqrt(sum / b.length) };
 	},
+	// Which horns are sounding or have sounded: [{ id, kind, holding, starts }].
+	horns(){ return [...hornVoices.entries()].map(([id, v]) => ({ id, kind: v.kind, holding: !!v.hold, starts: v.starts || 0 })); },
 	// Whether the recorded effects and the voices have loaded.
 	loaded(){ return { sfx: !!(bank && bank.ready), voice: !!voice }; }
 };

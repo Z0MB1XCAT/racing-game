@@ -147,7 +147,7 @@ original did).
     crashes and the finish (photo finishes included). It's skippable, and afterwards there's a
     **Full replay** with play, pause, speed and a timeline.
 - **Garage** (unlockable looks, no effect on speed):
-  - **What you can change:** paint, race number, underglow, headlight colour, tyre-smoke colour and a title.
+  - **What you can change:** paint, race number, underglow, headlight colour, tyre-smoke colour, a title and a horn.
   - **Paint** (43 of them) includes **Blackout** (gloss black, free for everyone), Matte Black,
     **Monster** (black with glowing green claw marks), stripes, chequered, carbon, camo, arctic camo,
     tiger, zebra, hazard, candy cane, polka dots, pixel camo, sunset, galaxy, synthwave, lightning,
@@ -247,6 +247,12 @@ original did).
   watcher (never on the grid, never the host), shows the room code and who's in between races, then the race as
   a broadcast (auto cameras, a big timing tower, the map and lap counter, and the commentary and subtitles when
   the voices are on) and the results. **Race bots > Watch the bots race** does the same with computer drivers and no room.
+- **Horn** (hold **H**): every car has one, heard from where the car is (quieter with distance, left and right, and everyone's
+  horn is their own, as picked in the garage). Six sounds, made in code: the classic two-tone, a bicycle bell, a duck, an air
+  horn, a cow and a train horn (the first is free, the rest unlock with driver level; clicking one in the garage plays it, even
+  while it's locked). A short tap still arrives: the press count travels with the car's updates, so even a 15 ms tap is
+  heard on every screen. The race winner sounds a short-short-long fanfare as they cross the line. The host can switch the
+  horn **Off** for the whole room (Horn, in the lobby settings) for a serious race. It's sound only: the handling is the same.
 - **Rear-view mirror** at the top of the screen (switch it off in Settings), and hold **B** to look behind you.
 - **Scenery**: every circuit gets a pit building with team garages, grandstands full of fans (who cheer at the start and the finish), fans behind the fences at corners, billboards, a bridge over the track, and trees or city blocks to suit the place. Nothing is allowed to stick onto the road: every piece is checked against the whole circuit, including where it doubles back. The TV cameras only use positions that can see the cars, and cut away if a tree or building gets in the way.
 - **The real surroundings of every F1 track**, from OpenStreetMap, on the real lie of the land:
@@ -306,7 +312,7 @@ original did).
 - **R** puts your car back on the track if you get stuck. If a crash knocks you outside
   the walls, it happens automatically.
 
-Controls: **← →** or **A D** steer, **R** reset car, hold **B** look back, **C** camera, **M** mute, **Esc** pause.
+Controls: **← →** or **A D** steer, **R** reset car, hold **B** look back, **H** horn, **C** camera, **M** mute, **Esc** pause.
 On phones, tilt to steer or tap the screen sides (Settings).
 
 ---
@@ -566,6 +572,7 @@ The last two also need puppeteer installed.
 - `node tools/sky-shots.mjs [trackId] [tod-weather ...]` screenshots a track at different times and weather (e.g. `monza night-rain`).
 - `node tools/scenery-shots.mjs [trackId ...]` takes screenshots of each track (overview, racing with the mirror, looking back, highlights).
 - `node tools/engine-demo.mjs` renders a clip of each engine to WAV (with spectrograms) for tuning the sound. Engine settings are `ENGINES` in `js/audio.js`.
+- `node tools/horn-test.mjs` checks the horn in a real browser: every horn sound is audible and about as loud as the others, a press (even a 15 ms tap) in one tab is heard in the other over `?localnet`, and with the room's Horn switched Off nothing happens.
 - `node tools/sound-test.mjs [track] [--voices]` plays a short race in a real browser and listens to the mix: the recorded effects load, nothing clips or goes silent, and the voices stay out of sight (no settings, subtitles or voice files); with `--voices` it turns them on and checks the engineer and commentators speak, with subtitles.
 - `node tools/voice-test.mjs [--browser]` plays a made-up race through the engineer and commentators and prints what they would say; with `--browser` it also decodes every clip in the voice packs.
 - `node tools/build-voices.mjs [eng] [lead] [col] [--force] [--check]` renders the lines in `js/voicelines.js` into `assets/voice/*.pak` with the Kokoro voice (needs `npm i kokoro-js` in a scratch folder and `KOKORO_DIR` pointing at it, plus ffmpeg); `--check` listens back with a speech recogniser. Only needed when a line or a voice changes.

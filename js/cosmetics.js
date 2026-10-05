@@ -148,16 +148,27 @@ export const LIGHTS = [
 	{ id: "rainbow", name: "Rainbow", color: "rainbow", unlock: [{ level: 22 }, { weeklyWins: 1 }] }
 ];
 
+// The horn (H in a race). The sounds themselves are made in js/audio.js, by id.
+export const HORNS = [
+	{ id: "classic", name: "Classic", unlock: [{ free: true }] },
+	{ id: "bicycle", name: "Bicycle Bell", unlock: [{ level: 3 }, { solo: "race" }] },
+	{ id: "duck",    name: "Duck", unlock: [{ level: 6 }] },
+	{ id: "air",     name: "Air Horn", unlock: [{ level: 9 }] },
+	{ id: "cow",     name: "Cow", unlock: [{ level: 12 }] },
+	{ id: "train",   name: "Train Horn", unlock: [{ level: 15 }] }
+];
+
 export const CATEGORIES = [
 	{ id: "livery", name: "Paint", items: LIVERIES },
 	{ id: "number", name: "Number", items: null },
 	{ id: "glow",   name: "Underglow", items: GLOWS },
 	{ id: "lights", name: "Headlights", items: LIGHTS },
 	{ id: "smoke",  name: "Tyre smoke", items: SMOKES },
-	{ id: "title",  name: "Title", items: TITLES }
+	{ id: "title",  name: "Title", items: TITLES },
+	{ id: "horn",   name: "Horn", items: HORNS }
 ];
 
-export const DEFAULT_LOOK = { livery: "factory", number: null, glow: "none", smoke: "white", lights: "warm", title: "rookie" };
+export const DEFAULT_LOOK = { livery: "factory", number: null, glow: "none", smoke: "white", lights: "warm", title: "rookie", horn: "classic" };
 
 export const SOLO_GOALS = {
 	race: "Finish a race against bots",
@@ -170,7 +181,7 @@ export const SOLO_GOALS = {
 };
 
 const byId = list => Object.fromEntries(list.map(i => [i.id, i]));
-const INDEX = { livery: byId(LIVERIES), glow: byId(GLOWS), smoke: byId(SMOKES), lights: byId(LIGHTS), title: byId(TITLES) };
+const INDEX = { livery: byId(LIVERIES), glow: byId(GLOWS), smoke: byId(SMOKES), lights: byId(LIGHTS), title: byId(TITLES), horn: byId(HORNS) };
 export function item(cat, id){ return INDEX[cat] && INDEX[cat][id]; }
 
 // Everything the unlock checks need. `stats` from Firebase, `extra` = { records, weeklyWins, account, solo }.
@@ -229,7 +240,7 @@ export function unlockedIds(P){
 // The crown holder is the only one who may wear #1.
 export function cleanLook(look, P, isCrown){
 	const l = Object.assign({}, DEFAULT_LOOK, look);
-	for(const cat of ["livery", "glow", "smoke", "lights", "title"]){
+	for(const cat of ["livery", "glow", "smoke", "lights", "title", "horn"]){
 		const it = item(cat, l[cat]);
 		if(!it || !isUnlocked(it, P)) l[cat] = DEFAULT_LOOK[cat];
 	}

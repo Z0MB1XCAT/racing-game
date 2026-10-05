@@ -1,4 +1,4 @@
-// The garage: pick paint, number, underglow, tyre smoke and title; see what's locked
+// The garage: pick paint, number, underglow, tyre smoke, title and horn; see what's locked
 // and how close you are. Also works out the weekly crown holder.
 import { CATEGORIES, DEFAULT_LOOK, progress, isUnlocked, requirement, unlockedIds, cleanLook, item, MAX_LEVEL } from "./cosmetics.js";
 import { TRACKS, LAYOUTS } from "./tracks.js";
@@ -38,6 +38,8 @@ function swatch(cat, it, hue){
 		const beam = col === "rainbow" ? "conic-gradient(from 180deg at 50% 100%, red, yellow, lime, cyan, blue, magenta, red)" : `radial-gradient(ellipse 60% 95% at 50% 100%, ${col} 0 18%, transparent 75%)`;
 		return `radial-gradient(circle at 30% 82%, #fff 0 5%, transparent 7%), radial-gradient(circle at 70% 82%, #fff 0 5%, transparent 7%), ${beam}, #0d1118`;
 	}
+	// A horn: sound waves spreading from the bell of it.
+	if(cat === "horn") return "repeating-radial-gradient(circle at 26% 50%, transparent 0 6px, rgba(255,255,255,.34) 6px 8px), radial-gradient(circle at 26% 50%, #fff 0 9%, transparent 11%), #0d1118";
 	if(cat === "glow") return !it.color ? "repeating-linear-gradient(45deg, #1c2029 0 6px, #232834 6px 12px)"
 		: it.color === "rainbow" ? "conic-gradient(red, yellow, lime, cyan, blue, magenta, red)"
 		: it.color === "police" ? "radial-gradient(circle at 30% 50%, #2a5bff 0 22%, transparent 55%), radial-gradient(circle at 70% 50%, #ff2433 0 22%, transparent 55%), #0d1118"
@@ -138,6 +140,7 @@ export function initGarage(ctx){
 				${on ? '<span class="gtag">Equipped</span>' : open ? "" : `<span class="greq">${ctx.escapeHtml(req.text)}</span>${req.need > 1 ? `<span class="gbar"><i style="transform:scaleX(${req.frac})"></i></span><span class="gprog">${req.have} / ${req.need}</span>` : ""}`}
 				${open ? "" : '<svg class="glock" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3" fill="none" stroke="currentColor" stroke-width="2.2"/><rect x="5" y="10" width="14" height="10" rx="2" fill="currentColor"/></svg>'}`;
 			b.addEventListener("click", () => {
+				if(cat.id === "horn") ctx.audio.hornPreview(it.id);   // (hear it even while it's locked)
 				if(!open){ ctx.audio.sfx.wrong(); b.classList.remove("nope"); void b.offsetWidth; b.classList.add("nope"); return; }
 				ctx.audio.sfx.click();
 				ctx.S.profile.look = Object.assign({}, look, { [cat.id]: it.id });
@@ -186,7 +189,7 @@ export function initGarage(ctx){
 		for(const key of b) if(!a.has(key)){
 			const [cat, id] = key.split(":");
 			const it = item(cat, id);
-			const label = { livery: "paint", glow: "underglow", smoke: "tyre smoke", lights: "headlights", title: "title" }[cat];
+			const label = { livery: "paint", glow: "underglow", smoke: "tyre smoke", lights: "headlights", title: "title", horn: "horn" }[cat];
 			if(it) out.push(`${it.name} ${label}`);
 		}
 		return out;
