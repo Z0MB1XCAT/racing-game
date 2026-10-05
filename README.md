@@ -134,6 +134,12 @@ original did).
   Firebase, and the lobby shows each driver as *Direct* or *Via server*. Direct links send 60 updates
   a second (Firebase 15). Each update is moved on by how old it is when it arrives, using the same
   handling maths as the game, so contact happens where the other car really is. Contact is sent at once.
+- **Rematch**: on the results screen of an online race, every driver but the host has a **Rematch** button (tap again to
+  take it back), and a row of start lights shows who has asked: one light per human driver, red as they vote, green once
+  there are enough. When more than half of the human drivers want one, the same race starts again with the same settings
+  (the host counts as yes, since **Race again** is theirs to press; the host's button still starts it at once). Bots don't
+  vote, a big screen never does, and championship and qualifying results have no rematch (the host starts the next round).
+  A vote is the race number stored on your own player entry, so it stops counting as soon as the next race has its own.
 - **Qualifying** (host's choice, or in solo setup): a hotlap session before the race. Cars are
   see-through ghosts so nobody can block anyone, and slipstream is off. Everyone gets a flying
   lap plus two timed laps, and the best lap sets the grid. It works before championship rounds too.
@@ -578,7 +584,7 @@ The last two also need puppeteer installed.
 - `node tools/build-voices.mjs [eng] [lead] [col] [--force] [--check]` renders the lines in `js/voicelines.js` into `assets/voice/*.pak` with the Kokoro voice (needs `npm i kokoro-js` in a scratch folder and `KOKORO_DIR` pointing at it, plus ffmpeg); `--check` listens back with a speech recogniser. Only needed when a line or a voice changes.
 - `node tools/build-sfx.mjs <folder>` packs the chosen sounds from Kenney's Impact Sounds, Interface Sounds and UI Audio packs (CC0) into `assets/audio/sfx.pak`.
 - `node tools/contact-test.mjs monaco` compares original and soft car contact (side hit, rear tap, a bot race).
-- `node tools/e2e.mjs solo|online|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
+- `node tools/e2e.mjs solo|online|rematch|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
 
 ## Credits and licence
 

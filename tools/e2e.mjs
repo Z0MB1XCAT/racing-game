@@ -1,6 +1,7 @@
 // Drives the game in a headless browser and screenshots each step.
 //   node tools/e2e.mjs solo [trackId]     race bots, hold right-ish steering, screenshot HUD + results
 //   node tools/e2e.mjs online             two tabs over ?localnet: host, join, race
+//   node tools/e2e.mjs rematch            four tabs: race, then vote for a rematch on the results screen
 import puppeteer from "puppeteer";
 import { mkdir } from "node:fs/promises";
 
@@ -659,6 +660,62 @@ if(flow === "bigtv"){
 	console.log("host gets results:", await waitScreen(host, "results", 150), "| big screen gets results:", await waitScreen(tv, "results", 60));
 	await wait(1200);
 	await shot(tv, "bigtv-results");
+}
+
+if(flow === "rematch"){
+	// Four drivers race, then ask for a rematch on the results screen. More than half (the host counts as yes) starts it.
+	const host = await open(base + "?localnet");
+	const guests = [];
+	for(let i = 0; i < 3; i++){
+		const popup = new Promise(r => browser.once("targetcreated", t => r(t.page())));
+		await host.evaluate((u, i) => window.open(u, "guest" + i, "popup,width=900,height=600"), base + "?localnet", i);
+		const g = await popup;
+		g.on("pageerror", e => errors.push("guest pageerror: " + e.message));
+		await g.setViewport({ width: 900, height: 600 });
+		await g.waitForFunction(() => window.__game, { timeout: 60000 });
+		guests.push(g);
+	}
+	await wait(1200);
+	await click(host, "#btnOnline"); await wait(400);
+	await click(host, "#hostBtn"); await wait(1200);
+	const code = await host.$eval("#roomCode", e => e.textContent);
+	for(const g of guests){
+		await click(g, "#btnOnline"); await wait(400);
+		await g.evaluate(c => { const i = document.getElementById("codeInput"); i.value = c; i.dispatchEvent(new Event("input")); }, code);
+		await click(g, "#joinBtn"); await wait(1000);
+	}
+	await host.evaluate(() => window.__game.net.updateSettings({ laps: 1, track: "figure8" }));
+	await wait(700);
+	await click(host, "#lobbyGo");
+	await wait(1500);
+	const all = [host, ...guests];
+	for(const p of all) await autodrive(p);
+	console.log("everyone reaches the results:", (await Promise.all(all.map(p => waitScreen(p, "results", 150)))).every(Boolean));
+	await wait(1500);
+	const view = p => p.evaluate(() => {
+		const box = document.getElementById("rematchBox"), b = [...document.querySelectorAll("#resultsActions button")].map(x => x.textContent.trim());
+		return { shown: !box.hidden, text: document.getElementById("rematchText").textContent, lit: box.querySelectorAll("i.on").length, dots: box.querySelectorAll("i").length, buttons: b, race: window.__game.room && window.__game.room.race && window.__game.room.race.id, screen: window.__game.screen };
+	});
+	const tap = p => p.evaluate(() => [...document.querySelectorAll("#resultsActions button")].find(b => /^(Rematch|Voted)/.test(b.textContent.trim())).click());
+	let v = await Promise.all(all.map(view));
+	console.log("box on every screen, one light lit (the host):", v.every(x => x.shown && x.dots === 4 && x.lit === 1), "|", v[1].text);
+	console.log("guests have a Rematch button, the host has Race again:", v.slice(1).every(x => x.buttons[0] === "Rematch") && v[0].buttons.includes("Race again") && !v[0].buttons.includes("Rematch"));
+	await guests[0].evaluate(() => document.getElementById("rematchBox").scrollIntoView({ block: "end" }));
+	await shot(guests[0], "rematch-before");
+	await tap(guests[0]); await wait(900);
+	await guests[1].evaluate(() => document.getElementById("rematchBox").scrollIntoView({ block: "end" }));
+	await shot(guests[1], "rematch-one-vote");
+	v = await Promise.all(all.map(view));
+	console.log("one guest taps: two lights, still waiting (3 needed):", v.every(x => x.lit === 2 && x.screen === "results"), "|", v[0].text, "| their button:", v[1].buttons[0]);
+	await tap(guests[0]); await wait(900);
+	v = await Promise.all(all.map(view));
+	console.log("tapping again takes the vote back:", v.every(x => x.lit === 1), "|", v[0].text, "| their button:", v[1].buttons[0]);
+	await tap(guests[0]); await tap(guests[1]); await wait(400);
+	await guests[2].evaluate(() => document.getElementById("rematchBox").scrollIntoView({ block: "end" }));
+	await shot(guests[2], "rematch-go");
+	await wait(1500);
+	const rs = await Promise.all(all.map(p => p.evaluate(() => ({ screen: window.__game.screen, id: window.__game.room.race.id, phase: window.__game.room.phase }))));
+	console.log("a majority starts the rematch for everyone (race 2):", rs.every(x => x.id === 2 && x.phase === "race"), JSON.stringify(rs.map(x => x.screen)));
 }
 
 console.log(errors.length ? "ERRORS:\n" + [...new Set(errors)].join("\n") : "no page errors");

@@ -1235,6 +1235,8 @@ function showResults(results, online, opts = {}){
 	const nextName = champ && !champ.done ? defFor(champ.rounds[champ.idx + 1].track).name : "";
 	const acts = $("resultsActions");
 	acts.innerHTML = "";
+	S.rematchBtn = null;
+	$("rematchBox").hidden = true;
 	const addBtn = (label, cls, fn) => { const b = document.createElement("button"); b.className = "go-btn " + cls; b.innerHTML = `<span>${label}</span>`; b.addEventListener("click", () => { audio.sfx.click(); fn(); }); acts.appendChild(b); return b; };
 	$("resultsNote").textContent = (S.pendingNote || []).join(" ");
 	S.pendingNote = [];
@@ -1265,7 +1267,8 @@ function showResults(results, online, opts = {}){
 		addBtn("Back to lobby", "ghost", () => S.net.backToLobby());
 		addBtn("Leave room", "ghost", leaveRoom);
 	}else{
-		$("resultsNote").textContent = "Waiting for the host to start the next race.";
+		$("resultsNote").textContent = champ ? "Waiting for the host to start the next race." : "Waiting for the host, or for enough rematch votes.";
+		if(!champ) S.rematchBtn = addBtn("Rematch", "", toggleRematch);
 		addBtn("Leave room", "ghost", leaveRoom);
 	}
 	if(!quali && S.race && S.race.rec.frames.length > 60){
@@ -1274,6 +1277,7 @@ function showResults(results, online, opts = {}){
 		addBtn("Full replay", "ghost", () => startReplay("replay", () => showResults(results, online, again)));
 	}
 	showScreen("results");
+	if(online && S.room) updateRematchUi(S.room);
 	camMode = "winner";
 	// Solo results tick off solo goals in the garage (once per race).
 	if(!quali && !online && S.soloFlagsKey !== key && me && S.ctx && S.ctx.mode !== "trial" && results.length > 1){
@@ -2024,6 +2028,7 @@ function renderBigTv(room){
 
 function enterLobby(){
 	S.raceId = null;
+	S.rematchStarted = null;
 	S.resultsShown = null;
 	S.room = null;
 	$("roomCode").textContent = S.net.code;
@@ -2106,8 +2111,48 @@ function onRoom(room){
 		showScreen(S.watchRoom ? "bigtv" : "lobby");
 		camMode = "overview";
 	}
+	if(room.phase === "results"){ rematchTick(room); if(S.screen === "results") updateRematchUi(room); }
 	if(S.screen === "lobby") renderLobby(room);
 	if(S.screen === "bigtv") renderBigTv(room);
+}
+
+// ---------- Rematch ----------
+// On the results screen every driver can ask for a rematch. When more than half of the human drivers have (the host always
+// counts as yes, since "Race again" is theirs to press), the host's game starts the same race again with the same settings.
+// A vote is the race number stored on your own player entry, so it stops counting as soon as the next race has its own number.
+function rematchInfo(room){
+	const race = room && room.race;
+	if(!race || room.phase !== "results" || room.champ || race.champ || (race.mode !== "race" && race.mode !== "elim")) return null;
+	const humans = Object.entries(room.players || {}).filter(([, p]) => !p.bot && !p.watch);
+	if(humans.length < 2) return null;
+	const votes = humans.filter(([id, p]) => id === room.host || p.rematch === race.id).length;
+	const need = Math.floor(humans.length / 2) + 1;
+	const me = S.net && (room.players || {})[S.net.uid];
+	return { race, total: humans.length, votes, need, mine: !!(me && me.rematch === race.id), go: votes >= need };
+}
+function updateRematchUi(room){
+	const info = rematchInfo(room);
+	$("rematchBox").hidden = !info;
+	if(!info) return;
+	$("rematchBox").classList.toggle("go", info.go);
+	$("rematchDots").innerHTML = Array.from({ length: info.total }, (_, i) => `<i class="${i < info.votes ? "on" : ""}"></i>`).join("");
+	$("rematchText").textContent = info.go ? "Rematch starting" : `Rematch: ${info.votes} of ${info.total} drivers (${info.need} needed)`;
+	if(S.rematchBtn){
+		S.rematchBtn.firstElementChild.textContent = info.mine ? "Voted. Tap to undo" : "Rematch";
+		S.rematchBtn.classList.toggle("ghost", info.mine);
+	}
+}
+function toggleRematch(){
+	const info = S.net && S.room && rematchInfo(S.room);
+	if(!info) return;
+	S.net.updateMe({ rematch: info.mine ? 0 : info.race.id });
+}
+function rematchTick(room){
+	if(!S.net || !S.net.isHost) return;
+	const info = rematchInfo(room);
+	if(!info || !info.go || S.rematchStarted === info.race.id) return;
+	S.rematchStarted = info.race.id;
+	hostStart();
 }
 
 const lobbySettingsControls = {
