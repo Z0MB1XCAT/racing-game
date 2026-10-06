@@ -1,6 +1,7 @@
 // Drives the game in a headless browser and screenshots each step.
 //   node tools/e2e.mjs solo [trackId]     race bots, hold right-ish steering, screenshot HUD + results
 //   node tools/e2e.mjs online             two tabs over ?localnet: host, join, race
+//   node tools/e2e.mjs vote               three tabs: race, then vote for the next track on the results screen
 //   node tools/e2e.mjs modes              Sprint/Endurance presets, Hot Potato, Cat and mouse, Crown chase, the wheel of chaos, a reversed grid, and a party style online
 //   node tools/e2e.mjs looks              a name effect, start lights and number style: seen by the right people in the lobby, tower, labels and results
 //   node tools/e2e.mjs codes              prize codes (right, wrong, expired, locked out) and look codes between two players
@@ -1209,6 +1210,66 @@ if(flow === "modes"){
 		console.log("a pass and a boom on the host's game show on the guest's screen too:", after[0].out.length >= 1 && JSON.stringify(after[0].out) === JSON.stringify(after[1].out) && after[0].h === after[1].h, JSON.stringify(after));
 		await host.close(); await guest.close();
 	}
+}
+
+if(flow === "vote"){
+	// Three drivers race, then vote for the next track on the results screen. The most votes is the track the host's next race uses.
+	const host = await open(base + "?localnet&season=off");
+	const guests = [];
+	for(let i = 0; i < 2; i++){
+		const popup = new Promise(r => browser.once("targetcreated", t => r(t.page())));
+		await host.evaluate((u, i) => window.open(u, "guest" + i, "popup,width=900,height=700"), base + "?localnet&season=off", i);
+		const g = await popup;
+		g.on("pageerror", e => errors.push("guest pageerror: " + e.message));
+		await g.setViewport({ width: 900, height: 700 });
+		await g.waitForFunction(() => window.__game, { timeout: 60000 });
+		guests.push(g);
+	}
+	await wait(1200);
+	await click(host, "#btnOnline"); await wait(400);
+	await click(host, "#hostBtn"); await wait(1200);
+	const code = await host.$eval("#roomCode", e => e.textContent);
+	for(const g of guests){
+		await click(g, "#btnOnline"); await wait(400);
+		await g.evaluate(c => { const i = document.getElementById("codeInput"); i.value = c; i.dispatchEvent(new Event("input")); }, code);
+		await click(g, "#joinBtn"); await wait(1000);
+	}
+	await host.evaluate(() => window.__game.net.updateSettings({ laps: 1, track: "figure8" }));
+	await wait(700);
+	await click(host, "#lobbyGo");
+	await wait(1500);
+	const all = [host, ...guests];
+	for(const p of all) await autodrive(p);
+	console.log("everyone reaches the results:", (await Promise.all(all.map(p => waitScreen(p, "results", 150)))).every(Boolean));
+	await wait(1500);
+	const box = p => p.evaluate(() => {
+		const b = document.getElementById("voteBox");
+		return { shown: !b.hidden, names: [...document.querySelectorAll("#voteRow .vote-btn")].map(x => x.firstElementChild.textContent.trim()), counts: [...document.querySelectorAll("#voteRow .vc")].map(x => +x.textContent), mine: [...document.querySelectorAll("#voteRow .vote-btn")].map(x => x.classList.contains("mine")), lead: [...document.querySelectorAll("#voteRow .vote-btn")].map(x => x.classList.contains("lead")), note: document.getElementById("voteNote").textContent };
+	});
+	const press = (p, i) => p.evaluate(i => document.querySelectorAll("#voteRow .vote-btn")[i].click(), i);
+	let v = await Promise.all(all.map(box));
+	console.log("a ballot of three tracks on every screen, the one just raced first:", v.every(x => x.shown && x.names.length === 3) && /Crossroads/.test(v[0].names[0]) && /just raced/.test(v[0].names[0]), JSON.stringify(v[0].names));
+	console.log("and every screen shows the same three:", new Set(v.map(x => JSON.stringify(x.names.map(n => n.replace(/The track you just raced/, ""))))).size === 1);
+	console.log("nobody has voted: no counts and no leader, with a hint:", v.every(x => x.counts.every(n => n === 0) && x.lead.every(l => !l)) && /Tap a track/.test(v[0].note));
+	await shot(guests[0], "vote-before");
+	await press(guests[0], 1); await wait(900);
+	v = await Promise.all(all.map(box));
+	console.log("one vote counts on every screen and shows as yours for the voter:", v.every(x => x.counts[1] === 1) && v[1].mine[1] && !v[0].mine[1] && v.every(x => x.lead[1]), JSON.stringify(v.map(x => x.counts)));
+	await press(guests[0], 1); await wait(900);
+	v = await Promise.all(all.map(box));
+	console.log("tapping again takes it back:", v.every(x => x.counts.every(n => n === 0) && x.lead.every(l => !l)));
+	await press(guests[0], 1); await press(guests[1], 2); await wait(600);
+	await press(host, 2); await wait(1000);
+	v = await Promise.all(all.map(box));
+	console.log("two votes for one track, one for another: the first leads:", v.every(x => x.counts[2] === 2 && x.counts[1] === 1 && x.lead[2] && !x.lead[1]), JSON.stringify(v.map(x => x.counts)));
+	await guests[0].evaluate(() => document.getElementById("voteBox").scrollIntoView({ block: "center" }));
+	await shot(guests[0], "vote-after");
+	const winnerId = await host.evaluate(async () => { const r = window.__game.room, { voteCandidates } = await import("/js/vote.js"), { TRACKS } = await import("/js/tracks.js"); return voteCandidates(r.race.id, r.race.track, TRACKS.filter(t => !t.code).map(t => t.id))[2]; });
+	// The host starts the next race: it's on the winning track.
+	await host.evaluate(() => [...document.querySelectorAll("#resultsActions button")].find(b => /^Race again/.test(b.textContent.trim())).click());
+	await wait(2500);
+	const next = await Promise.all(all.map(p => p.evaluate(() => ({ id: window.__game.room.race.id, track: window.__game.room.race.track, setting: window.__game.room.settings.track, screen: window.__game.screen }))));
+	console.log("the next race is on the track with the most votes, on every screen:", next.every(x => x.id === 2 && x.track === winnerId && x.setting === winnerId && x.screen === "race"), "| winner:", winnerId, JSON.stringify(next.map(x => x.track)));
 }
 
 console.log(errors.length ? "ERRORS:\n" + [...new Set(errors)].join("\n") : "no page errors");

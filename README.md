@@ -177,6 +177,12 @@ original did).
   (the host counts as yes, since **Race again** is theirs to press; the host's button still starts it at once). Bots don't
   vote, a big screen never does, and championship and qualifying results have no rematch (the host starts the next round).
   A vote is the race number stored on your own player entry, so it stops counting as soon as the next race has its own.
+- **Vote for the next track**: under the rematch lights on an online race's results (not for championships or qualifying) are three tracks:
+  the one just raced (so "again, please" is always there) and two others picked from the race number, so every screen shows the same three.
+  Tap one to vote (tap again to take it back); a count on each shows how it's going and the leader is highlighted. A vote is the race
+  number and track on your own player entry, so it never carries over. When the host starts the next race (**Race again**, or a rematch the drivers
+  voted for) it's on the track with the most votes; a tie is settled by the race number, the same on every screen, and no votes keeps the track as it was.
+  (`js/vote.js`; no rules change.)
 - **Qualifying** (host's choice, or in solo setup): a hotlap session before the race. Cars are
   see-through ghosts so nobody can block anyone, and slipstream is off. Everyone gets a flying
   lap plus two timed laps, and the best lap sets the grid. It works before championship rounds too.
@@ -655,6 +661,7 @@ The last two also need puppeteer installed.
 - `node tools/levels-test.mjs` checks driver levels to 100, no browser: levels 1 to 30 need exactly the XP they always did, every level after is 500 XP more, the level from any XP is right at every boundary and stops at 100, and the rewards past 30 exist and aren't open early.
 - `node tools/looks-test.mjs` checks the garage's number plates, name effects, start-light themes and the new titles, no browser: every item has a free default and a real way to get it, every effect and theme has its CSS, made-up and prototype names give nothing, and the solo-goal rules (`soloGoals` in `js/cosmetics.js`) tick off exactly what they should: Night Owl, Wet Weather Wizard, Underdog, Clean Racer and the Halloween paint.
 - `node tools/codes-test.mjs` checks prize codes and look codes, no browser: a code is found however it's typed, wrong, short and expired ones aren't, the shipped list holds no plain codes, the `codes.mjs` tool adds, lists, checks and removes on a copy, a prize unlocks any item for good, and look codes round-trip for every paint and refuse anything else (made-up and prototype names included).
+- `node tools/vote-test.mjs` checks the next-track vote, no browser: the ballot is the track just raced plus two others, the same on every screen and different each race, every track turns up, votes for anything not on the ballot (made-up and prototype names included) don't count, the most votes wins, and a tie is settled the same way everywhere and fairly over many races.
 - `node tools/party-test.mjs` checks the party styles and the wheel of chaos against a pretend race, no browser: Hot Potato (one holder, passes, the grace time, fuses, the last car wins), Cat and mouse (catches, the cat winning, the time limit and the order it leaves the table in), Crown chase (seconds on top add up, the winner isn't whoever leads at the end), a new host carrying on from the shared state, and the chaos rules (same for everyone, never the same lap after lap, steering effects bounded).
 - `node tools/season-test.mjs` checks the seasons and the Halloween challenge week, no browser: the look comes on at the start of 1 October and goes off at the start of 1 November in every year (a leap year too); `?season=` and the Settings switch change what's drawn but never what can be earned; the Halloween challenge is the week with 31 October in it, on a forest circuit at night in fog, one a year to 2060, never repeating a track next to it, and no ordinary week is touched.
 - `node tools/music-test.mjs` plays the menu songs in a browser: each is audible, never clips, isn't silent for long, and the October one is about as loud as the usual one.
@@ -666,7 +673,7 @@ The last two also need puppeteer installed.
 - `node tools/build-voices.mjs [eng] [lead] [col] [--force] [--check]` renders the lines in `js/voicelines.js` into `assets/voice/*.pak` with the Kokoro voice (needs `npm i kokoro-js` in a scratch folder and `KOKORO_DIR` pointing at it, plus ffmpeg); `--check` listens back with a speech recogniser. Only needed when a line or a voice changes.
 - `node tools/build-sfx.mjs <folder>` packs the chosen sounds from Kenney's Impact Sounds, Interface Sounds and UI Audio packs (CC0) into `assets/audio/sfx.pak`.
 - `node tools/contact-test.mjs monaco` compares original and soft car contact (side hit, rear tap, a bot race).
-- `node tools/e2e.mjs solo|online|rematch|invite|whatsnew|halloween|codes|announce|looks|modes|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
+- `node tools/e2e.mjs solo|online|rematch|vote|invite|whatsnew|halloween|codes|announce|looks|modes|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
 
 ## Credits and licence
 

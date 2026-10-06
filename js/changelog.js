@@ -3,6 +3,12 @@
 // when a version has something players will notice (version = the VERSION in js/config.js that shipped it).
 export const CHANGELOG = [
 	{
+		version: "2026.10.06-2", date: "6 October 2026", title: "Vote for the next track",
+		items: [
+			"After an online race you can vote for the next track: the one you just raced or two others. The most votes wins when the next race starts."
+		]
+	},
+	{
 		version: "2026.10.06-1", date: "6 October 2026", title: "New ways to race",
 		items: [
 			"Race styles (the Style row under Mode): Sprint (2 laps), Endurance (15 to 30 laps, with a halfway banner), and three party games.",

@@ -35,6 +35,7 @@ import { CHANGELOG, entriesSince } from "./changelog.js";
 import { findCode } from "./codes.js";
 import { STYLES, styleOf, styleRace, maxLaps } from "./styles.js";
 import { chaosFor, chaosSteer } from "./chaos.js";
+import { voteCandidates, tally, winner as voteWinner } from "./vote.js";
 import { PARTY } from "./party.js";
 import { configureSeason, halloween, season } from "./season.js";
 import { GAME_NAME, MAX_CARS, EDITOR_ENABLED, VOICES_ENABLED, ACCOUNTS, VERSION } from "./config.js";
@@ -1308,6 +1309,7 @@ function showResults(results, online, opts = {}){
 	acts.innerHTML = "";
 	S.rematchBtn = null;
 	$("rematchBox").hidden = true;
+	$("voteBox").hidden = true;
 	const addBtn = (label, cls, fn) => { const b = document.createElement("button"); b.className = "go-btn " + cls; b.innerHTML = `<span>${label}</span>`; b.addEventListener("click", () => { audio.sfx.click(); fn(); }); acts.appendChild(b); return b; };
 	$("resultsNote").textContent = (S.pendingNote || []).join(" ");
 	S.pendingNote = [];
@@ -1349,7 +1351,7 @@ function showResults(results, online, opts = {}){
 	}
 	showScreen("results");
 	showNextUnlock();
-	if(online && S.room) updateRematchUi(S.room);
+	if(online && S.room){ updateRematchUi(S.room); updateVoteUi(S.room); }
 	camMode = "winner";
 	// Solo results tick off solo goals in the garage (once per race).
 	if(!quali && !online && S.soloFlagsKey !== key && me && S.ctx && S.ctx.mode !== "trial" && results.length > 1){
@@ -2263,7 +2265,7 @@ function onRoom(room){
 		showScreen(S.watchRoom ? "bigtv" : "lobby");
 		camMode = "overview";
 	}
-	if(room.phase === "results"){ rematchTick(room); if(S.screen === "results") updateRematchUi(room); }
+	if(room.phase === "results"){ rematchTick(room); if(S.screen === "results"){ updateRematchUi(room); updateVoteUi(room); } }
 	if(S.screen === "lobby") renderLobby(room);
 	if(S.screen === "bigtv") renderBigTv(room);
 }
@@ -2298,6 +2300,39 @@ function toggleRematch(){
 	const info = S.net && S.room && rematchInfo(S.room);
 	if(!info) return;
 	S.net.updateMe({ rematch: info.mine ? 0 : info.race.id });
+}
+// ---------- Vote for the next track ----------
+// Under the rematch lights on an online race's results: the track just raced and two others, one vote each (kept on your own player
+// entry with the race number it's for). When the host starts the next race (Race again, or a rematch the drivers voted for) the track with
+// the most votes is the one it uses (js/vote.js). A tie is settled the same way on every screen; no votes keeps the track as it was.
+function voteInfo(room){
+	const race = room && room.race;
+	if(!race || room.phase !== "results" || room.champ || race.champ || (race.mode !== "race" && race.mode !== "elim") || race.track === "custom") return null;
+	const humans = Object.entries(room.players || {}).filter(([, p]) => !p.bot && !p.watch);
+	if(humans.length < 2) return null;
+	const cands = voteCandidates(race.id, race.track, TRACKS.filter(t => !t.code).map(t => t.id));
+	const votes = {};
+	for(const [id, p] of humans) if(p.vote && p.vote.r === race.id) votes[id] = p.vote.t;
+	const counts = tally(votes, cands), me = S.net && (room.players || {})[S.net.uid];
+	return { race, cands, counts, win: voteWinner(counts, cands, race.id), mine: me && me.vote && me.vote.r === race.id ? me.vote.t : null };
+}
+function updateVoteUi(room){
+	const info = voteInfo(room);
+	$("voteBox").hidden = !info;
+	if(!info) return;
+	const row = $("voteRow");
+	row.innerHTML = "";
+	for(const id of info.cands){
+		const def = trackById(id) || defFor(id), b = document.createElement("button");
+		b.type = "button";
+		b.className = "vote-btn" + (info.mine === id ? " mine" : "") + (info.win === id ? " lead" : "");
+		b.setAttribute("aria-pressed", String(info.mine === id));
+		b.innerHTML = `<span>${escapeHtml(def.name)}${id === info.race.track ? "<small>The track you just raced</small>" : ""}</span><span class="vc">${info.counts[id] || 0}</span>`;
+		b.addEventListener("click", () => { audio.sfx.click(); S.net.updateMe({ vote: info.mine === id ? 0 : { r: info.race.id, t: id } }); });
+		row.appendChild(b);
+	}
+	const total = Object.values(info.counts).reduce((a, n) => a + n, 0);
+	$("voteNote").textContent = total ? "The most votes wins when the next race starts. A tie is picked for you." : "Tap a track to vote. If nobody does, the track stays as it was.";
 }
 function rematchTick(room){
 	if(!S.net || !S.net.isHost) return;
@@ -2471,7 +2506,16 @@ $("lobbyGo").addEventListener("click", () => {
 function hostStart(){
 	const room = S.room, net = S.net;
 	if(!room || !net.isHost) return;
-	const st = room.settings || lobbyDefaults();
+	let st = room.settings || lobbyDefaults();
+	// The track the drivers voted for on the results screen, if they did.
+	const vi = voteInfo(room);
+	if(vi && vi.win && vi.win !== st.track){
+		const d = trackById(vi.win) || defFor(vi.win), upd = { track: vi.win, custom: null };
+		if(d.code) upd.reverse = false;
+		if(st.mode === "race" && !styleOf(st.style).party && (!st.style || st.style === "standard")) upd.laps = d.laps || 3;
+		net.updateSettings(upd);
+		st = Object.assign({}, st, upd);
+	}
 	const grid = Object.entries(room.players || {}).filter(([, p]) => !p.watch).sort((a, b) => (a[1].joined || 0) - (b[1].joined || 0)).map(([id]) => id).slice(0, MAX_CARS);
 	if((st.mode === "elim" || lobbyParty(st)) && grid.length < 2) return;
 	if(st.mode === "champ"){

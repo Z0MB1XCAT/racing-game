@@ -56,6 +56,7 @@ on purpose; `npm run setup` recreates them. If the server is already running, do
 | `remnant-check.mjs [id]` | the closed-off roads of a venue's other layouts never show through the track |
 | `e2e.mjs <flow> [trackId]` | drives the game in headless Chrome (flows: solo, online, tv, midjoin, p2p, quali, champ, migrate, ghost, ...) |
 | `audio-test.mjs` | sound survives bad values and rebuilds itself if it breaks |
+| `vote-test.mjs` | the next-track vote: the ballot, counting, the winner and tie-breaks (no browser) |
 | `party-test.mjs` | Hot Potato, Cat and mouse, Crown chase and the wheel of chaos against a pretend race (no browser) |
 | `levels-test.mjs` | driver levels to 100: the old curve to 30 untouched, 500 XP a level after, boundaries right (no browser) |
 | `looks-test.mjs` | number plates, name effects, start-light themes, new titles and the solo-goal rules (no browser) |
