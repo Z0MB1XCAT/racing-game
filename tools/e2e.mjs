@@ -1085,9 +1085,9 @@ if(flow === "modes"){
 		await shot(page, "modes-potato");
 		// A touch passes it on.
 		const pass = await page.evaluate(async () => {
-			const r = window.__game.race, H = r.party.holder(), N = r.cars.find(c => c !== H && c.elim === null);
+			const r = window.__game.race, H = r.party.holder(), N = r.cars.find(c => c !== H && c.elim === null && c.id !== r.party.state.ph);      // (not the one who just passed it: it can't take it straight back)
 			const before = r.party.state.h; N.data.x = H.data.x + 1; N.data.y = H.data.y; N.data.xv = N.data.yv = H.data.xv = H.data.yv = 0;   // (side by side and still, so the touch is seen)
-			await new Promise(res => setTimeout(res, 400));
+			await new Promise(res => setTimeout(res, 1500));   // (a slow, busy test browser may draw only a few frames a second)
 			return { before, after: r.party.state.h, n: N.id };
 		});
 		console.log("touching a car passes the potato on (to a car that was touching):", !!pass.after && pass.after !== pass.before, JSON.stringify(pass));
