@@ -181,7 +181,7 @@ export function createMusic(ctx, dest, noise){
 		},
 		// October's menu music: slow and low, a heartbeat under a minor chord with a flat second, and sparse bells.
 		spooky: {
-			bpm: 76, gain: 1.25, echo: 6,
+			bpm: 76, gain: 1.25, echo: 4,       // (4 sixteenths is 0.79 s: the echo's delay line holds at most a second)
 			// A minor with the flat second, the way a haunted house sounds: Am Bb Am E | Am Bb E Am
 			bars: [[9, "m"], [10, "M"], [9, "m"], [4, "M"], [9, "m"], [10, "M"], [4, "M"], [9, "m"]],
 			step(bus, i, t, s){
