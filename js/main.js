@@ -36,6 +36,7 @@ import { findCode } from "./codes.js";
 import { STYLES, styleOf, styleRace, maxLaps } from "./styles.js";
 import { chaosFor, chaosSteer } from "./chaos.js";
 import { voteCandidates, tally, winner as voteWinner } from "./vote.js";
+import { startPodium } from "./podium.js";
 import { PARTY } from "./party.js";
 import { configureSeason, halloween, season } from "./season.js";
 import { GAME_NAME, MAX_CARS, EDITOR_ENABLED, VOICES_ENABLED, ACCOUNTS, VERSION } from "./config.js";
@@ -277,6 +278,7 @@ function carNumber(){ const n = S.profile.look && S.profile.look.number; return 
 function showScreen(name){
 	if(name !== "garage" && S.beamPreview) showcaseBeam(false);
 	S.screen = name;
+	if(name !== "results" && name !== "garage") stopPodium();
 	document.body.dataset.view = name;
 	setTimeout(() => { if(typeof showUpdateBar === "function") showUpdateBar(); }, 0);
 	audio.playMusic(menuSong());
@@ -1238,6 +1240,18 @@ async function shareOldGhost(key, week){
 	} catch {}
 }
 
+// ---------- Podium ----------
+// The winner's celebration over the results screen (and the garage's preview): their own style, seen by everyone, with its jingle.
+let podiumShow = null;
+function stopPodium(){ if(podiumShow){ podiumShow.stop(); podiumShow = null; } }
+function showPodium(style, hue){
+	stopPodium();
+	style = style || "confetti";
+	$("podiumFx").dataset.style = style;   // (so a test can tell which one is playing)
+	podiumShow = startPodium($("podiumFx"), style, hue ?? S.profile.hue);
+	audio.sfx.podium(style);
+}
+
 // ---------- Results ----------
 function showResults(results, online, opts = {}){
 	const quali = !!opts.quali;
@@ -1350,6 +1364,10 @@ function showResults(results, online, opts = {}){
 		addBtn("Full replay", "ghost", () => startReplay("replay", () => showResults(results, online, again)));
 	}
 	showScreen("results");
+	// The winner's celebration (once per race: the results can come round again after the highlights).
+	// (A spectator has no race of their own, so the room's race number tells one race from the next.)
+	const podiumKey = key + (online && S.room && S.room.race ? ":" + S.room.race.id : "");
+	if(!quali && results[0] && results[0].status !== "dnf" && S.podiumKey !== podiumKey){ S.podiumKey = podiumKey; showPodium(results[0].ps, results[0].hue); }
 	showNextUnlock();
 	if(online && S.room){ updateRematchUi(S.room); updateVoteUi(S.room); }
 	camMode = "winner";
@@ -2988,6 +3006,7 @@ async function recordStats(){
 const garage = initGarage({
 	S, connect, onlineAvailable, acct, escapeHtml, audio, showScreen, placeShowcase, showBeams: showcaseBeam,
 	saveProfile: () => { saveProfile(); updateShowcaseTag(); },
+	podium: style => showPodium(style, S.profile.hue),
 	setCam: m => { camMode = m; }
 });
 const chat = initChat({

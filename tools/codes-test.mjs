@@ -80,27 +80,30 @@ for(const livery of all.livery) for(const [num, glow, horn] of [[null, "none", "
 	if(!back || Object.keys(look).some(k => back[k] !== look[k])) bad++;
 }
 ok(bad === 0, `${n} looks (every paint) go to a code and come back identical, e.g. ${lookToCode({ livery: "flames", number: 7, glow: "none" })}`);
-ok(lookToCode({}) === "GPL1.factory.-.none.white.warm.rookie.classic.classic.none.classic" && parseLookCode(lookToCode({}))?.number === null, "the default look is GPL1.factory.-.none.white.warm.rookie.classic.classic.none.classic");
+ok(lookToCode({}) === "GPL1.factory.-.none.white.warm.rookie.classic.classic.none.classic.confetti" && parseLookCode(lookToCode({}))?.number === null, "the default look is GPL1.factory.-.none.white.warm.rookie.classic.classic.none.classic.confetti");
 const legacy = parseLookCode("GPL1.flames.7.none.white.warm.rookie.classic");
 ok(legacy && legacy.livery === "flames" && legacy.numstyle === "classic" && legacy.namefx === "none" && legacy.startlights === "classic", "an older code that stops at the horn still works (the rest take their defaults)");
 const full = parseLookCode("GPL1.flames.7.none.white.warm.rookie.classic.gold.flame.pumpkin");
-ok(full && full.numstyle === "gold" && full.namefx === "flame" && full.startlights === "pumpkin", "and a full one carries the number style, name effect and start lights"); 
+ok(full && full.numstyle === "gold" && full.namefx === "flame" && full.startlights === "pumpkin" && full.podium === "confetti", "a code that stops at the start lights carries those, with the default podium style");
+const withPodium = parseLookCode("GPL1.flames.7.none.white.warm.rookie.classic.gold.flame.pumpkin.fireworks");
+ok(withPodium && withPodium.podium === "fireworks" && lookToCode(withPodium) === "GPL1.flames.7.none.white.warm.rookie.classic.gold.flame.pumpkin.fireworks", "and a full one adds the podium style and comes back out the same");
 let accepted = 0;
-const junk = ["", "hello", "GPL1", "GPL1.a.b.c", "GPL2.factory.-.none.white.warm.rookie.classic", "GPL1.nope.-.none.white.warm.rookie.classic", "GPL1.factory.0.none.white.warm.rookie.classic", "GPL1.factory.100.none.white.warm.rookie.classic", "GPL1.factory.-1.none.white.warm.rookie.classic", "GPL1.factory.x.none.white.warm.rookie.classic", "GPL1.factory.-.none.white.warm.rookie.classic.classic.none.classic.extra", "GPL1.factory.-.none.white.warm.rookie.classic.nope", "GPL1.factory.-.none.white.warm.rookie.classic.classic.constructor", "<script>", "GPL1.factory.-.none.white.warm.rookie.<img>", "__proto__", "GPL1.constructor.-.none.white.warm.rookie.classic", "GPL1.factory.-.none.white.warm.rookie.toString"];
+const junk = ["", "hello", "GPL1", "GPL1.a.b.c", "GPL2.factory.-.none.white.warm.rookie.classic", "GPL1.nope.-.none.white.warm.rookie.classic", "GPL1.factory.0.none.white.warm.rookie.classic", "GPL1.factory.100.none.white.warm.rookie.classic", "GPL1.factory.-1.none.white.warm.rookie.classic", "GPL1.factory.x.none.white.warm.rookie.classic", "GPL1.factory.-.none.white.warm.rookie.classic.classic.none.classic.extra", "GPL1.factory.-.none.white.warm.rookie.classic.classic.none.classic.confetti.extra", "GPL1.factory.-.none.white.warm.rookie.classic.classic.none.classic.constructor", "GPL1.factory.-.none.white.warm.rookie.classic.nope", "GPL1.factory.-.none.white.warm.rookie.classic.classic.constructor", "<script>", "GPL1.factory.-.none.white.warm.rookie.<img>", "__proto__", "GPL1.constructor.-.none.white.warm.rookie.classic", "GPL1.factory.-.none.white.warm.rookie.toString"];
 for(const j of junk) if(parseLookCode(j)) accepted++;
 ok(accepted === 0, "nothing that isn't a look code gets in (" + junk.length + " tries, including prototype names)");
 ok(parseLookCode("  " + lookToCode({ livery: "stripe" }) + "  ") !== null, "spaces round a pasted code are fine");
 
 // Using a friend's look gives you what you've unlocked and lists the rest.
 const mine = Object.assign({}, DEFAULT_LOOK, { livery: "factory", number: 5 });
-const theirs = parseLookCode("GPL1.flames.1.rainbow.white.warm.champion.train");
+const theirs = parseLookCode("GPL1.flames.1.rainbow.white.warm.champion.train.classic.none.classic.rainbow");
 const res = applyLook(mine, theirs, fresh, false);
 ok(res.look.livery === "factory" && res.look.glow === "none" && res.look.horn === "classic", "locked paint, glow and horn stay as they were");
 ok(res.look.number === 5 && res.skipped.some(s => s.name === "#1"), "#1 isn't taken unless it's yours, and is listed");
 ok(res.skipped.length >= 5 && res.skipped.every(s => s.name && s.need), "each thing left out comes with what it takes (" + res.skipped.map(s => s.name).join(", ") + ")");
-const rich = progress(null, { solo: { "prize:livery:flames": true, "prize:glow:rainbow": true, "prize:title:champion": true, "prize:horn:train": true } });
+const rich = progress(null, { solo: { "prize:livery:flames": true, "prize:glow:rainbow": true, "prize:title:champion": true, "prize:horn:train": true, "prize:podium:rainbow": true } });
 const res2 = applyLook(mine, theirs, rich, true);
-ok(res2.look.livery === "flames" && res2.look.glow === "rainbow" && res2.look.title === "champion" && res2.look.horn === "train" && res2.look.number === 1 && res2.skipped.length === 0, "with everything unlocked (and the crown) the whole look comes across");
+ok(res.look.podium === "confetti", "a podium style you haven't unlocked isn't taken from a code either (theirs is " + theirs.podium + ")");
+ok(res2.look.livery === "flames" && res2.look.glow === "rainbow" && res2.look.title === "champion" && res2.look.horn === "train" && res2.look.podium === "rainbow" && res2.look.number === 1 && res2.skipped.length === 0, "with everything unlocked (and the crown) the whole look comes across");
 
 if(problems.length){ console.log("\n" + problems.length + " problem(s)"); process.exit(1); }
 console.log("\ncodes-test: OK");

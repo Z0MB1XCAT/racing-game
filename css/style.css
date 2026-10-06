@@ -473,6 +473,8 @@ a.race-btn{ color: inherit; text-decoration: none; }
 .garage-paste .text-input{ flex: 1; min-width: 0; font-size: 14px; }
 .garage-paste .go-btn{ flex: none; font-size: 18px; padding: 10px 16px; }
 .msg.ok{ color: var(--green); font-weight: 600; }
+/* The winner's celebration, drawn on a canvas over everything but the pop-ups. */
+#podiumFx{ position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 8; }
 /* Voting for the next track on the results screen. */
 .vote-box{ display: grid; gap: var(--s2); max-width: 760px; }
 .vote-row{ display: flex; flex-wrap: wrap; gap: var(--s2); }

@@ -2,6 +2,7 @@
 //   node tools/e2e.mjs solo [trackId]     race bots, hold right-ish steering, screenshot HUD + results
 //   node tools/e2e.mjs online             two tabs over ?localnet: host, join, race
 //   node tools/e2e.mjs vote               three tabs: race, then vote for the next track on the results screen
+//   node tools/e2e.mjs podium             the winner's celebration: previewed in the garage (locked styles too), and the winner's own style on every screen of an online race
 //   node tools/e2e.mjs modes              Sprint/Endurance presets, Hot Potato, Cat and mouse, Crown chase, the wheel of chaos, a reversed grid, and a party style online
 //   node tools/e2e.mjs looks              a name effect, start lights and number style: seen by the right people in the lobby, tower, labels and results
 //   node tools/e2e.mjs codes              prize codes (right, wrong, expired, locked out) and look codes between two players
@@ -1270,6 +1271,73 @@ if(flow === "vote"){
 	await wait(2500);
 	const next = await Promise.all(all.map(p => p.evaluate(() => ({ id: window.__game.room.race.id, track: window.__game.room.race.track, setting: window.__game.room.settings.track, screen: window.__game.screen }))));
 	console.log("the next race is on the track with the most votes, on every screen:", next.every(x => x.id === 2 && x.track === winnerId && x.setting === winnerId && x.screen === "race"), "| winner:", winnerId, JSON.stringify(next.map(x => x.track)));
+}
+
+if(flow === "podium"){
+	// The winner's celebration: previewed in the garage (even for a locked style, which stays unequipped), and on the results screen of an
+	// online race it's the WINNER's style on every screen, drawn for a few seconds.
+	const host = await open(base + "?localnet&season=off", 1280, 800);
+	await host.evaluate(() => {
+		const keys = ["podium:flame", "podium:fireworks"];
+		localStorage.setItem("org-gp:solo", JSON.stringify(Object.fromEntries(keys.map(k => ["prize:" + k, true]))));
+		localStorage.setItem("org-gp:profile", JSON.stringify({ name: "Nova", hue: 200, body: "classic", look: { livery: "factory", number: 27, podium: "flame" } }));
+	});
+	await host.reload({ waitUntil: "networkidle0" }); await wait(2000);
+	console.log("the podium style stays after a reload:", await host.evaluate(() => window.__game.profile.look.podium));
+	const pixels = p => p.evaluate(() => { const c = document.getElementById("podiumFx"); if(c.hidden) return -1; const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data; let n = 0; for(let i = 3; i < d.length; i += 16) if(d[i] > 20) n++; return n; });
+	const peak = async (p, ms = 2400) => { let best = -1; for(let t = 0; t < ms; t += 400){ best = Math.max(best, await pixels(p)); await wait(400); } return best; };
+	const fx = p => p.evaluate(() => { const c = document.getElementById("podiumFx"); return { hidden: c.hidden, style: c.dataset.style || null }; });
+	// ---- The garage's Podium tab.
+	await click(host, "#btnGarage"); await wait(1200);
+	await host.evaluate(() => document.querySelector('#garageTab [data-v="podium"]').click());
+	await wait(500);
+	const items = await host.evaluate(() => [...document.querySelectorAll("#garageItems .gitem")].map(b => ({ name: b.querySelector(".gname").textContent, locked: b.classList.contains("locked"), on: !!b.querySelector(".gtag") })));
+	console.log("five podium styles, Confetti, Fireworks and Flames open, Flames worn:", items.length === 5 && items.filter(i => !i.locked).map(i => i.name).join() === "Confetti,Fireworks,Flames" && items.find(i => i.on)?.name === "Flames", JSON.stringify(items));
+	const pick = name => host.evaluate(n => [...document.querySelectorAll("#garageItems .gitem")].find(b => b.querySelector(".gname").textContent === n).click(), name);
+	await pick("Fireworks"); await wait(300);
+	console.log("choosing Fireworks wears it and plays it:", await host.evaluate(() => window.__game.profile.look.podium), JSON.stringify(await fx(host)));
+	console.log("and it really draws on the canvas (pixels seen):", await peak(host, 2800));
+	await shot(host, "podium-garage");
+	await pick("Rainbow"); await wait(300);
+	const locked = await host.evaluate(() => ({ worn: window.__game.profile.look.podium }));
+	console.log("a locked style is previewed (still plays) but not worn:", locked.worn === "fireworks" && (await fx(host)).style === "rainbow", JSON.stringify([locked, await fx(host)]));
+	await host.evaluate(() => document.querySelector("#screen-garage [data-back]").click()); await wait(500);
+	console.log("leaving the garage stops it:", JSON.stringify(await fx(host)));
+	await host.evaluate(() => { window.__game.profile.look = Object.assign({}, window.__game.profile.look, { podium: "flame" }); });
+	// ---- An online race: two drivers, the winner's style shows on both screens.
+	const popup = new Promise(r => browser.once("targetcreated", t => r(t.page())));
+	await host.evaluate(u => window.open(u, "guest", "popup,width=1100,height=700"), base + "?localnet&season=off");
+	const guest = await popup;
+	guest.on("pageerror", e => errors.push("guest pageerror: " + e.message));
+	await guest.setViewport({ width: 1100, height: 700 });
+	await guest.waitForFunction(() => window.__game, { timeout: 60000 });
+	await wait(1200);
+	// (The two tabs share one browser profile: the guest is its own driver with the plain confetti.)
+	await guest.evaluate(() => { const g = window.__game; g.profile.name = "Zed"; g.profile.look = Object.assign({}, g.profile.look, { podium: "confetti" }); });
+	await click(host, "#btnOnline"); await wait(400);
+	await click(host, "#hostBtn"); await wait(1200);
+	const code = await host.$eval("#roomCode", e => e.textContent);
+	await click(guest, "#btnOnline"); await wait(400);
+	await guest.evaluate(c => { const i = document.getElementById("codeInput"); i.value = c; i.dispatchEvent(new Event("input")); }, code);
+	await click(guest, "#joinBtn"); await wait(1500);
+	await host.evaluate(() => window.__game.net.updateSettings({ laps: 1, track: "figure8" }));
+	await wait(700);
+	await click(host, "#lobbyGo");
+	for(let i = 0; i < 40; i++){ const ph = await guest.evaluate(() => window.__game.race && window.__game.race.phase).catch(() => null); if(ph === "racing") break; await wait(500); }
+	console.log("no celebration during the race:", JSON.stringify([await fx(host), await fx(guest)]));
+	await autodrive(host); await autodrive(guest);
+	console.log("results:", await waitScreen(host, "results", 150), await waitScreen(guest, "results", 150));
+	await wait(900);
+	const winner = await host.evaluate(() => document.querySelector("#resultsBody tr .name").textContent.trim().replace(/\s*AI$/, ""));
+	const want = winner === "Nova" ? "flame" : "confetti";
+	const seen = await Promise.all([host, guest].map(fx));
+	console.log("the winner is " + winner + ": both screens play their style (" + want + "):", seen.every(s => !s.hidden && s.style === want), JSON.stringify(seen));
+	const px = await Promise.all([peak(host, 2000), peak(guest, 2000)]);
+	console.log("and both really draw it:", px.every(n => n > 20), JSON.stringify(px));
+	await shot(host, "podium-results"); await shot(guest, "podium-results-guest");
+	// It's gone after a few seconds and when you leave the screen.
+	await wait(6500);
+	console.log("after its few seconds the canvas is clear and hidden again:", JSON.stringify(await Promise.all([host, guest].map(fx))));
 }
 
 console.log(errors.length ? "ERRORS:\n" + [...new Set(errors)].join("\n") : "no page errors");

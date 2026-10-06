@@ -821,6 +821,27 @@ export const sfx = {
 	// Pointing at something: very quiet, and only where there's a recording (a synthesised one would only be noise).
 	hover(){ if(bank) bank.play("ui.hover", { vol: 0.16 }); },
 	wrong(){ tone(185, 0.16, "square", 0.05); tone(185, 0.16, "square", 0.05, 0.2); },
+	// The winner's podium style on the results screen (one jingle for each celebration; js/podium.js draws the show).
+	podium(style){
+		if(!ctx || ctx.state === "closed" || !buses) return;
+		if(style === "fireworks"){
+			tone(500, 0.75, "sine", 0.09, 0, 3.2);
+			[0.8, 1.15, 1.5].forEach(w => { burst(0.2, 0.22, "lowpass", 800, 1, w); tone(160, 0.2, "sine", 0.18, w, 0.5); [2093, 2637].forEach((f, i) => tone(f, 0.5, "triangle", 0.04, w + 0.05 + i * 0.06)); });
+		}else if(style === "fizz"){
+			burst(1.4, 0.09, "highpass", 6500, 0.5);
+			for(let i = 0; i < 9; i++) tone(1100 + Math.random() * 1700, 0.06, "sine", 0.08, i * 0.1 + Math.random() * 0.04, 1.7);
+			[784, 988, 1175].forEach((f, i) => tone(f, 0.35, "triangle", 0.1, 0.15 + i * 0.1));
+		}else if(style === "flame"){
+			burst(0.9, 0.2, "bandpass", 450, 0.8); burst(0.7, 0.12, "bandpass", 1500, 0.9, 0.1);
+			brass(196, 0.7, 0.08, 0.05); brass(294, 0.7, 0.07, 0.05); brass(392, 0.9, 0.07, 0.3);
+		}else if(style === "rainbow"){
+			[523, 587, 659, 698, 784, 880, 988, 1047, 1319].forEach((f, i) => { tone(f, 0.22, "triangle", 0.09, i * 0.07); tone(f * 2, 0.3, "sine", 0.025, i * 0.07 + 0.02); });
+			bell(2093, 0.05, 0.7, 1.0); crowd(1.6, 0.05);
+		}else{
+			[784, 988, 1175, 1568].forEach((f, i) => { tone(f, 0.3, "triangle", 0.1, i * 0.08); tone(f * 2, 0.2, "sine", 0.025, i * 0.08 + 0.02); });
+			crowd(2.0, 0.08);
+		}
+	},
 	// Something unlocked in the garage / levelled up.
 	unlock(){ [784, 988, 1175, 1568].forEach((f, i) => tone(f, 0.3, "triangle", 0.1, i * 0.06)); bell(2093, 0.05, 0.25, 0.8); if(bank) bank.play("ui.sparkle", { vol: 0.4, when: 0.12 }); }
 };

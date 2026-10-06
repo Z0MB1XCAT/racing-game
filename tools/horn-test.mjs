@@ -1,5 +1,6 @@
 // The horn (H in a race), in a real browser. Needs node serve.mjs running.
-//   1. every horn sound is audible, not clipped, and none is wildly louder than the others;
+//   1. every horn sound is audible, not clipped, and none is wildly louder than the others (and the same for the five podium jingles,
+//      with bad values and made-up styles doing nothing worse than nothing);
 //   2. over ?localnet, a horn pressed in one tab is heard in the other (the press travels with the car's updates),
 //      even a very short tap, and the winner's fanfare plays;
 //   3. with the room's Horn switched Off, pressing H does nothing and nobody hears anything.
@@ -49,6 +50,23 @@ console.log("the sounds");
 	ok(rows.every(r => r.peak < 0.95), "none clips");
 	const loud = rows.map(r => r.rms).sort((a, b) => a - b), med = loud[Math.floor(loud.length / 2)];
 	ok(rows.every(r => r.rms > med / 4 && r.rms < med * 4), "none is more than 4 times louder or quieter than the middle one");
+	// The winner's podium jingles (sfx.podium), one per style, each listened to for its length.
+	const styles = ["confetti", "fireworks", "fizz", "flame", "rainbow"];
+	const jr = [];
+	for(const style of styles){
+		await p.evaluate(async st => (await import("/js/audio.js")).sfx.podium(st), style);
+		jr.push({ style, ...(await listen(p, 2600)) });
+		await wait(500);
+	}
+	for(const r of jr) console.log(`    ${r.style.padEnd(9)} peak ${r.peak.toFixed(3)}  average ${r.rms.toFixed(4)}`);
+	ok(jr.every(r => r.peak > 0.03), "every podium jingle is audible");
+	ok(jr.every(r => r.peak < 0.95), "none clips");
+	const jl = jr.map(r => r.rms).sort((a, b) => a - b), jmed = jl[Math.floor(jl.length / 2)];
+	ok(jr.every(r => r.rms > jmed / 4 && r.rms < jmed * 4), "none is more than 4 times louder or quieter than the middle one");
+	const hornAvg = rows.reduce((a, r) => a + r.rms, 0) / rows.length, jingleAvg = jr.reduce((a, r) => a + r.rms, 0) / jr.length;
+	ok(jingleAvg < hornAvg * 6 && jingleAvg > hornAvg / 12, "and they sit about as loud as the horns (average " + jingleAvg.toFixed(4) + " against " + hornAvg.toFixed(4) + ")");
+	const threw = await p.evaluate(async () => { const a = await import("/js/audio.js"); try { for(const v of [undefined, null, "nope", 5, {}, "__proto__"]) a.sfx.podium(v); return null; } catch(e){ return e.message; } });
+	ok(threw === null, "a missing or made-up style plays the plain confetti jingle and never throws" + (threw ? " (threw: " + threw + ")" : ""));
 	await p.close();
 }
 

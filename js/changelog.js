@@ -3,6 +3,13 @@
 // when a version has something players will notice (version = the VERSION in js/config.js that shipped it).
 export const CHANGELOG = [
 	{
+		version: "2026.10.06-3", date: "6 October 2026", title: "Podium styles",
+		items: [
+			"Pick how you celebrate when you win: Confetti, Fireworks, Fizz, Flames or Rainbow (Garage > Podium). Everyone in the room sees the winner's style on the results screen, with its own jingle.",
+			"Tap a style in the garage to see and hear it, even one you haven't unlocked yet. Your look code carries it too."
+		]
+	},
+	{
 		version: "2026.10.06-2", date: "6 October 2026", title: "Vote for the next track",
 		items: [
 			"After an online race you can vote for the next track: the one you just raced or two others. The most votes wins when the next race starts."

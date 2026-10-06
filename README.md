@@ -196,7 +196,7 @@ original did).
     crashes and the finish (photo finishes included). It's skippable, and afterwards there's a
     **Full replay** with play, pause, speed and a timeline.
 - **Garage** (unlockable looks, no effect on speed):
-  - **What you can change:** paint, race number (and the plate behind it), underglow, headlight colour, tyre-smoke colour, a title, a horn, a name effect and your start lights.
+  - **What you can change:** paint, race number (and the plate behind it), underglow, headlight colour, tyre-smoke colour, a title, a horn, a name effect, your start lights and your podium style.
   - **Paint** (43 of them) includes **Blackout** (gloss black, free for everyone), Matte Black,
     **Monster** (black with glowing green claw marks), stripes, chequered, carbon, camo, arctic camo,
     tiger, zebra, hazard, candy cane, polka dots, pixel camo, sunset, galaxy, synthwave, lightning,
@@ -209,6 +209,12 @@ original did).
     in the lobby and in the results, for everyone in the room to see. Only the game's own effects exist: whatever a look names is
     looked up in the game's own list, so a modified copy can't put anything else on the page.
   - **Start lights** (Start lights tab): red, amber, ice, green, neon (and a limited pumpkin set in October). Only you see yours.
+  - **Podium style** (Podium tab): what happens on the results screen when *you* win, for everyone in the room to see: **Confetti**
+    (free), **Fireworks** (level 8), **Fizz** (level 14: a sprayed bottle and bubbles), **Flames** (10 online wins) and **Rainbow**
+    (level 22, or win a weekly challenge). Each has its own little jingle. It's a canvas of particles over the results for about
+    six seconds (`js/podium.js`), looks only: someone who has asked their computer for less motion gets the jingle and no show.
+    The winner's style travels with the results, so every screen plays the same one. Tapping a style in the garage plays it (locked ones too, so you
+    can see what you're working towards). It's part of the look code (a last part, so older codes still work).
   - **Headlights:** halogen, xenon, rally yellow, ice blue, green, pink, purple, red, your car colour
     or rainbow. The lamps and the beam on the road at night both take the colour, and everyone in a
     room sees yours. The garage shows the beam on your car while you pick.
@@ -306,7 +312,7 @@ original did).
   further away they are. Under the car: tyre squeal (a wobbling tone with the scrub of rubber under it), a rattle
   that speeds up as you run over a kerb, and a rough hush on the grass. Crashes layer a recorded crunch (from a
   free sound pack) on a synthesised thump; the menus have soft recorded clicks, ticks and a faint hover sound.
-  There's wind in the slipstream, start-light beeps, a white-flag bell, a finish fanfare and crowd. Everything
+  There's wind in the slipstream, start-light beeps, a white-flag bell, a finish fanfare and crowd, and a jingle for the winner's podium style. Everything
   also works with no sound files at all: each recorded sound has a synthesised version to fall back on.
 - **Music** that follows the race: three driving tracks (a daytime one in two flavours, and a slow, spacious one
   after dark), each built in layers. A pulse and a pad at the start, then hats, an arpeggio, a lead melody as
@@ -661,6 +667,7 @@ The last two also need puppeteer installed.
 - `node tools/levels-test.mjs` checks driver levels to 100, no browser: levels 1 to 30 need exactly the XP they always did, every level after is 500 XP more, the level from any XP is right at every boundary and stops at 100, and the rewards past 30 exist and aren't open early.
 - `node tools/looks-test.mjs` checks the garage's number plates, name effects, start-light themes and the new titles, no browser: every item has a free default and a real way to get it, every effect and theme has its CSS, made-up and prototype names give nothing, and the solo-goal rules (`soloGoals` in `js/cosmetics.js`) tick off exactly what they should: Night Owl, Wet Weather Wizard, Underdog, Clean Racer and the Halloween paint.
 - `node tools/codes-test.mjs` checks prize codes and look codes, no browser: a code is found however it's typed, wrong, short and expired ones aren't, the shipped list holds no plain codes, the `codes.mjs` tool adds, lists, checks and removes on a copy, a prize unlocks any item for good, and look codes round-trip for every paint and refuse anything else (made-up and prototype names included).
+- `node tools/podium-test.mjs` checks the winner's celebration, no browser: the garage's podium styles are the ones the show can draw, a new driver has only Confetti, every kind of particle is made of real numbers and starts on screen at any screen size, fireworks burst in the upper part of the screen, each show starts straight away and stops by itself (drawn against a canvas that draws nothing), and no canvas, a made-up style or "less motion" give no show and no error.
 - `node tools/vote-test.mjs` checks the next-track vote, no browser: the ballot is the track just raced plus two others, the same on every screen and different each race, every track turns up, votes for anything not on the ballot (made-up and prototype names included) don't count, the most votes wins, and a tie is settled the same way everywhere and fairly over many races.
 - `node tools/party-test.mjs` checks the party styles and the wheel of chaos against a pretend race, no browser: Hot Potato (one holder, passes, the grace time, fuses, the last car wins), Cat and mouse (catches, the cat winning, the time limit and the order it leaves the table in), Crown chase (seconds on top add up, the winner isn't whoever leads at the end), a new host carrying on from the shared state, and the chaos rules (same for everyone, never the same lap after lap, steering effects bounded).
 - `node tools/season-test.mjs` checks the seasons and the Halloween challenge week, no browser: the look comes on at the start of 1 October and goes off at the start of 1 November in every year (a leap year too); `?season=` and the Settings switch change what's drawn but never what can be earned; the Halloween challenge is the week with 31 October in it, on a forest circuit at night in fog, one a year to 2060, never repeating a track next to it, and no ordinary week is touched.
@@ -673,7 +680,7 @@ The last two also need puppeteer installed.
 - `node tools/build-voices.mjs [eng] [lead] [col] [--force] [--check]` renders the lines in `js/voicelines.js` into `assets/voice/*.pak` with the Kokoro voice (needs `npm i kokoro-js` in a scratch folder and `KOKORO_DIR` pointing at it, plus ffmpeg); `--check` listens back with a speech recogniser. Only needed when a line or a voice changes.
 - `node tools/build-sfx.mjs <folder>` packs the chosen sounds from Kenney's Impact Sounds, Interface Sounds and UI Audio packs (CC0) into `assets/audio/sfx.pak`.
 - `node tools/contact-test.mjs monaco` compares original and soft car contact (side hit, rear tap, a bot race).
-- `node tools/e2e.mjs solo|online|rematch|vote|invite|whatsnew|halloween|codes|announce|looks|modes|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
+- `node tools/e2e.mjs solo|online|rematch|vote|podium|invite|whatsnew|halloween|codes|announce|looks|modes|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
 
 ## Credits and licence
 

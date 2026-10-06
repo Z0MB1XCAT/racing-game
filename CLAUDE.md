@@ -56,6 +56,7 @@ on purpose; `npm run setup` recreates them. If the server is already running, do
 | `remnant-check.mjs [id]` | the closed-off roads of a venue's other layouts never show through the track |
 | `e2e.mjs <flow> [trackId]` | drives the game in headless Chrome (flows: solo, online, tv, midjoin, p2p, quali, champ, migrate, ghost, ...) |
 | `audio-test.mjs` | sound survives bad values and rebuilds itself if it breaks |
+| `podium-test.mjs` | the winner's celebration: styles match the garage, particles sane at any screen size, fireworks burst on screen, shows stop by themselves (no browser) |
 | `vote-test.mjs` | the next-track vote: the ballot, counting, the winner and tie-breaks (no browser) |
 | `party-test.mjs` | Hot Potato, Cat and mouse, Crown chase and the wheel of chaos against a pretend race (no browser) |
 | `levels-test.mjs` | driver levels to 100: the old curve to 30 untouched, 500 XP a level after, boundaries right (no browser) |
@@ -65,7 +66,7 @@ on purpose; `npm run setup` recreates them. If the server is already running, do
 | `music-test.mjs` | the menu songs (usual and October's) are audible, unclipped and about as loud as each other |
 | `changelog-test.mjs` | the What's new changelog is well formed, newest first, and versions compare right (no browser) |
 | `unlock-test.mjs` | the results screen's "Next unlock": always a locked item, level goals in XP, none once all is open (no browser) |
-| `horn-test.mjs` | every horn sound is audible and balanced; a press (even a 15 ms tap) in one tab is heard in the other; Horn Off in a room silences it |
+| `horn-test.mjs` | every horn sound and podium jingle is audible and balanced; a press (even a 15 ms tap) in one tab is heard in the other; Horn Off in a room silences it |
 | `cover-test.mjs` | no rain under the Monaco tunnel / Suzuka bridge, and the sound knows it's covered |
 | `weather-test.mjs` | dynamic weather over thousands of made-up races: calm (rain in about 1 race in 4, never twice), slow changes, cloud before rain, forecast, same sky everywhere; no browser |
 | `sky-shots.mjs [id] [tod-weather ...]` | screenshots a track in each time and weather (`day-storm+bolt` holds a lightning strike); into `temporary screenshots/sky/` |

@@ -207,6 +207,15 @@ export const LIGHTTHEMES = [
 	{ id: "pumpkin", name: "Pumpkin", color: "#ff7a12", season: "halloween", unlock: [{ solo: "halloween" }] }
 ];
 
+// The winner's celebration on the results screen, seen by everyone in the room (drawn in js/podium.js, with a jingle from js/audio.js).
+export const PODIUMS = [
+	{ id: "confetti", name: "Confetti", unlock: [{ free: true }] },
+	{ id: "fireworks", name: "Fireworks", unlock: [{ level: 8 }] },
+	{ id: "fizz",     name: "Fizz", unlock: [{ level: 14 }] },
+	{ id: "flame",    name: "Flames", unlock: [{ wins: 10 }] },
+	{ id: "rainbow",  name: "Rainbow", unlock: [{ level: 22 }, { weeklyWins: 1 }] }
+];
+
 export const CATEGORIES = [
 	{ id: "livery", name: "Paint", items: LIVERIES },
 	{ id: "number", name: "Number", items: null },
@@ -217,10 +226,11 @@ export const CATEGORIES = [
 	{ id: "horn",   name: "Horn", items: HORNS },
 	{ id: "numstyle", name: "Number style", items: NUMSTYLES },
 	{ id: "namefx", name: "Name effect", items: NAMEFX },
-	{ id: "startlights", name: "Start lights", items: LIGHTTHEMES }
+	{ id: "startlights", name: "Start lights", items: LIGHTTHEMES },
+	{ id: "podium", name: "Podium style", items: PODIUMS }
 ];
 
-export const DEFAULT_LOOK = { livery: "factory", number: null, glow: "none", smoke: "white", lights: "warm", title: "rookie", horn: "classic", numstyle: "classic", namefx: "none", startlights: "classic" };
+export const DEFAULT_LOOK = { livery: "factory", number: null, glow: "none", smoke: "white", lights: "warm", title: "rookie", horn: "classic", numstyle: "classic", namefx: "none", startlights: "classic", podium: "confetti" };
 
 export const SOLO_GOALS = {
 	race: "Finish a race against bots",
@@ -238,7 +248,7 @@ export const SOLO_GOALS = {
 };
 
 const byId = list => Object.fromEntries(list.map(i => [i.id, i]));
-const INDEX = { livery: byId(LIVERIES), glow: byId(GLOWS), smoke: byId(SMOKES), lights: byId(LIGHTS), title: byId(TITLES), horn: byId(HORNS), numstyle: byId(NUMSTYLES), namefx: byId(NAMEFX), startlights: byId(LIGHTTHEMES) };
+const INDEX = { livery: byId(LIVERIES), glow: byId(GLOWS), smoke: byId(SMOKES), lights: byId(LIGHTS), title: byId(TITLES), horn: byId(HORNS), numstyle: byId(NUMSTYLES), namefx: byId(NAMEFX), startlights: byId(LIGHTTHEMES), podium: byId(PODIUMS) };
 // (Only the game's own items: a look from outside can name anything, even "constructor" or "__proto__".)
 const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 export function item(cat, id){ return own(INDEX, cat) && own(INDEX[cat], id) ? INDEX[cat][id] : undefined; }
@@ -302,7 +312,7 @@ export function requirement(it, P){
 }
 
 // What each kind of item is called in a sentence ("Flames paint").
-export const CAT_NOUN = { livery: "paint", glow: "underglow", smoke: "tyre smoke", lights: "headlights", title: "title", horn: "horn", numstyle: "number style", namefx: "name effect", startlights: "start lights" };
+export const CAT_NOUN = { livery: "paint", glow: "underglow", smoke: "tyre smoke", lights: "headlights", title: "title", horn: "horn", numstyle: "number style", namefx: "name effect", startlights: "start lights", podium: "podium style" };
 
 // Roughly how much play each requirement still needs, in XP (a race is worth 60, a win 150): used to pick what's closest.
 const COST_PER = { races: 60, podiums: 90, wins: 150, titles: 400, records: 400, weeklyWins: 700 };
@@ -338,7 +348,7 @@ export function unlockedIds(P){
 // The crown holder is the only one who may wear #1.
 export function cleanLook(look, P, isCrown){
 	const l = Object.assign({}, DEFAULT_LOOK, look);
-	for(const cat of ["livery", "glow", "smoke", "lights", "title", "horn", "numstyle", "namefx", "startlights"]){
+	for(const cat of ["livery", "glow", "smoke", "lights", "title", "horn", "numstyle", "namefx", "startlights", "podium"]){
 		const it = item(cat, l[cat]);
 		if(!it || !isUnlocked(it, P)) l[cat] = DEFAULT_LOOK[cat];
 	}
@@ -374,18 +384,18 @@ export function soloGoals({ me, results, sky, level, mode, hits, lastOnGrid, oct
 // ----- Look codes -----
 // A look as one line of text to send a friend: GPL1.<paint>.<number or ->.<underglow>.<smoke>.<headlights>.<title>.<horn>
 // e.g. "GPL1.flames.7.none.white.warm.rookie.classic". Pasting one gives you whatever of it you've unlocked; the rest stays as it was.
-// (The last three parts, the number style, name effect and start lights, can be left off: older codes stop at the horn.)
-const LOOK_PARTS = ["livery", "glow", "smoke", "lights", "title", "horn", "numstyle", "namefx", "startlights"];
+// (The last four parts, the number style, name effect, start lights and podium style, can be left off: older codes stop earlier.)
+const LOOK_PARTS = ["livery", "glow", "smoke", "lights", "title", "horn", "numstyle", "namefx", "startlights", "podium"];
 export function lookToCode(look){
 	const l = Object.assign({}, DEFAULT_LOOK, look);
-	return ["GPL1", l.livery, l.number == null ? "-" : l.number, l.glow, l.smoke, l.lights, l.title, l.horn, l.numstyle, l.namefx, l.startlights].join(".");
+	return ["GPL1", l.livery, l.number == null ? "-" : l.number, l.glow, l.smoke, l.lights, l.title, l.horn, l.numstyle, l.namefx, l.startlights, l.podium].join(".");
 }
 // The look a code describes, or null if it isn't a look code (or names something that doesn't exist).
 export function parseLookCode(text){
 	const parts = String(text || "").trim().split(".");
-	if(parts.length < 8 || parts.length > 11 || parts[0] !== "GPL1") return null;
-	const [, livery, number, glow, smoke, lights, title, horn, numstyle = DEFAULT_LOOK.numstyle, namefx = DEFAULT_LOOK.namefx, startlights = DEFAULT_LOOK.startlights] = parts;
-	const look = { livery, glow, smoke, lights, title, horn, numstyle, namefx, startlights, number: number === "-" ? null : /^\d{1,2}$/.test(number) ? Number(number) : NaN };
+	if(parts.length < 8 || parts.length > 12 || parts[0] !== "GPL1") return null;
+	const [, livery, number, glow, smoke, lights, title, horn, numstyle = DEFAULT_LOOK.numstyle, namefx = DEFAULT_LOOK.namefx, startlights = DEFAULT_LOOK.startlights, podium = DEFAULT_LOOK.podium] = parts;
+	const look = { livery, glow, smoke, lights, title, horn, numstyle, namefx, startlights, podium, number: number === "-" ? null : /^\d{1,2}$/.test(number) ? Number(number) : NaN };
 	if(Number.isNaN(look.number) || (look.number != null && look.number < 1)) return null;
 	for(const c of LOOK_PARTS) if(!item(c, look[c])) return null;
 	return look;

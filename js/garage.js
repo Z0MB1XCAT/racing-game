@@ -38,6 +38,14 @@ function swatch(cat, it, hue){
 		const beam = col === "rainbow" ? "conic-gradient(from 180deg at 50% 100%, red, yellow, lime, cyan, blue, magenta, red)" : `radial-gradient(ellipse 60% 95% at 50% 100%, ${col} 0 18%, transparent 75%)`;
 		return `radial-gradient(circle at 30% 82%, #fff 0 5%, transparent 7%), radial-gradient(circle at 70% 82%, #fff 0 5%, transparent 7%), ${beam}, #0d1118`;
 	}
+	// The winner's celebration: a few of its colours on the dark.
+	if(cat === "podium") return {
+		confetti: "radial-gradient(circle at 20% 30%, #ffd23a 0 6%, transparent 8%), radial-gradient(circle at 70% 22%, #ff5a8a 0 5%, transparent 7%), radial-gradient(circle at 45% 60%, #3ac8ff 0 6%, transparent 8%), radial-gradient(circle at 82% 70%, #5aff8a 0 5%, transparent 7%), radial-gradient(circle at 28% 80%, #fff 0 4%, transparent 6%), #0d1118",
+		fireworks: "radial-gradient(circle at 50% 42%, #ffd23a 0 4%, transparent 6%, transparent 22%, rgba(255,90,90,.9) 24% 27%, transparent 30%), radial-gradient(circle at 50% 42%, transparent 0 34%, rgba(90,200,255,.7) 36% 38%, transparent 40%), #0d1118",
+		fizz: "radial-gradient(circle at 25% 75%, transparent 0 7px, rgba(200,235,255,.7) 8px 9px, transparent 10px), radial-gradient(circle at 60% 50%, transparent 0 11px, rgba(200,235,255,.7) 12px 13px, transparent 14px), radial-gradient(circle at 78% 78%, transparent 0 5px, rgba(200,235,255,.7) 6px 7px, transparent 8px), #0d1118",
+		flame: "radial-gradient(ellipse 40% 60% at 50% 100%, #ffe27a 0 30%, #ff7a12 50%, #ff3a1a 70%, transparent 80%), #0d1118",
+		rainbow: "linear-gradient(120deg, #ff5a5a 0 18%, #ffd23a 18% 36%, #5aff8a 36% 54%, #3ac8ff 54% 72%, #b86bff 72%)"
+	}[it.id] || "#0d1118";
 	// The number's plate, drawn the way it will be on the car.
 	if(cat === "numstyle") return `url(${numberCanvas(27, it.id, hue).toDataURL()}) center / contain no-repeat #0d1118`;
 	// The five start lights, lit.
@@ -152,6 +160,7 @@ export function initGarage(ctx){
 				${open ? "" : '<svg class="glock" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3" fill="none" stroke="currentColor" stroke-width="2.2"/><rect x="5" y="10" width="14" height="10" rx="2" fill="currentColor"/></svg>'}`;
 			b.addEventListener("click", () => {
 				if(cat.id === "horn") ctx.audio.hornPreview(it.id);   // (hear it even while it's locked)
+				if(cat.id === "podium") ctx.podium(it.id);              // (and see and hear a podium style)
 				if(!open){ ctx.audio.sfx.wrong(); b.classList.remove("nope"); void b.offsetWidth; b.classList.add("nope"); return; }
 				ctx.audio.sfx.click();
 				ctx.S.profile.look = Object.assign({}, look, { [cat.id]: it.id });
