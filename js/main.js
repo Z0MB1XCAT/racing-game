@@ -33,6 +33,9 @@ import { Commentary } from "./commentary.js";
 import { build as buildSpeech, carPiece, gapPiece } from "./speechkit.js";
 import { CHANGELOG, entriesSince } from "./changelog.js";
 import { findCode } from "./codes.js";
+import { STYLES, styleOf, styleRace, maxLaps } from "./styles.js";
+import { chaosFor, chaosSteer } from "./chaos.js";
+import { PARTY } from "./party.js";
 import { configureSeason, halloween, season } from "./season.js";
 import { GAME_NAME, MAX_CARS, EDITOR_ENABLED, VOICES_ENABLED, ACCOUNTS, VERSION } from "./config.js";
 import * as phys from "./physics.js";
@@ -56,7 +59,7 @@ const S = {
 	race: null, ctx: null, frozen: false,
 	paused: false, pauseStart: 0, pausedTotal: 0,
 	net: null, room: null, raceId: null, resultsShown: null,
-	setup: { mode: "bots", trackId: "monza", reverse: false, laps: 3, bots: 5, level: "medium", gameMode: "race", draft: true, contact: "soft", tod: "default", weather: "clear", rounds: [], quali: false },
+	setup: { mode: "bots", trackId: "monza", reverse: false, laps: 3, bots: 5, level: "medium", gameMode: "race", draft: true, contact: "soft", tod: "default", weather: "clear", rounds: [], quali: false, style: "standard", chaos: false, gridRev: false },
 	champ: null, champEntrants: null, lastHost: null,
 	lobbyLevel: "medium",
 	lastDelta: null,
@@ -549,12 +552,23 @@ function showClimate(id, trackId, weather){
 	el.textContent = weather === "dynamic" ? "Follows the circuit's usual weather: " + (CLIMATE_NOTES[(def && def.theme) || "classic"] || CLIMATE_NOTES.classic) + " It changes slowly." : "";
 	el.hidden = !el.textContent;
 }
-seg($("setupQuali"), "0", v => { S.setup.quali = v === "1"; });
+seg($("setupQuali"), "0", v => { S.setup.quali = v === "1"; refreshSetup(); });
+// The race style (Sprint, Endurance, Hot Potato...), the wheel of chaos and the grid after qualifying.
+seg($("setupStyle"), "standard", v => {
+	S.setup.style = v;
+	const st = styleOf(v);
+	if(st.laps) S.setup.laps = st.laps; else if(v === "standard") S.setup.laps = defFor(S.setup.trackId).laps || 3;
+	lapStep.render();
+	refreshSetup();
+});
+seg($("setupChaos"), "0", v => { S.setup.chaos = v === "1"; });
+seg($("setupGridRev"), "0", v => { S.setup.gridRev = v === "1"; });
+const partyStyle = () => S.setup.gameMode === "race" && !!styleOf(S.setup.style).party;
 seg($("setupChase"), "mine", v => { S.setup.chase = v; });
 const setupOwnGhost = seg($("setupOwnGhost"), S.settings.hideMyGhost ? "0" : "1", v => { S.settings.hideMyGhost = v === "0"; saveSettings(); });
 seg($("setupLevel"), "medium", v => { S.setup.level = v; });
-const lapStep = stepper("laps", () => S.setup.laps, v => { S.setup.laps = v; }, () => 1, () => 20);
-const botStep = stepper("bots", () => S.setup.bots, v => { S.setup.bots = v; }, () => S.setup.gameMode === "elim" ? 1 : 0, () => MAX_CARS - 1);
+const lapStep = stepper("laps", () => S.setup.laps, v => { S.setup.laps = v; }, () => 1, () => maxLaps(S.setup.style));
+const botStep = stepper("bots", () => S.setup.bots, v => { S.setup.bots = v; }, () => S.setup.gameMode === "elim" || partyStyle() ? 1 : 0, () => MAX_CARS - 1);
 
 function openSetup(mode){
 	S.setup.mode = mode;
@@ -593,6 +607,7 @@ function pickSetupLayout(def){
 }
 function refreshSetup(){
 	if(champMode()){
+		for(const id of ["setupStyleRow", "setupChaosRow", "setupGridRow"]) $(id).hidden = true;
 		const r = S.setup.rounds.map(id => defFor(id));
 		$("setupName").textContent = r.length ? r.length + " round" + (r.length === 1 ? "" : "s") : "Pick tracks";
 		$("setupPlace").textContent = "Championship";
@@ -617,9 +632,13 @@ function refreshSetup(){
 	$("setupPlace").textContent = [def.place, def.realLength].filter(Boolean).join(" · ");
 	renderLayoutSeg($("setupLayout"), def.id, pickSetupLayout);
 	$("setupBlurb").textContent = def.blurb || "A track you made in the editor.";
-	$("modeHelp").textContent = S.setup.gameMode === "elim" ? "Every time the leader finishes a lap, the car in last place is out. Last car running wins." : "First across the line after the last lap wins.";
-	document.querySelector('[data-for="bots laps"]').hidden = S.setup.mode === "trial" || S.setup.gameMode === "elim";
-	if(S.setup.gameMode === "elim" && S.setup.bots < 1) S.setup.bots = 1;
+	$("modeHelp").textContent = S.setup.gameMode === "elim" ? "Every time the leader finishes a lap, the car in last place is out. Last car running wins." : styleOf(S.setup.style).help;
+	const trial = S.setup.mode === "trial", racing = !trial && S.setup.gameMode === "race";
+	$("setupStyleRow").hidden = !racing;
+	$("setupChaosRow").hidden = !racing || partyStyle();
+	$("setupGridRow").hidden = trial || !S.setup.quali;
+	document.querySelector('[data-for="bots laps"]').hidden = trial || S.setup.gameMode === "elim" || partyStyle();
+	if((S.setup.gameMode === "elim" || partyStyle()) && S.setup.bots < 1) S.setup.bots = 1;
 	botStep.render();
 	previewTrack(def, S.setup.reverse);
 	if(S.setup.mode === "trial") loadBoard(def);
@@ -680,13 +699,13 @@ function startSolo(){
 		}else startTrial(def, st.reverse, { tod: st.tod, weather: st.weather });
 		return;
 	}
-	const mode = st.gameMode;
+	const sr = styleRace(st.style, { mode: st.gameMode, laps: st.laps }), mode = sr.mode;
 	const race = grid => beginRace({
-		source: "solo", def, reverse: st.reverse, mode, laps: mode === "elim" ? 99 : st.laps,
+		source: "solo", def, reverse: st.reverse, mode, laps: mode === "elim" ? 99 : sr.laps, rule: sr.rule, chaos: st.gameMode === "race" && !sr.rule && st.chaos,
 		entrants: grid ? grid.map(id => entrants.find(e => e.id === id)).filter(Boolean) : entrants, myId: "me", draft: mode !== "trial" && st.draft, contact: st.contact, tod: st.tod || "default", weather: st.weather || "clear",
 		startAt: soloNow() + 700 + COUNTDOWN, authority: true, restart: startSolo
 	});
-	if(st.quali && st.mode === "bots") startQuali(def, st.reverse, entrants, race);
+	if(st.quali && st.mode === "bots") startQuali(def, st.reverse, entrants, grid => race(st.gridRev && grid ? grid.slice().reverse() : grid));
 	else race();
 }
 
@@ -697,10 +716,10 @@ function startBroadcast(){
 	const hues = spreadHues(n, S.profile.hue), names = [...BOT_NAMES].sort(() => Math.random() - 0.5);
 	const entrants = [];
 	for(let i = 0; i < n; i++) entrants.push({ id: "bot" + i, name: names[i % names.length], hue: hues[i], body: BODIES[Math.floor(Math.random() * BODIES.length)].id, look: botLook(), bot: st.level || "medium", local: true });
-	const mode = st.gameMode === "elim" ? "elim" : "race";
+	const sr = styleRace(st.style, { mode: st.gameMode === "elim" ? "elim" : "race", laps: st.laps }), mode = sr.mode;
 	audio.unlock();
 	beginRace({
-		source: "solo", def, reverse: st.reverse, mode, laps: mode === "elim" ? 99 : st.laps,
+		source: "solo", def, reverse: st.reverse, mode, laps: mode === "elim" ? 99 : sr.laps, rule: sr.rule,
 		entrants, myId: null, draft: st.draft, contact: st.contact, tod: st.tod || "default", weather: st.weather || "clear",
 		startAt: soloNow() + 700 + COUNTDOWN, authority: true, restart: startBroadcast, watch: true
 	});
@@ -838,12 +857,13 @@ function beginRace(opts){
 		scene, track: entry.track, tracker: entry.tracker, laps: opts.laps, mode: opts.mode,
 		entrants: opts.entrants, myId: opts.myId, startAt: opts.startAt, authority: opts.authority,
 		now: opts.source === "online" ? () => S.net.now() : soloNow,
-		net: opts.source === "online" ? S.net : null, ghost, rival: opts.rival || null, draft: opts.draft !== false, contact: opts.contact, hideOwnGhost: S.settings.hideMyGhost,
+		net: opts.source === "online" ? S.net : null, ghost, rival: opts.rival || null, draft: opts.draft !== false, contact: opts.contact, hideOwnGhost: S.settings.hideMyGhost, rule: opts.rule || null,
 		onEvent: (t, d) => onRaceEvent(t, d)
 	});
 	S.race.key = key;
 	S.atmos = makeAtmosphere({ tod: opts.tod, weather: opts.weather }, S.world.theme, opts.startAt);
 	S.rainOn = false;
+	S.baseAtmos = S.atmos; S.chaosRule = null;       // (the wheel of chaos swaps the sky for a lap and back)
 	addHeadlights(S.race);
 	S.world.onThunder = delay => { audio.thunder(delay); setTimeout(() => { if(S.race) { engineer.event("thunder"); cast.event("thunder"); } }, Math.max(0, delay) * 1000); };
 	if(opts.mode === "trial"){
@@ -878,7 +898,7 @@ function beginRace(opts){
 	document.querySelectorAll("[data-screen]").forEach(s => { s.hidden = true; });
 	S.screen = "race";
 	document.body.dataset.view = "race";
-	hud.setup(entry.track, entry.tracker, opts.laps, opts.mode);
+	hud.setup(entry.track, entry.tracker, opts.laps, opts.rule ? "elim" : opts.mode);
 	hud.setLightTheme((lookItem("startlights", S.profile.look && S.profile.look.startlights) || {}).id);
 	hud.show(true);
 	hud.spectating(S.race.me || S.watch ? "" : "Spectating · you'll be in the next race");
@@ -895,6 +915,8 @@ function beginRace(opts){
 }
 
 function endRace(keepTrack){
+	clearPartyMarker();
+	S.chaosRule = null; hud.setChaos(null); hud.setParty(""); $("hud").classList.remove("blind");
 	clearInterval(S.qualiTimer);
 	S.atmos = null;
 	if(S.world) S.world.setAtmosphere(S.world.defaultAtmosphere());
@@ -1113,6 +1135,25 @@ function onRaceEvent(type, d){
 				if(pb[d.idx] == null || d.ms < pb[d.idx]){ pb[d.idx] = Math.round(d.ms); store.setSectors(r.key, pb); }
 			}
 			break;
+		case "halfway":
+			hud.banner("Halfway", `Lap ${d.lap} of ${d.laps} · P${r.posOf(r.me)}`, "", 2400);
+			break;
+		case "potatoPass":
+			cast.event(type, d);
+			audio.sfx.lap();
+			hud.toast(d.car.me ? `${d.from.name} passed you the potato!` : d.from.me ? `You passed the potato to ${d.car.name}` : `${d.car.name} has the potato`, 1600);
+			break;
+		case "potatoBoom": {
+			const c = d.car;
+			audio.thud(0.55, c.me ? 1 : Math.max(0.3, 1 - (focus ? Math.hypot(c.pos.x - focus.pos.x, c.pos.z - focus.pos.z) : 0) / 80), "car");
+			fx.burst(c.pos.x, c.pos.z, 0.9, c.data.xv, c.data.yv, c.model.position.y);
+			hud.toast(c.me ? "BOOM! You're out" : `BOOM! ${c.name} is out`, 2000);
+			break;
+		}
+		case "caught":
+			audio.thud(0.35, 1, "car");
+			hud.toast(d.car.me ? `${d.cat.name} caught you!` : `${d.cat.name} caught ${d.car.name}`, 1800);
+			break;
 		case "finalLap":
 			hud.banner("Final lap", "", "final", 1600);
 			audio.sfx.finalLap();
@@ -1227,7 +1268,7 @@ function showResults(results, online, opts = {}){
 	for(const el of $("labels").querySelectorAll(".label")) el.style.display = "none";
 	const myId = S.race ? S.race.myId : S.net && S.net.uid;
 	const def = S.ctx ? S.ctx.def : null;
-	$("resultsTrack").textContent = def ? `${def.name}${S.ctx.reverse ? " reversed" : ""} · ${quali ? "Qualifying" : S.ctx.mode === "elim" ? "Elimination" : S.ctx.laps + (S.ctx.laps === 1 ? " lap" : " laps")}` : "Results";
+	$("resultsTrack").textContent = def ? `${def.name}${S.ctx.reverse ? " reversed" : ""} · ${quali ? "Qualifying" : S.ctx.rule ? PARTY[S.ctx.rule].name : S.ctx.mode === "elim" ? "Elimination" : S.ctx.laps + (S.ctx.laps === 1 ? " lap" : " laps")}` : "Results";
 	const me = results.find(r => r.id === myId);
 	$("resultsTitle").textContent = !me ? "Chequered flag"
 		: me.pos === 1 && me.status !== "dnf" ? "You won"
@@ -1245,7 +1286,7 @@ function showResults(results, online, opts = {}){
 	$("resultsBody").innerHTML = results.map(r => `<tr class="${r.id === myId ? "me" : ""}">
 		<td class="pos">${r.pos}</td>
 		<td class="name"><i style="background:hsl(${r.hue},100%,55%)"></i><span class="${nameFxById(r.nf)}">${escapeHtml(r.name)}</span>${r.bot ? ' <span class="tag bot">AI</span>' : ""}</td>
-		<td>${r.time != null ? fmtTime(r.time) : r.status === "out" ? "Out" : "DNF"}</td>
+		<td>${r.sc ? escapeHtml(r.sc) : r.time != null ? fmtTime(r.time) : r.status === "out" ? "Out" : "DNF"}</td>
 		<td class="best ${r.best != null && r.best === fastest ? "fastest" : ""}">${r.best != null ? fmtTime(r.best) : "--"}</td>
 		<td>${r.pos === 1 ? "" : r.gap || ""}</td></tr>`).join("");
 	if(quali) $("resultsTitle").textContent = me ? (me.status === "finished" ? `You qualified P${me.pos}` : "No time set") : "Qualifying";
@@ -1444,8 +1485,8 @@ function requestTilt(){
 	}else addEventListener("deviceorientation", onTilt);
 }
 function steerInput(){
-	if(mobile && S.settings.touch === "tilt" && S.input.tilt != null) return S.input.tilt;
-	return phys.keyboardSteer(S.input.left || S.input.tl, S.input.right || S.input.tr);
+	const raw = mobile && S.settings.touch === "tilt" && S.input.tilt != null ? S.input.tilt : phys.keyboardSteer(S.input.left || S.input.tl, S.input.right || S.input.tr);
+	return chaosSteer(S.chaosRule, raw, performance.now() / 1000);       // (the wheel of chaos may flip or shake it)
 }
 
 // ---------- Camera ----------
@@ -1735,6 +1776,8 @@ function updateLabels(standings, focus){
 		el.style.zIndex = String(1000 - Math.round(dist));
 		const p = place.has(c) ? "P" + place.get(c) : "";
 		if(el._p !== p){ el._p = p; el.firstElementChild.textContent = p; }
+		const hold = !!(r.party && r.party.state.h === c.id);
+		if(el._h !== hold){ el._h = hold; el.classList.toggle("holder", hold); }
 	}
 	const rm = r.rivalModel, rl = r.rivalLabel;
 	if(rm && rl){
@@ -1793,6 +1836,58 @@ function surfaceOf(r, car){
 }
 const earRight = new THREE.Vector3(), earPrev = new Map();
 S.engineCars = [];
+// ---------- Party styles and the wheel of chaos ----------
+// The party styles (js/party.js) put a marker over whoever holds the potato, is the cat or wears the crown.
+const lobbyParty = st => st.mode === "race" && styleOf(st.style).party;
+let partyMarker = null;
+function clearPartyMarker(){
+	if(!partyMarker) return;
+	if(partyMarker.parent) partyMarker.parent.remove(partyMarker);
+	partyMarker.traverse(o => { if(o.geometry) o.geometry.dispose(); if(o.material) o.material.dispose(); });
+	partyMarker = null;
+}
+function makePartyMarker(kind){
+	const g = new THREE.Group(), basic = c => new THREE.MeshBasicMaterial({ color: c });
+	if(kind === "potato"){
+		g.add(new THREE.Mesh(new THREE.SphereBufferGeometry(0.46, 12, 9), basic(0xff3a1a)));
+		const stem = new THREE.Mesh(new THREE.BoxBufferGeometry(0.1, 0.3, 0.1), basic(0x4f5f22)); stem.position.y = 0.5; g.add(stem);
+	}else if(kind === "mouse"){
+		g.add(new THREE.Mesh(new THREE.SphereBufferGeometry(0.4, 12, 9), basic(0x9a4bff)));
+		for(const x of [-0.24, 0.24]){ const ear = new THREE.Mesh(new THREE.ConeBufferGeometry(0.17, 0.4, 4), basic(0x6a2cc4)); ear.position.set(x, 0.42, 0); g.add(ear); }
+	}else{
+		g.add(new THREE.Mesh(new THREE.CylinderBufferGeometry(0.46, 0.4, 0.26, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0xffc928, side: THREE.DoubleSide })));
+		for(let i = 0; i < 5; i++){ const a = i / 5 * Math.PI * 2, p = new THREE.Mesh(new THREE.ConeBufferGeometry(0.1, 0.34, 4), basic(0xffd94a)); p.position.set(Math.cos(a) * 0.43, 0.28, Math.sin(a) * 0.43); g.add(p); }
+	}
+	return g;
+}
+function partyMarkerTick(r){
+	const p = r.party;
+	if(!p){ clearPartyMarker(); return; }
+	if(!partyMarker) partyMarker = makePartyMarker(p.kind);
+	const H = p.holder(), now = performance.now();
+	if(!H || H.elim !== null || H.gone || !H.model.visible){ partyMarker.visible = false; return; }
+	if(partyMarker.parent !== H.model){ if(partyMarker.parent) partyMarker.parent.remove(partyMarker); H.model.add(partyMarker); }
+	partyMarker.visible = true;
+	partyMarker.position.y = 1.9 + Math.sin(now / 220) * 0.12;
+	if(p.kind === "potato"){
+		// It swells and flashes faster as the fuse burns down.
+		const burn = p.burn(r.raceTime);
+		partyMarker.scale.setScalar(1 + 0.1 * Math.sin(now / (260 - 200 * burn)) + burn * 0.3);
+		partyMarker.children[0].material.color.setHex(burn > 0.7 && Math.sin(now / 90) > 0 ? 0xffe27a : 0xff3a1a);
+	}
+}
+// The wheel of chaos (js/chaos.js): a new rule each lap, the same for everyone, picked from the race's start time. Looks and your own steering only.
+function chaosTick(r){
+	if(!S.ctx || !S.ctx.chaos || !r.me || r.mode !== "race" || r.phase !== "racing") return;
+	const rule = chaosFor(String(r.startAt), r.me.data.lap);
+	if((rule && rule.id) === (S.chaosRule && S.chaosRule.id)) return;
+	S.chaosRule = rule;
+	if(S.world) S.atmos = rule && rule.sky ? makeAtmosphere(rule.sky, S.world.theme, r.startAt) : S.baseAtmos;
+	$("hud").classList.toggle("blind", !!(rule && rule.blind));
+	hud.setChaos(rule);
+	if(rule) hud.banner(rule.name, rule.text, "chaos", 2600);
+}
+
 // Horns. Every car can have one; "Horn: Off" in a room's settings (the serious-race switch) turns them all off.
 const hornAllowed = () => !S.ctx || S.ctx.horn !== false;
 const hornOn = () => !!S.input.horn && hornAllowed() && !S.paused && !S.frozen && $("pause").hidden && !spectating();
@@ -1897,6 +1992,8 @@ function frame(now){
 			const slip = speed > 0.05 ? Math.abs(Math.sin(Math.atan2(d.xv, d.yv) - d.dir)) : 0;
 			// Your horn goes out with your car's updates; every car's horn is heard from where it is.
 			r.horn(hornOn());
+			chaosTick(r);
+			partyMarkerTick(r);
 			engineMix(r, focus, dt);
 			audio.updateHorns(S.hornCars);
 			audio.updateEngines(S.engineCars, { speed: r.phase === "racing" ? speed : 0, slip, draft: r.draft ? focus.draft || 0 : 0, surface: r.phase === "racing" ? surfaceOf(r, focus) : 0 }, dt);
@@ -1917,9 +2014,10 @@ function frame(now){
 				kmh: Math.hypot(d.xv, d.yv) * KMH,
 				pos: standings.findIndex(s => s.car === focus) + 1, of: standings.filter(s => !s.car.gone).length
 			});
-			hud.setTower(standings, focus.id);
+			hud.setTower(standings, focus.id, r.party && r.party.state.h);
 			hud.setDelta(r.mode === "trial" && focus.me ? { ms: r.liveDelta(), has: !!(r.rival || r.ghostData), label: r.rival ? "vs " + cleanName(r.rival.name || "rival") : S.ctx && S.ctx.weekly ? "vs your week best" : "vs your best" } : null);
 			hud.setSectors(r.sectorView(focus));
+			hud.setParty(r.party && r.phase === "racing" ? r.party.hudText(r.myId, r.raceTime) : "");
 		}
 		hud.drawMinimap(r.cars, focus);
 		updateLabels(standings, focus);
@@ -1984,7 +2082,7 @@ $("codeInput").addEventListener("input", e => { e.target.value = e.target.value.
 $("codeInput").addEventListener("keydown", e => { if(e.key === "Enter") $("joinBtn").click(); });
 
 function lobbyDefaults(){
-	return { track: S.setup.trackId === "classic" ? "classic" : S.setup.trackId, reverse: false, laps: (defFor(S.setup.trackId).laps || 3), mode: "race", custom: null, draft: true, contact: "soft", tod: "default", weather: "clear", horn: true };
+	return { track: S.setup.trackId === "classic" ? "classic" : S.setup.trackId, reverse: false, laps: (defFor(S.setup.trackId).laps || 3), mode: "race", custom: null, draft: true, contact: "soft", tod: "default", weather: "clear", horn: true, style: "standard", chaos: false, gridRev: false };
 }
 async function withBusy(btn, fn){
 	btn.disabled = true;
@@ -2153,6 +2251,7 @@ function onRoom(room){
 		beginOnlineRace(room);
 	}else if(room.phase === "race" && S.race){
 		S.race.applyElims(race && race.elim);
+		S.race.applyParty(race && race.party);
 	}else if(room.phase === "qualiResults" && room.quali && S.resultsShown !== "q" + (race && race.id)){
 		S.resultsShown = "q" + (race && race.id);
 		showResults(room.quali.results, true, { quali: true });
@@ -2212,13 +2311,20 @@ const lobbySettingsControls = {
 	draft: seg($("lobbyDraft"), "1", v => S.net.updateSettings({ draft: v === "1" })),
 	contact: seg($("lobbyContact"), "soft", v => S.net.updateSettings({ contact: v })),
 	horn: seg($("lobbyHorn"), "1", v => S.net.updateSettings({ horn: v === "1" })),
+	style: seg($("lobbyStyle"), "standard", v => {
+		const s = styleOf(v), upd = { style: v };
+		if(s.laps) upd.laps = s.laps; else if(v === "standard") upd.laps = defFor((S.room && S.room.settings && S.room.settings.track) || "monza").laps || 3;
+		S.net.updateSettings(upd);
+	}),
+	chaos: seg($("lobbyChaos"), "0", v => S.net.updateSettings({ chaos: v === "1" })),
+	gridRev: seg($("lobbyGridRev"), "0", v => S.net.updateSettings({ gridRev: v === "1" })),
 	tod: seg($("lobbyTod"), "default", v => S.net.updateSettings({ tod: v })),
 	weather: seg($("lobbyWeather"), "clear", v => S.net.updateSettings({ weather: v })),
 	quali: seg($("lobbyQuali"), "0", v => S.net.updateSettings({ quali: v === "1" })),
 	mode: seg($("lobbyMode"), "race", v => S.net.updateSettings({ mode: v })),
 	dir: seg($("lobbyDir"), "0", v => S.net.updateSettings({ reverse: v === "1" })),
 	level: seg($("lobbyLevel"), "medium", v => { S.lobbyLevel = v; }),
-	laps: stepper("lobbyLaps", () => (S.room && S.room.settings && S.room.settings.laps) || 3, v => S.net.updateSettings({ laps: v }), () => 1, () => 20)
+	laps: stepper("lobbyLaps", () => (S.room && S.room.settings && S.room.settings.laps) || 3, v => S.net.updateSettings({ laps: v }), () => 1, () => maxLaps(S.room && S.room.settings && S.room.settings.style))
 };
 let lobbyGridKey = null;
 function lookTitle(p){
@@ -2296,12 +2402,20 @@ function renderLobby(room){
 	}
 	$("lobbyTracks").dataset.locked = host ? "" : "1";
 	for(const el of [$("lobbyMode"), $("lobbyDir")]) el.dataset.locked = host ? "" : "1";
-	document.querySelector('[data-stepper="lobbyLaps"]').dataset.locked = host && st.mode !== "elim" ? "" : "1";
+	document.querySelector('[data-stepper="lobbyLaps"]').dataset.locked = host && st.mode !== "elim" && !lobbyParty(st) ? "" : "1";
 	lobbySettingsControls.mode(st.mode);
 	lobbySettingsControls.dir(st.reverse ? "1" : "0");
 	lobbySettingsControls.draft(st.draft === false ? "0" : "1");
 	lobbySettingsControls.contact(st.contact === "classic" ? "classic" : "soft");
 	lobbySettingsControls.horn(st.horn === false ? "0" : "1");
+	lobbySettingsControls.style(st.style || "standard");
+	lobbySettingsControls.chaos(st.chaos ? "1" : "0");
+	lobbySettingsControls.gridRev(st.gridRev ? "1" : "0");
+	const partyRule = lobbyParty(st);
+	$("lobbyStyleRow").hidden = st.mode !== "race";
+	$("lobbyChaosRow").hidden = st.mode !== "race" || !!partyRule;
+	$("lobbyGridRow").hidden = !st.quali || isChamp;
+	for(const id of ["lobbyStyle", "lobbyChaos", "lobbyGridRev"]){ $(id).dataset.locked = host ? "" : "1"; $(id).querySelectorAll("button").forEach(b => { b.disabled = !host; }); }
 	lobbySettingsControls.tod(st.tod || "default");
 	lobbySettingsControls.weather(st.weather || "clear");
 	showClimate("lobbyClimate", st.track, st.weather);
@@ -2327,8 +2441,8 @@ function renderLobby(room){
 	const go = $("lobbyGo");
 	if(host){
 		go.firstElementChild.textContent = isChamp ? "Start championship" : "Start race";
-		go.disabled = (st.mode === "elim" && players.length < 2) || (isChamp && rounds.length < 2);
-		$("lobbyStatus").textContent = st.mode === "elim" && players.length < 2 ? "Elimination needs at least two cars. Add a bot."
+		go.disabled = ((st.mode === "elim" || partyRule) && players.length < 2) || (isChamp && rounds.length < 2);
+		$("lobbyStatus").textContent = (st.mode === "elim" || partyRule) && players.length < 2 ? "This mode needs at least two cars. Add a bot."
 			: isChamp && rounds.length < 2 ? "Pick at least two tracks for the championship."
 			: ready + " of " + humans.length + " drivers ready" + (screens ? " · big screen connected" : "");
 	}else{
@@ -2359,14 +2473,15 @@ function hostStart(){
 	if(!room || !net.isHost) return;
 	const st = room.settings || lobbyDefaults();
 	const grid = Object.entries(room.players || {}).filter(([, p]) => !p.watch).sort((a, b) => (a[1].joined || 0) - (b[1].joined || 0)).map(([id]) => id).slice(0, MAX_CARS);
-	if(st.mode === "elim" && grid.length < 2) return;
+	if((st.mode === "elim" || lobbyParty(st)) && grid.length < 2) return;
 	if(st.mode === "champ"){
 		const rounds = (st.rounds || []).filter(id => trackById(id));
 		if(rounds.length < 2) return;
 		startChampRoundOnline(newChamp(rounds.map(id => ({ track: id })), st.reverse, st.laps || 3));
 		return;
 	}
-	const next = { track: st.track, reverse: !!st.reverse, laps: st.laps || 3, mode: st.mode || "race", custom: st.custom || null, draft: st.draft !== false, contact: st.contact === "classic" ? "classic" : "soft", tod: st.tod || "default", weather: st.weather || "clear", horn: st.horn !== false };
+	const sr = styleRace(st.style, { mode: st.mode || "race", laps: st.laps || 3 });
+	const next = { track: st.track, reverse: !!st.reverse, laps: sr.laps, mode: sr.mode, rule: sr.rule, style: st.style || "standard", chaos: !!st.chaos && st.mode === "race" && !sr.rule, gridRev: !!st.gridRev && !!st.quali, custom: st.custom || null, draft: st.draft !== false, contact: st.contact === "classic" ? "classic" : "soft", tod: st.tod || "default", weather: st.weather || "clear", horn: st.horn !== false };
 	net.startRace(Object.assign({}, next, {
 		id: ((room.race && room.race.id) || S.raceId || 0) + 1,
 		startAt: net.now() + 1800 + COUNTDOWN, grid
@@ -2389,7 +2504,7 @@ function hostAfterQuali(){
 	const order = ((room.quali && room.quali.order) || []).filter(id => room.players && room.players[id]);
 	const rest = Object.keys(room.players || {}).filter(id => !order.includes(id) && !room.players[id].watch);
 	S.net.startRace(Object.assign({}, room.race.next, {
-		id: room.race.id + 1, startAt: S.net.now() + 1800 + COUNTDOWN, grid: [...order, ...rest].slice(0, MAX_CARS)
+		id: room.race.id + 1, startAt: S.net.now() + 1800 + COUNTDOWN, grid: [...(room.race.next.gridRev ? order.slice().reverse() : order), ...rest].slice(0, MAX_CARS)
 	}));
 }
 function hostNextRound(){
@@ -2410,7 +2525,7 @@ function beginOnlineRace(room){
 	const def = defFor(r.track, r.custom);
 	beginRace({
 		source: "online", def, reverse: r.reverse, mode: r.mode, laps: r.mode === "elim" ? 99 : r.laps,
-		entrants, myId: net.uid, startAt: r.startAt, authority: room.host === net.uid, draft: r.draft !== false, contact: r.contact, tod: r.tod, weather: r.weather, horn: r.horn !== false, champ: !!r.champ, watch: !!S.watchRoom
+		entrants, myId: net.uid, startAt: r.startAt, authority: room.host === net.uid, draft: r.draft !== false, contact: r.contact, tod: r.tod, weather: r.weather, horn: r.horn !== false, rule: r.rule || null, chaos: !!r.chaos, champ: !!r.champ, watch: !!S.watchRoom
 	});
 	S.ctx.laps = r.laps;
 }

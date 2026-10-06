@@ -169,6 +169,17 @@
 							<button data-v="champ" aria-checked="false">Championship</button>
 						</div>
 					</div>
+					<div class="opt-row stacked" data-for="bots" id="setupStyleRow">
+						<span class="opt-label">Style</span>
+						<div class="seg seg-fill seg-wrap" id="setupStyle" role="radiogroup" aria-label="Style">
+							<button data-v="standard" aria-checked="true">Race</button>
+							<button data-v="sprint" aria-checked="false">Sprint</button>
+							<button data-v="endurance" aria-checked="false">Endurance</button>
+							<button data-v="potato" aria-checked="false">Hot Potato</button>
+							<button data-v="mouse" aria-checked="false">Cat and mouse</button>
+							<button data-v="crown" aria-checked="false">Crown chase</button>
+						</div>
+					</div>
 					<p class="opt-help" data-for="bots" id="modeHelp">First across the line after the last lap wins.</p>
 					<div class="opt-row" data-for="bots laps">
 						<span class="opt-label">Laps</span>
@@ -191,6 +202,20 @@
 						<div class="seg" id="setupQuali" role="radiogroup" aria-label="Qualifying">
 							<button data-v="1" aria-checked="false">On</button>
 							<button data-v="0" aria-checked="true">Off</button>
+						</div>
+					</div>
+					<div class="opt-row" data-for="bots" id="setupChaosRow">
+						<span class="opt-label">Wheel of chaos</span>
+						<div class="seg" id="setupChaos" role="radiogroup" aria-label="Wheel of chaos" title="A new surprise every lap: night, fog, mirror steering...">
+							<button data-v="1" aria-checked="false">On</button>
+							<button data-v="0" aria-checked="true">Off</button>
+						</div>
+					</div>
+					<div class="opt-row" data-for="bots" id="setupGridRow">
+						<span class="opt-label">Grid</span>
+						<div class="seg" id="setupGridRev" role="radiogroup" aria-label="Starting grid" title="Where qualifying puts you on the grid">
+							<button data-v="0" aria-checked="true">Fastest first</button>
+							<button data-v="1" aria-checked="false">Fastest last</button>
 						</div>
 					</div>
 					<div class="opt-row" data-for="bots">
@@ -373,6 +398,17 @@
 							<button data-v="champ" aria-checked="false">Championship</button>
 						</div>
 					</div>
+					<div class="opt-row stacked" id="lobbyStyleRow">
+						<span class="opt-label">Style</span>
+						<div class="seg seg-fill seg-wrap" id="lobbyStyle" role="radiogroup" aria-label="Style">
+							<button data-v="standard" aria-checked="true">Race</button>
+							<button data-v="sprint" aria-checked="false">Sprint</button>
+							<button data-v="endurance" aria-checked="false">Endurance</button>
+							<button data-v="potato" aria-checked="false">Hot Potato</button>
+							<button data-v="mouse" aria-checked="false">Cat and mouse</button>
+							<button data-v="crown" aria-checked="false">Crown chase</button>
+						</div>
+					</div>
 					<div class="opt-row">
 						<span class="opt-label">Laps</span>
 						<div class="stepper" data-stepper="lobbyLaps"><button data-d="-1" aria-label="Fewer laps">&minus;</button><output id="lobbyLaps">3</output><button data-d="1" aria-label="More laps">+</button></div>
@@ -382,6 +418,20 @@
 						<div class="seg" id="lobbyQuali" role="radiogroup" aria-label="Qualifying">
 							<button data-v="1" aria-checked="false">On</button>
 							<button data-v="0" aria-checked="true">Off</button>
+						</div>
+					</div>
+					<div class="opt-row" id="lobbyChaosRow">
+						<span class="opt-label">Wheel of chaos</span>
+						<div class="seg" id="lobbyChaos" role="radiogroup" aria-label="Wheel of chaos" title="A new surprise every lap: night, fog, mirror steering...">
+							<button data-v="1" aria-checked="false">On</button>
+							<button data-v="0" aria-checked="true">Off</button>
+						</div>
+					</div>
+					<div class="opt-row" id="lobbyGridRow">
+						<span class="opt-label">Grid</span>
+						<div class="seg" id="lobbyGridRev" role="radiogroup" aria-label="Starting grid" title="Where qualifying puts you on the grid">
+							<button data-v="0" aria-checked="true">Fastest first</button>
+							<button data-v="1" aria-checked="false">Fastest last</button>
 						</div>
 					</div>
 					<div class="opt-row">
@@ -690,6 +740,8 @@
 			<span class="light"><i></i><i></i></span><span class="light"><i></i><i></i></span><span class="light"><i></i><i></i></span><span class="light"><i></i><i></i></span><span class="light"><i></i><i></i></span>
 		</div>
 		<div class="banner" id="banner" hidden><strong>Go</strong><span id="bannerSub"></span></div>
+		<div class="party-hud" id="partyHud" role="status" hidden></div>
+		<div class="chaos-tag" id="chaosTag" hidden></div>
 		<div id="spectating" hidden></div>
 		<div id="hudToast" hidden></div>
 		<div class="hud-top">

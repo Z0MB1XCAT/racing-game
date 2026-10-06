@@ -93,6 +93,25 @@ original did).
   points, the leader starts at the back of the next round's grid) and Time trial against a ghost
   of your fastest lap ever. A slower lap never replaces the ghost. A **delta bar** at the top shows
   live how far ahead (green) or behind (red) of the ghost you are.
+- **Race styles** (a **Style** row under Mode, in Race bots and in the online lobby, for a plain Race): the same cars and handling, run
+  differently (`js/styles.js`, `js/party.js`).
+  - **Sprint**: two laps to start with. **Endurance**: 15 laps to start with, up to 30, with a **Halfway** banner (with your place).
+  - **Hot Potato**: one car holds a glowing potato with a hidden fuse. Touch another car and it's theirs (it can't be taken straight
+    back for two seconds, and the fuse keeps burning). When the fuse runs out the holder is out, and a new potato goes to the nearest
+    car. Fuses get shorter as the field thins. The last car left wins. It's an elimination underneath, so it needs at least two cars.
+  - **Cat and mouse**: one car is the cat (purple marker). Any mouse it touches is caught and out. The cat wins if it catches them all;
+    after four minutes the mice still running win, and the cat comes below them (but above the mice it caught). The results say how many the cat caught.
+  - **Crown chase**: whoever leads the race wears the crown, and every second on top scores. After three minutes the most seconds wins
+    (the results show "42.3 s on top"), however the race stands at the end.
+  The host (or the solo game) runs the rules and shares a small state (who holds what, the fuse, the scores) in the room's race data,
+  so every screen shows the same game, and a new host carries on from where the old one left off. Markers float over the holder, their
+  name tag and tower row light up, and a line under the mirror says what's happening. It's all rules and looks: the handling is the same.
+  - **Wheel of chaos** (On/Off, for Race, Sprint and Endurance): from lap 2 every lap gets a new surprise: night, thick fog, a storm,
+    snow, **mirror steering** (left is right), **wobbly hands** (your steering shakes a little) or **blindfold** (no HUD or map). It's
+    picked from the race's start time and the lap number, so every driver gets the same one on the same lap with nothing sent over the
+    network, and a lap never gets the one the lap before had. The sky ones are looks only; mirror and wobble change what your own keys do before
+    they reach the car, and nothing else.
+  - **Grid** (when Qualifying is on): *Fastest first* (the usual) or *Fastest last*, a reversed grid with the pole sitter at the back.
 - **Race other people's ghosts**: every lap record and weekly best uploads its ghost. Press
   **Race ghost** next to anyone on the lap-record or weekly board, pick **Ghost: Track record** in
   time trial setup, or **Race the leader's ghost** on the weekly card. Their car shows as a named
@@ -636,6 +655,7 @@ The last two also need puppeteer installed.
 - `node tools/levels-test.mjs` checks driver levels to 100, no browser: levels 1 to 30 need exactly the XP they always did, every level after is 500 XP more, the level from any XP is right at every boundary and stops at 100, and the rewards past 30 exist and aren't open early.
 - `node tools/looks-test.mjs` checks the garage's number plates, name effects, start-light themes and the new titles, no browser: every item has a free default and a real way to get it, every effect and theme has its CSS, made-up and prototype names give nothing, and the solo-goal rules (`soloGoals` in `js/cosmetics.js`) tick off exactly what they should: Night Owl, Wet Weather Wizard, Underdog, Clean Racer and the Halloween paint.
 - `node tools/codes-test.mjs` checks prize codes and look codes, no browser: a code is found however it's typed, wrong, short and expired ones aren't, the shipped list holds no plain codes, the `codes.mjs` tool adds, lists, checks and removes on a copy, a prize unlocks any item for good, and look codes round-trip for every paint and refuse anything else (made-up and prototype names included).
+- `node tools/party-test.mjs` checks the party styles and the wheel of chaos against a pretend race, no browser: Hot Potato (one holder, passes, the grace time, fuses, the last car wins), Cat and mouse (catches, the cat winning, the time limit and the order it leaves the table in), Crown chase (seconds on top add up, the winner isn't whoever leads at the end), a new host carrying on from the shared state, and the chaos rules (same for everyone, never the same lap after lap, steering effects bounded).
 - `node tools/season-test.mjs` checks the seasons and the Halloween challenge week, no browser: the look comes on at the start of 1 October and goes off at the start of 1 November in every year (a leap year too); `?season=` and the Settings switch change what's drawn but never what can be earned; the Halloween challenge is the week with 31 October in it, on a forest circuit at night in fog, one a year to 2060, never repeating a track next to it, and no ordinary week is touched.
 - `node tools/music-test.mjs` plays the menu songs in a browser: each is audible, never clips, isn't silent for long, and the October one is about as loud as the usual one.
 - `node tools/changelog-test.mjs` checks the What's new changelog: entries are well formed and newest first, none is newer than the game, and versions compare right (-9 before -10). No browser.
@@ -646,7 +666,7 @@ The last two also need puppeteer installed.
 - `node tools/build-voices.mjs [eng] [lead] [col] [--force] [--check]` renders the lines in `js/voicelines.js` into `assets/voice/*.pak` with the Kokoro voice (needs `npm i kokoro-js` in a scratch folder and `KOKORO_DIR` pointing at it, plus ffmpeg); `--check` listens back with a speech recogniser. Only needed when a line or a voice changes.
 - `node tools/build-sfx.mjs <folder>` packs the chosen sounds from Kenney's Impact Sounds, Interface Sounds and UI Audio packs (CC0) into `assets/audio/sfx.pak`.
 - `node tools/contact-test.mjs monaco` compares original and soft car contact (side hit, rear tap, a bot race).
-- `node tools/e2e.mjs solo|online|rematch|invite|whatsnew|halloween|codes|announce|looks|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
+- `node tools/e2e.mjs solo|online|rematch|invite|whatsnew|halloween|codes|announce|looks|modes|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
 
 ## Credits and licence
 

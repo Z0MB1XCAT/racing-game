@@ -613,6 +613,8 @@ export class Net {
 		return this.store.update(this.path(), { phase: "qualiResults", quali: { results, order: results.map(r => r.id) } });
 	}
 	eliminate(id, order){ return this.store.set(this.path("race/elim/" + id), order); }
+	// A party style's state (js/party.js): who holds the potato, who's the cat, the crown scores. The host writes it, everyone reads it.
+	setParty(state){ return this.store.set(this.path("race/party"), state); }
 
 	// The host publishes the result. `resultsBy` is what the database rules check
 	// before accepting anyone's win/podium stats for this race.

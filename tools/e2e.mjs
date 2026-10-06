@@ -1,6 +1,7 @@
 // Drives the game in a headless browser and screenshots each step.
 //   node tools/e2e.mjs solo [trackId]     race bots, hold right-ish steering, screenshot HUD + results
 //   node tools/e2e.mjs online             two tabs over ?localnet: host, join, race
+//   node tools/e2e.mjs modes              Sprint/Endurance presets, Hot Potato, Cat and mouse, Crown chase, the wheel of chaos, a reversed grid, and a party style online
 //   node tools/e2e.mjs looks              a name effect, start lights and number style: seen by the right people in the lobby, tower, labels and results
 //   node tools/e2e.mjs codes              prize codes (right, wrong, expired, locked out) and look codes between two players
 //   node tools/e2e.mjs announce           the admin's announcement bar: publish, show, dismiss, run out, clear
@@ -1034,6 +1035,180 @@ if(flow === "looks"){
 	await wait(1500);
 	const rows = await guest.evaluate(() => [...document.querySelectorAll("#resultsBody .name")].map(td => ({ name: td.textContent.trim(), fx: td.querySelector("span")?.className })));
 	console.log("the results table shows the effect:", rows.some(x => x.name === "Nova" && x.fx === "nfx-flame"), JSON.stringify(rows));
+}
+
+if(flow === "modes"){
+	// The race styles: Sprint and Endurance presets, Hot Potato, Cat and mouse, Crown chase, the wheel of chaos, a reversed grid, and a party style online.
+	const solo = async (style, bots = 3, extra = {}) => {
+		const page = await open(base + "?season=off");
+		await click(page, "#btnBots"); await wait(400);
+		await click(page, '#setupTracks [data-id="figure8"]'); await wait(500);
+		if(style) await click(page, `#setupStyle [data-v="${style}"]`);
+		await page.evaluate((bots, extra) => { const g = window.__game; g.setup.bots = bots; Object.assign(g.setup, extra); }, bots, extra);
+		return page;
+	};
+	// ---- the setup screen: presets and limits ----
+	{
+		const page = await solo(null);
+		const rows = () => page.evaluate(() => ({ style: !document.getElementById("setupStyleRow").hidden, chaos: !document.getElementById("setupChaosRow").hidden, grid: !document.getElementById("setupGridRow").hidden, laps: document.getElementById("setupLaps").textContent, lapsRow: !document.querySelector('[data-for="bots laps"]').hidden, help: document.getElementById("modeHelp").textContent, bots: document.getElementById("setupBots").textContent }));
+		let r = await rows();
+		console.log("setup: a Style row and the wheel of chaos, no grid row until qualifying is on:", r.style && r.chaos && !r.grid);
+		await click(page, '#setupStyle [data-v="sprint"]'); r = await rows();
+		console.log("Sprint sets two laps:", r.laps === "2" && /two laps/.test(r.help), "|", r.help);
+		await click(page, '#setupStyle [data-v="endurance"]'); r = await rows();
+		console.log("Endurance sets 15 laps:", r.laps === "15");
+		for(let i = 0; i < 20; i++) await page.evaluate(() => document.querySelector('[data-stepper="laps"] [data-d="1"]').click());
+		console.log("and lets you go up to 30, no further:", (await rows()).laps === "30");
+		await click(page, '#setupStyle [data-v="standard"]'); r = await rows();
+		console.log("back to Race: the track's own laps again, and the old maximum:", r.laps === "3" || r.laps === "2" || Number(r.laps) <= 20, r.laps);
+		for(let i = 0; i < 40; i++) await page.evaluate(() => document.querySelector('[data-stepper="laps"] [data-d="1"]').click());
+		console.log("  (at most 20 in a plain race):", (await rows()).laps === "20");
+		await click(page, '#setupStyle [data-v="potato"]'); r = await rows();
+		console.log("a party style hides the laps and the chaos row, and needs a bot:", !r.lapsRow && !r.chaos && Number(r.bots) >= 1 && /potato/i.test(r.help));
+		await click(page, '#setupMode [data-v="elim"]'); r = await rows();
+		console.log("Elimination and Championship hide the styles:", !r.style && !r.chaos);
+		await click(page, '#setupMode [data-v="race"]'); await click(page, '#setupQuali [data-v="1"]');
+		console.log("turning qualifying on shows the Grid choice:", (await rows()).grid);
+		await shot(page, "modes-setup");
+		await page.close();
+	}
+	// ---- Hot Potato ----
+	{
+		const page = await solo("potato", 3);
+		await click(page, "#setupGo"); await wait(2500);
+		await page.waitForFunction(() => window.__game.race && window.__game.race.party && window.__game.race.party.state.h, { timeout: 30000 }); await wait(800);
+		const st = () => page.evaluate(() => { const r = window.__game.race, p = r.party; return { kind: p.kind, mode: r.mode, h: p.state.h, f: p.state.f, out: r.cars.filter(c => c.elim !== null).length, alive: r.cars.filter(c => c.elim === null).length, hud: document.getElementById("partyHud").textContent, hudShown: !document.getElementById("partyHud").hidden, marker: !!(p.holder() && p.holder().model.children.some(o => o.children && o.children.length && o.visible)), label: [...document.querySelectorAll("#labels .label.holder")].length, towerRows: document.querySelectorAll("#tower .tower-row.is-holder").length, now: r.raceTime }; });
+		let s = await st();
+		console.log("Hot Potato: runs as an elimination with a holder and a fuse:", s.kind === "potato" && s.mode === "elim" && !!s.h && s.f > s.now, JSON.stringify({ h: s.h, fuse: Math.round((s.f - s.now) / 1000) + " s" }));
+		console.log("the HUD says who has it:", s.hudShown && /potato/i.test(s.hud), "|", s.hud);
+		console.log("a marker over the holder, a highlighted tower row:", s.marker && s.towerRows === 1, "| a highlighted name tag over their car (when it isn't yours):", s.h === "me" ? "n/a" : s.label >= 1);
+		await shot(page, "modes-potato");
+		// A touch passes it on.
+		const pass = await page.evaluate(async () => {
+			const r = window.__game.race, H = r.party.holder(), N = r.cars.find(c => c !== H && c.elim === null);
+			const before = r.party.state.h; N.data.x = H.data.x + 1; N.data.y = H.data.y; N.data.xv = N.data.yv = H.data.xv = H.data.yv = 0;   // (side by side and still, so the touch is seen)
+			await new Promise(res => setTimeout(res, 400));
+			return { before, after: r.party.state.h, n: N.id };
+		});
+		console.log("touching a car passes the potato on (to a car that was touching):", !!pass.after && pass.after !== pass.before, JSON.stringify(pass));
+		// Run the fuse down for each car in turn.
+		for(let i = 0; i < 6; i++){
+			const out = await page.evaluate(async () => { const r = window.__game.race; if(r.cars.filter(c => c.elim === null).length <= 1) return true; r.party.state.f = r.raceTime - 1; r.party.state.g = 0; await new Promise(res => setTimeout(res, 500)); return false; });
+			if(out) break;
+		}
+		s = await st();
+		console.log("fuses take the holders out one by one, the last car left wins:", s.alive === 1 && s.out === 3, JSON.stringify({ alive: s.alive, out: s.out }));
+		console.log("results:", await waitScreen(page, "results", 30));
+		await wait(800);
+		const res = await page.evaluate(() => ({ label: document.getElementById("resultsTrack").textContent, rows: [...document.querySelectorAll("#resultsBody tr")].map(tr => tr.children[1].textContent.trim() + " " + tr.children[2].textContent.trim()) }));
+		console.log("the results are named for the game and put the survivor first:", /Hot Potato/.test(res.label) && /^\S.*\d/.test(res.rows[0]) && /Out/.test(res.rows[3]), JSON.stringify(res));
+		await shot(page, "modes-potato-results");
+		await page.close();
+	}
+	// ---- Cat and mouse ----
+	{
+		const page = await solo("mouse", 3);
+		await click(page, "#setupGo"); await wait(2500);
+		await page.waitForFunction(() => window.__game.race && window.__game.race.party && window.__game.race.party.state.h, { timeout: 30000 }); await wait(800);
+		const info = await page.evaluate(async () => {
+			const r = window.__game.race, cat = r.party.holder(), mice = r.cars.filter(c => c !== cat);
+			const hud = document.getElementById("partyHud").textContent, label = document.querySelectorAll("#labels .label.holder").length;
+			for(const m of mice){ m.data.x = cat.data.x + 1; m.data.y = cat.data.y; await new Promise(res => setTimeout(res, 450)); }
+			return { cat: cat.id, hud, label, out: r.cars.filter(c => c.elim !== null).length, caught: r.party.state.c, over: r.party.over, catFinish: cat.finish !== null };
+		});
+		console.log("Cat and mouse: one cat, the HUD says so (or that you were caught at the start):", !!info.cat && /cat|caught/i.test(info.hud), "|", info.hud);
+		console.log("touching the mice catches them all, and the cat wins:", info.out === 3 && info.caught === 3 && info.over && info.catFinish);
+		console.log("results:", await waitScreen(page, "results", 30));
+		await wait(800);
+		const res = await page.evaluate(() => ({ label: document.getElementById("resultsTrack").textContent, rows: [...document.querySelectorAll("#resultsBody tr")].map(tr => tr.children[1].textContent.trim() + " | " + tr.children[2].textContent.trim()) }));
+		console.log("the cat tops the table with what it caught:", /Cat and mouse/.test(res.label) && /3 caught/.test(res.rows[0]), JSON.stringify(res.rows));
+		await page.close();
+	}
+	// ---- Crown chase (the time limit is made short) ----
+	{
+		const page = await solo("crown", 3);
+		await page.evaluate(async () => { (await import("/js/party.js")).PARTY.crown.limit = 14000; });
+		await click(page, "#setupGo"); await wait(2500);
+		await page.waitForFunction(() => window.__game.race && window.__game.race.party && window.__game.race.party.state.h, { timeout: 30000 }); await wait(800);
+		const mid = await page.evaluate(() => { const r = window.__game.race; return { mode: r.mode, hud: document.getElementById("partyHud").textContent, h: r.party.state.h, marker: !!r.party.holder() }; });
+		console.log("Crown chase: a race against the clock with someone wearing the crown:", mid.mode === "race" && !!mid.h && /crown/i.test(mid.hud), "|", mid.hud);
+		console.log("results:", await waitScreen(page, "results", 40));
+		await wait(800);
+		const res = await page.evaluate(() => [...document.querySelectorAll("#resultsBody tr")].map(tr => tr.children[1].textContent.trim() + " | " + tr.children[2].textContent.trim()));
+		console.log("the results say seconds on top, most first:", res.every(r => /s on top/.test(r)) && parseFloat(res[0].split("|")[1]) >= parseFloat(res[1].split("|")[1]), JSON.stringify(res));
+		await shot(page, "modes-crown-results");
+		await page.close();
+	}
+	// ---- The wheel of chaos ----
+	{
+		const page = await solo("standard", 2, { laps: 4, chaos: true });
+		await click(page, "#setupGo"); await wait(2000);
+		await autodrive(page);
+		const seen = [];
+		let lap1 = null;
+		for(let i = 0; i < 160; i++){
+			const s = await page.evaluate(() => { const g = window.__game, r = g.race; return r ? { lap: r.me.data.lap, rule: g.chaosRule && g.chaosRule.id, tag: document.getElementById("chaosTag").hidden ? "" : document.getElementById("chaosTag").textContent, blind: document.getElementById("hud").classList.contains("blind"), night: g.world.look.night, fog: g.world.look.fog, screen: g.screen } : null; });
+			if(!s || s.screen !== "race") break;
+			if(s.lap === 1 && lap1 === null) lap1 = s;
+			if(s.rule && !seen.some(x => x.rule === s.rule && x.lap === s.lap)) seen.push(Object.assign({ lap: s.lap }, s));
+			if(seen.length >= 2) break;
+			await wait(1000);
+		}
+		console.log("lap 1 is normal (no rule):", lap1 && !lap1.rule && !lap1.tag);
+		console.log("from lap 2 each lap has a rule, shown on the HUD:", seen.length >= 1 && seen.every(x => x.tag === "Chaos: " + (x.tag.replace("Chaos: ", ""))) && seen[0].lap === 2, JSON.stringify(seen.map(x => [x.lap, x.rule])));
+		console.log("and the next lap has a different one:", seen.length < 2 || seen[0].rule !== seen[1].rule);
+		await shot(page, "modes-chaos");
+		await page.close();
+	}
+	// ---- A reversed grid after qualifying ----
+	{
+		const page = await solo("standard", 3, { laps: 1, quali: true, gridRev: true });
+		await click(page, "#setupGo"); await wait(1500);
+		await autodrive(page);
+		console.log("qualifying finishes:", await waitScreen(page, "results", 200));
+		await wait(800);
+		const order = await page.evaluate(() => [...document.querySelectorAll("#resultsBody tr")].map(tr => tr.children[1].textContent.trim()));
+		await page.evaluate(() => document.querySelector("#resultsActions button").click());
+		await wait(1500);
+		const grid = await page.evaluate(() => window.__game.race.cars.map(c => c.name.toUpperCase()));
+		console.log("the grid is the qualifying order the other way round (pole sits last):", JSON.stringify(grid) === JSON.stringify(order.map(n => n.replace(/ AI$/, "").toUpperCase()).reverse()), "| quali:", order.join(", "), "| grid:", grid.join(", "));
+		await page.close();
+	}
+	// ---- A party style online: the host runs it, the guest sees the same game ----
+	{
+		const host = await open(base + "?localnet&season=off");
+		const popup = new Promise(r => browser.once("targetcreated", t => r(t.page())));
+		await host.evaluate(u => window.open(u, "guest", "popup,width=1100,height=700"), base + "?localnet&season=off");
+		const guest = await popup;
+		guest.on("pageerror", e => errors.push("guest pageerror: " + e.message));
+		await guest.setViewport({ width: 1100, height: 700 });
+		await guest.waitForFunction(() => window.__game, { timeout: 60000 });
+		await wait(1200);
+		await click(host, "#btnOnline"); await wait(400);
+		await click(host, "#hostBtn"); await wait(1200);
+		const code = await host.$eval("#roomCode", e => e.textContent);
+		await click(guest, "#btnOnline"); await wait(400);
+		await guest.evaluate(c => { const i = document.getElementById("codeInput"); i.value = c; i.dispatchEvent(new Event("input")); }, code);
+		await click(guest, "#joinBtn"); await wait(1200);
+		await click(host, "#addBot"); await wait(400);
+		await host.evaluate(() => window.__game.net.updateSettings({ track: "figure8" }));
+		await click(host, '#lobbyStyle [data-v="potato"]'); await wait(900);
+		const lob = p => p.evaluate(() => ({ style: window.__game.room.settings.style, lapsLocked: document.querySelector('[data-stepper="lobbyLaps"]').dataset.locked, chaosRow: !document.getElementById("lobbyChaosRow").hidden, locked: document.getElementById("lobbyStyle").dataset.locked, off: [...document.querySelectorAll("#lobbyStyle button")].every(b => b.disabled) }));
+		const hl = await lob(host), gl = await lob(guest);
+		console.log("the host picks Hot Potato; the guest sees it but can't change it:", hl.style === "potato" && gl.style === "potato" && gl.off && !hl.off, "| laps locked:", hl.lapsLocked === "1", "| chaos hidden:", !hl.chaosRow);
+		await click(host, "#lobbyGo");
+		for(let i = 0; i < 40; i++){ const ph = await guest.evaluate(() => window.__game.race && window.__game.race.phase).catch(() => null); if(ph === "racing") break; await wait(500); }
+		await wait(5000);
+		const view = p => p.evaluate(() => { const r = window.__game.race; return { kind: r.party && r.party.kind, h: r.party && r.party.state.h, f: r.party && Math.round(r.party.state.f), n: r.party && r.party.state.n, auth: r.authority, hud: document.getElementById("partyHud").textContent }; });
+		const hv = await view(host), gv = await view(guest);
+		console.log("both screens run Hot Potato and agree who holds it:", hv.kind === "potato" && gv.kind === "potato" && hv.h && hv.h === gv.h && hv.f === gv.f, JSON.stringify({ host: hv, guest: gv }));
+		// The host's game passes it on (a touch), then the fuse takes someone out: the guest's screen follows.
+		await host.evaluate(async () => { const r = window.__game.race, H = r.party.holder(), N = r.cars.find(c => c !== H && c.elim === null); N.data.x = H.data.x + 1; N.data.y = H.data.y; await new Promise(res => setTimeout(res, 300)); r.party.state.f = r.raceTime - 1; r.party.state.g = 0; });
+		await wait(2500);
+		const after = await Promise.all([host, guest].map(p => p.evaluate(() => { const r = window.__game.race; return { out: r.cars.filter(c => c.elim !== null).map(c => c.id).sort(), h: r.party.state.h }; })));
+		console.log("a pass and a boom on the host's game show on the guest's screen too:", after[0].out.length >= 1 && JSON.stringify(after[0].out) === JSON.stringify(after[1].out) && after[0].h === after[1].h, JSON.stringify(after));
+		await host.close(); await guest.close();
+	}
 }
 
 console.log(errors.length ? "ERRORS:\n" + [...new Set(errors)].join("\n") : "no page errors");

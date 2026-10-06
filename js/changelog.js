@@ -3,6 +3,17 @@
 // when a version has something players will notice (version = the VERSION in js/config.js that shipped it).
 export const CHANGELOG = [
 	{
+		version: "2026.10.06-1", date: "6 October 2026", title: "New ways to race",
+		items: [
+			"Race styles (the Style row under Mode): Sprint (2 laps), Endurance (15 to 30 laps, with a halfway banner), and three party games.",
+			"Hot Potato: pass the potato on by touching another car before the fuse runs out. Last car left wins.",
+			"Cat and mouse: the cat catches mice by touching them. Survive until the time is up, or catch them all as the cat.",
+			"Crown chase: lead the race to wear the crown. The most seconds on top wins.",
+			"Wheel of chaos: a new surprise every lap, like night, fog or mirror steering.",
+			"Grid: after qualifying you can start with the fastest car last."
+		]
+	},
+	{
 		version: "2026.10.05-9", date: "5 October 2026", title: "Levels to 100",
 		items: [
 			"Driver levels now go all the way to 100 (they stopped at 30). Past 30 your level badge turns gold.",

@@ -7,6 +7,7 @@ import { makeCar, animateCar, disposeCar } from "./cars.js";
 import { seededRandom } from "./trackgen.js";
 import { SEND_RATE } from "./config.js";
 import { applySlipstream } from "./slipstream.js";
+import { Party } from "./party.js";
 
 const THREE = globalThis.THREE;
 export const COUNTDOWN = 3000;          // same three seconds as the original
@@ -88,6 +89,8 @@ export class Race {
 			this.byId.set(car.id, car);
 		});
 		this.me = this.byId.get(this.myId) || null;
+		// A party style (js/party.js): Hot Potato, Cat and mouse or Crown chase. The host runs it and shares its state.
+		this.party = opts.rule ? new Party(this, opts.rule) : null;
 
 		// Ghost to chase (time trial): your fastest lap ever, or this week's best in the challenge.
 		// It only changes when you beat it. lastLap is the lap just driven, for saving.
@@ -224,6 +227,8 @@ export class Race {
 			this.onEvent("finish", { car: c, ms: t, position: this.standings().findIndex(s => s.car === c) + 1 });
 		}else if(this.mode === "race" && c.me && c.data.lap === this.laps && this.laps > 1){
 			this.onEvent("finalLap", {});
+		}else if(this.mode === "race" && c.me && this.laps >= 10 && c.data.lap === Math.floor(this.laps / 2) + 1){
+			this.onEvent("halfway", { lap: c.data.lap - 1, laps: this.laps });
 		}
 	}
 
@@ -355,7 +360,9 @@ export class Race {
 	// Host / solo only: eliminations and deciding when the race is over.
 	rules(t){
 		const active = this.active;
-		if(this.mode === "elim"){
+		if(this.party){
+			this.party.rules(t);
+		}else if(this.mode === "elim"){
 			const leaderDone = Math.max(0, ...active.map(c => c.data.lap - 1));
 			const out = this.cars.filter(c => c.elim !== null).length;
 			if(active.length > 1 && leaderDone > out){
@@ -506,7 +513,7 @@ export class Race {
 		}));
 		return this.standings().map((s, i) => ({
 			id: s.car.id, name: s.car.name, hue: s.car.hue, body: s.car.body, bot: s.car.isBot,
-			pos: i + 1, time: s.car.finish, best: s.car.best, nf: (s.car.look && s.car.look.namefx) || null,
+			pos: i + 1, time: s.car.finish, best: s.car.best, nf: (s.car.look && s.car.look.namefx) || null, sc: this.party ? this.party.score(s.car) : "",
 			status: s.car.finish !== null ? "finished" : s.car.elim !== null ? "out" : "dnf",
 			gap: s.gap
 		}));
@@ -580,6 +587,10 @@ export class Race {
 	applyElims(map){
 		if(!map) return;
 		for(const id in map) this.eliminate(id, map[id]);
+	}
+	// The party style's state, as the host shares it (everyone but the host takes it).
+	applyParty(state){
+		if(this.party && !this.authority && state) this.party.apply(state);
 	}
 
 	removeCar(id){

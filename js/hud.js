@@ -34,7 +34,7 @@ export class Hud {
 		this.el = {
 			lap: $("hudLap"), laps: $("hudLaps"), lapLabel: $("hudLapLabel"), time: $("hudTime"), cur: $("hudCur"), best: $("hudBest"),
 			last: $("hudLast"), speed: $("hudSpeed"), pos: $("hudPos"), posOf: $("hudPosOf"), gauge: $("hudGauge"),
-			lights: $("lights"), banner: $("banner"), sub: $("bannerSub"), spect: $("spectating"), toast: $("hudToast")
+			lights: $("lights"), banner: $("banner"), sub: $("bannerSub"), spect: $("spectating"), toast: $("hudToast"), party: $("partyHud"), chaos: $("chaosTag")
 		};
 		this.mini = $("minimap");
 		this.miniCtx = this.mini.getContext("2d");
@@ -122,7 +122,7 @@ export class Hud {
 		}
 	}
 
-	setTower(standings, focusId){
+	setTower(standings, focusId, holderId){
 		const n = Math.min(standings.length, 10);
 		while(this.rows.length < n){
 			const row = document.createElement("li");
@@ -142,7 +142,7 @@ export class Hud {
 			const fx = nameFxClass(s.car.look);
 			if(r.name._fx !== fx){ r.name._fx = fx; r.name.className = "tw-name" + (fx ? " " + fx : ""); }
 			setText(r.gap, s.car.finish !== null ? (i === 0 ? "WIN" : s.gap) : (s.gap || "Leader"));
-			const cls = "tower-row" + (s.car.id === focusId ? " is-me" : "") + (s.car.elim !== null ? " is-out" : "") + (s.car.finish !== null ? " is-done" : "");
+			const cls = "tower-row" + (s.car.id === focusId ? " is-me" : "") + (holderId && s.car.id === holderId ? " is-holder" : "") + (s.car.elim !== null ? " is-out" : "") + (s.car.finish !== null ? " is-done" : "");
 			if(r.row._c !== cls){ r.row._c = cls; r.row.className = cls; }
 		});
 	}
@@ -211,6 +211,18 @@ export class Hud {
 		m.style.setProperty("--draft", String(q));
 		if(m._on !== on){ m._on = on; m.classList.toggle("on", on); }
 		fx.style.opacity = on ? String(Math.min(1, q * 1.1)) : "0";
+	}
+
+	// A line for the party styles (who has the potato, who's the cat, who wears the crown). "" hides it.
+	setParty(text){
+		const el = this.el.party;
+		if(el._t === text) return;
+		el._t = text; el.textContent = text; el.hidden = !text;
+	}
+	// The wheel of chaos: this lap's rule, shown for the whole lap; the Blindfold rule hides the HUD.
+	setChaos(rule){
+		const el = this.el.chaos;
+		el.hidden = !rule; el.textContent = rule ? "Chaos: " + rule.name : "";
 	}
 
 	// The look of the start lights: red, or one the player has picked in the garage (css/style.css, .lights[data-theme]).

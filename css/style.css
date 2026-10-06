@@ -460,6 +460,13 @@ a.race-btn{ color: inherit; text-decoration: none; }
 .an-tag{ flex: none; font-family: var(--f-display); font-weight: 700; text-transform: uppercase; letter-spacing: .14em; font-size: 12px; color: var(--wall); }
 #announceText{ flex: 1; min-width: 0; overflow-wrap: anywhere; line-height: 1.4; }
 .announce .link-btn{ flex: none; }
+/* Party styles and the wheel of chaos (js/party.js, js/chaos.js). */
+.party-hud{ position: absolute; top: 130px; left: 50%; transform: translateX(-50%); max-width: min(92vw, 560px); padding: 7px 18px; text-align: center; background: rgba(12,15,22,.82); border: 1px solid var(--line); border-left: 4px solid var(--wall); font-family: var(--f-display); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; font-size: 17px; line-height: 1.25; box-shadow: var(--elev-2); }
+.chaos-tag{ position: absolute; top: 176px; left: 50%; transform: translateX(-50%); padding: 3px 14px; background: rgba(120,40,200,.82); color: #fff; font-family: var(--f-display); font-weight: 800; font-style: italic; text-transform: uppercase; letter-spacing: .12em; font-size: 14px; }
+#hud.blind .tower, #hud.blind .hud-lap, #hud.blind #minimap, #hud.blind .mirror, #hud.blind .hud-speed .speed-read{ visibility: hidden; }
+.tower-row.is-holder{ background: linear-gradient(90deg, rgba(255,122,18,.55), rgba(18,22,30,.9) 70%); }
+.label.holder{ background: var(--wall); color: #170b02; box-shadow: 0 0 14px rgba(255,122,18,.7); }
+.label.holder b{ color: #170b02; }
 /* Garage: sharing a look, and prize codes. */
 .garage-share{ display: flex; flex-wrap: wrap; gap: var(--s2); }
 .garage-paste{ display: flex; gap: var(--s2); }
