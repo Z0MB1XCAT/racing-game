@@ -5,9 +5,47 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 	<meta name="theme-color" content="#11151d">
 	<meta name="apple-mobile-web-app-capable" content="yes">
-	<meta name="description" content="A browser racing game for you and your friends: real F1 circuits, an oval, bots, ghosts and online rooms.">
-	<title>Online Racing Game GP</title>
+	<title>Online Racing Game GP: free browser racing with real F1 circuits</title>
+	<meta name="description" content="A free racing game that runs in your browser. Race real F1 circuits against bots, friends online or your own ghost. No download needed.">
+	<meta name="robots" content="index, follow, max-image-preview:large">
+	<!-- Getting found (README.md, "Getting found"): the address search engines should list, the card a chat app shows when it's pasted,
+	     and the icon as real files. node tools/seo-test.mjs keeps these in step; node tools/set-site-url.mjs changes the address. -->
+	<link rel="canonical" href="https://z0mb1xcat.github.io/racing-game/">
+	<meta property="og:type" content="website">
+	<meta property="og:site_name" content="Online Racing Game GP">
+	<meta property="og:title" content="Online Racing Game GP: free browser racing with real F1 circuits">
+	<meta property="og:description" content="Race real F1 circuits against bots, friends online or your own ghost. Free, in your browser, nothing to download.">
+	<meta property="og:url" content="https://z0mb1xcat.github.io/racing-game/">
+	<meta property="og:image" content="https://z0mb1xcat.github.io/racing-game/assets/social/preview.jpg">
+	<meta property="og:image:width" content="1200">
+	<meta property="og:image:height" content="630">
+	<meta property="og:image:alt" content="The Online Racing Game GP title screen: a blue car on the start straight of a circuit.">
+	<meta name="twitter:card" content="summary_large_image">
+	<meta name="twitter:title" content="Online Racing Game GP: free browser racing with real F1 circuits">
+	<meta name="twitter:description" content="Race real F1 circuits against bots, friends online or your own ghost. Free, in your browser.">
+	<meta name="twitter:image" content="https://z0mb1xcat.github.io/racing-game/assets/social/preview.jpg">
+	<!-- Google Search Console: when it asks you to verify the site with an "HTML tag", paste the <meta name="google-site-verification" ...> line it gives you here. -->
+	<script type="application/ld+json">
+	{
+		"@context": "https://schema.org",
+		"@type": "VideoGame",
+		"name": "Online Racing Game GP",
+		"url": "https://z0mb1xcat.github.io/racing-game/",
+		"description": "A free racing game that runs in your browser. Race real F1 circuits against bots, friends online or your own ghost.",
+		"image": "https://z0mb1xcat.github.io/racing-game/assets/social/preview.jpg",
+		"genre": "Racing",
+		"gamePlatform": "Web browser",
+		"applicationCategory": "Game",
+		"operatingSystem": "Any with a web browser",
+		"playMode": ["SinglePlayer", "MultiPlayer"],
+		"inLanguage": "en-GB",
+		"isAccessibleForFree": true,
+		"offers": { "@type": "Offer", "price": "0", "priceCurrency": "GBP" }
+	}
+	</script>
 	<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2311151d'/%3E%3Cpath d='M8 5v23' stroke='%23f3f5f9' stroke-width='2.5' stroke-linecap='round'/%3E%3Cpath d='M9 6h16l-3 5 3 5H9z' fill='%23f48342'/%3E%3Cpath d='M9 6h4v5H9zM17 6h4v5h-4zM13 11h4v5h-4z' fill='%2311151d'/%3E%3C/svg%3E">
+	<link rel="icon" type="image/png" sizes="192x192" href="assets/social/icon-192.png">
+	<link rel="apple-touch-icon" href="assets/social/apple-touch-icon.png">
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;0,800;0,900;1,700;1,800;1,900&family=Figtree:wght@400;500;600;700&family=Monoton&display=swap" rel="stylesheet">
@@ -24,6 +62,7 @@
 	<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 </head>
 <body>
+	<noscript><p style="position:fixed;inset:0;z-index:99;margin:0;padding:32px;background:#11151d;color:#f3f5f9;font:18px/1.7 sans-serif">Online Racing Game GP is a free racing game that runs in your browser: race real F1 circuits against bots, your friends online or your own ghost. It needs JavaScript, so turn it on (or try another browser) to play.</p></noscript>
 	<div id="stage"></div>
 	<canvas id="lens" aria-hidden="true" hidden></canvas>
 	<div class="menu-toast" id="menuToast" role="status" hidden></div>

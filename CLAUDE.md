@@ -86,6 +86,9 @@ on purpose; `npm run setup` recreates them. If the server is already running, do
 | `vendor-post.mjs` | rebuilds `vendor/three-r128/postprocessing.js` (bloom and pass chaining from three r128's examples) |
 | `build-previews.mjs [track] [time]` | makes the Fast and Pretty pictures Settings shows (`assets/previews/`) from the real game; only when a quality's look changes |
 | `idle-test.mjs` | the background queue: order, one at a time, jumping the queue, failures, not in a race (no browser) |
+| `seo-test.mjs` | what helps the game be found: title, description, canonical address, link card, sitemap, robots.txt, icons, all agreeing (no browser) |
+| `build-social.mjs` | makes `assets/social/` (link-preview card, icon files) from the real game; only when the logo or title screen changes |
+| `set-site-url.mjs <https://address/>` | changes the public address in index.html, sitemap.xml and robots.txt (custom domain) |
 | `check-assets.mjs` | `assets/manifest.json` vs the files: they exist, plain glTF, within their triangle/size budgets |
 | `asset-test.mjs` | the game with assets loading, missing, broken, replaced and on Low: it must cope with each |
 | `sound-test.mjs [track] [--voices]` | a short race in a real browser: recorded effects load, the mix never clips or goes silent, and the voices stay hidden (with `--voices`: they speak, with subtitles) |

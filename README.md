@@ -468,6 +468,55 @@ at the top of `js/changelog.js`** (its `version` is the `VERSION` that ships it;
 
 Bots, time trial and the editor work straight away. Online rooms need the next part.
 
+## Getting found in search
+
+Search engines only list a site once they know it exists, and a name as common as "online racing game" will never be the first result for
+those words. What does work: someone searching the game's exact name finds it, and a link pasted into a chat shows a proper card. The game
+already has everything on its own side; the steps below are the ones only you can do (they need your accounts). The site's address is
+`https://z0mb1xcat.github.io/racing-game/` (swap in your own if it's different).
+
+**What's already in the repo** (all checked by `node tools/seo-test.mjs`):
+
+| File | What it does |
+|---|---|
+| `index.html` (head) | a title and description search results show, the canonical address, the link-preview card (Open Graph and Twitter), search-result data (schema.org `VideoGame`), the icon as real files, and a plain-words `<noscript>` line |
+| `sitemap.xml` | tells search engines which pages there are (just the game) |
+| `robots.txt` | lets search engines in and points at the sitemap |
+| `assets/social/preview.jpg` | the 1200 x 630 card a chat app shows when the address is pasted (made from the real title screen by `node tools/build-social.mjs`) |
+| `assets/social/icon-192.png`, `apple-touch-icon.png` | the checkered-flag icon as files (Google can't read the inline one); also what a phone uses when the game is added to the home screen |
+| `editor/index.html` | marked `noindex`: the track editor is switched off, so it shouldn't be listed |
+
+**What you do, in order:**
+
+1. **Push**, then wait a minute and check that `https://z0mb1xcat.github.io/racing-game/sitemap.xml` and `.../assets/social/preview.jpg` open in a browser.
+2. **Google Search Console** (search.google.com/search-console, sign in with a Google account): *Add property* > **URL prefix** > paste the address
+   above. For *how to verify*, pick **HTML tag**: it shows a line like `<meta name="google-site-verification" content="abc...">`. Paste that line
+   into `index.html` where the comment in the head says to (or give it to Claude), bump the version, push, wait a minute, press **Verify**.
+3. In Search Console: **Sitemaps** > type `sitemap.xml` > *Submit*. Then paste the address into the search bar at the top (*URL inspection*) and press
+   **Request indexing**.
+4. **Bing** (bing.com/webmasters, which Edge and many school computers use): *Import from Google Search Console* is the quickest way to add the site and its sitemap.
+5. **Links help more than anything else.** On the GitHub repo page, press the gear by *About*, put the address in *Website*, and add topics
+   such as `racing-game`, `browser-game`, `f1`, `threejs`. Ask your school (website, newsletter, the Hwb page) to link to it, and link it from anywhere you post.
+6. **Wait.** A first listing usually takes a few days, sometimes weeks. To see where it stands, search Google for `site:z0mb1xcat.github.io/racing-game`
+   (it lists what Google has), and for the game's exact name. After you change the card's picture, chat apps can keep showing the old one for a while.
+
+**Make the name searchable.** The title is "Online Racing Game GP", shared with every other racing game. A name nobody else uses (a made-up word
+works well) means searching it finds only this. To rename: change the game's name in `js/config.js` (`GAME_NAME`), the `<title>` and the `og:` / `twitter:` /
+`ld+json` names in the head of `index.html`, then `node tools/build-social.mjs` (the card shows the heading) and `node tools/seo-test.mjs`.
+
+**A shorter address.** A domain of your own (about £10 a year from any registrar) is easy to give out: *Settings > Pages > Custom domain* on GitHub,
+the DNS records GitHub lists at your registrar, then tick *Enforce HTTPS*. GitHub adds a `CNAME` file to the repo: keep it. Then:
+`node tools/set-site-url.mjs https://your-domain/` rewrites the address in `index.html`, `sitemap.xml` and `robots.txt` (and `node tools/seo-test.mjs`
+checks it). **Also add the new domain in the Firebase console** (*Authentication > Settings > Authorized domains*, see "Set up online play"),
+or accounts and login stop working on it, and add the new address as a new property in Search Console. (On a `github.io` address search engines only read
+the `robots.txt` at the top of `github.io`, so this repo's one starts to count with a domain of your own; the sitemap works either way once it's submitted in Search Console.)
+
+**Before you make it easy to find:** anyone can find it, not only your friends. Rooms need a four-letter code, and there's a name and chat
+filter, reports, bans and an admin page, but strangers could try it. If it's meant for your school only, leave this unlisted (or change `index.html`'s
+`<meta name="robots">` to `noindex` and remove `robots.txt`'s `Allow`) and give people a short link or a QR code instead.
+
+---
+
 ## Set up online play (Firebase)
 
 Online rooms use Firebase **Realtime Database**, same as the original game. The free
@@ -709,6 +758,9 @@ The last two also need puppeteer installed.
 - `node tools/grid-test.mjs` checks the solo grid: a fair shuffle, you on the start place you asked for, the first 18 grid places untouched, how many cars every circuit and layout's start holds, the timing tower's rows for any number of cars, and twenty cars racing two laps of Spa, Crossroads and Jeddah with nobody stuck.
 - `node tools/keys-test.mjs` checks changing the keys, no browser: the default map is exactly the keys the game always had, what can and can't be used, picking a key, swapping with another action, refusing with a reason, removing a second key, and that rubbish saved in a profile (junk, repeats, prototype names, every default taken) always gives a complete valid map with steering and pause still bound.
 - `node tools/idle-test.mjs` checks the background queue (`js/idle.js`), no browser: the most wanted job first, one at a time with a gap between, a job you need jumps the queue, one that fails never stalls the rest, nothing starts while the game says it isn't a good moment (a race), and it still runs where `requestIdleCallback` doesn't exist.
+- `node tools/seo-test.mjs` checks everything that helps the game be found, no browser: the title and description are the right length, the canonical address, the link-preview card and search-result data agree with each other, the card picture is 1200 x 630 and under 300 KB, the icons are the right size, the sitemap and `robots.txt` use the same address, and the editor page keeps itself out of search.
+- `node tools/build-social.mjs` makes `assets/social/` (the link-preview card and the icon files) from the real game; only when the logo or title screen changes.
+- `node tools/set-site-url.mjs https://new-address/` changes the address everywhere search engines read it (for a custom domain).
 - `node tools/party-test.mjs` checks the party styles and the wheel of chaos against a pretend race, no browser: Hot Potato (one holder, passes, the grace time, fuses, the last car wins), Cat and mouse (catches, the cat winning, the time limit and the order it leaves the table in), Crown chase (seconds on top add up, the winner isn't whoever leads at the end), a new host carrying on from the shared state, and the chaos rules (same for everyone, never the same lap after lap, steering effects bounded).
 - `node tools/season-test.mjs` checks the seasons and the Halloween challenge week, no browser: the look comes on at the start of 1 October and goes off at the start of 1 November in every year (a leap year too); `?season=` and the Settings switch change what's drawn but never what can be earned; the Halloween challenge is the week with 31 October in it, on a forest circuit at night in fog, one a year to 2060, never repeating a track next to it, and no ordinary week is touched.
 - `node tools/music-test.mjs` plays the menu songs in a browser: each is audible, never clips, isn't silent for long, and the October one is about as loud as the usual one.

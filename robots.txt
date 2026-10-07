@@ -1,0 +1,6 @@
+# Search engines are welcome. (On a github.io address search engines only read the robots.txt at the very top of github.io, not this one:
+# it starts to count if the game gets its own domain. Either way, submit sitemap.xml in Google Search Console: see README.md, "Getting found".)
+User-agent: *
+Allow: /
+
+Sitemap: https://z0mb1xcat.github.io/racing-game/sitemap.xml
