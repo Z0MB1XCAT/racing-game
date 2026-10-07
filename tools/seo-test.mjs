@@ -37,7 +37,7 @@ ok(meta("property", "og:url") === BASE && meta("property", "og:type") === "websi
 ok(!!meta("property", "og:title") && !!meta("property", "og:description") && meta("property", "og:site_name") === "Online Racing Game GP", "the link preview has a title, a description and the site's name");
 ok(meta("name", "twitter:card") === "summary_large_image" && meta("name", "twitter:title") && meta("name", "twitter:description"), "chat apps that read Twitter-style cards get a large picture card too");
 ok(html.includes("<noscript>") && /free racing game/i.test(html.slice(html.indexOf("<noscript>"), html.indexOf("</noscript>"))), "anything that can't run the game's script is told what it is in plain words");
-ok(/google-site-verification/.test(head), "the spot for Google's verification tag is marked in the head");
+ok(/<meta name="google-site-verification" content="[\w-]{20,}"/.test(head), "Google's verification tag is in the head (it stays there: removing it un-verifies the site)");
 
 console.log("the pictures");
 const og = meta("property", "og:image"), tw = meta("name", "twitter:image");
