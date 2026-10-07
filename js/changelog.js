@@ -69,7 +69,7 @@ export const CHANGELOG = [
 	{
 		version: "2026.10.05-7", date: "5 October 2026", title: "Codes and announcements",
 		items: [
-			"Prize codes: got a code from a teacher? Garage > Prize code (or Have a prize code? on the title screen) unlocks the item for good.",
+			"Prize codes: got a code? Garage > Prize code (or Have a prize code? on the title screen) unlocks the item for good.",
 			"Look codes: Garage > Copy look code gives a line of text to send a friend. Use a look code applies one: you get what you've unlocked.",
 			"Announcements: news from the admin, like a tournament at lunch, shows at the top of the title screen. You can dismiss it."
 		]

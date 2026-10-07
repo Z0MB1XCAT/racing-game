@@ -636,7 +636,7 @@ if(flow === "online"){
 }
 
 if(flow === "bigtv"){
-	// A classroom projector: a big screen joins a room, shows the waiting board, then the race as a broadcast, then the results.
+	// A projector: a big screen joins a room, shows the waiting board, then the race as a broadcast, then the results.
 	// It must never take a place on the grid.
 	const host = await open(base + "?localnet");
 	await click(host, "#btnOnline"); await wait(400);

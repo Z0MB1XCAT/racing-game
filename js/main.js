@@ -2297,7 +2297,7 @@ $("joinBtn").addEventListener("click", () => withBusy($("joinBtn"), async () => 
 	enterLobby();
 }));
 
-// ---------- Big screen: a projector in a classroom ----------
+// ---------- Big screen: a projector or TV ----------
 // Joins a room as a watcher (net.joinRoom with watch): it shows the waiting board between races and a broadcast (the live
 // cameras, commentary, a big timing tower) during them. It never takes a place on the grid or a say in who hosts.
 function setBigTv(on){ S.watch = !!on; document.body.classList.toggle("bigtv", !!on); }
@@ -3234,7 +3234,7 @@ async function loadAnnouncement(){
 $("announceClose").addEventListener("click", () => { audio.sfx.click(); store.save("seenAnnouncement", Number($("announce").dataset.at)); $("announce").hidden = true; });
 
 // ---------- Prize codes ----------
-// A code from a teacher or a prize (js/codes.js): the items it names unlock for good. Wrong guesses slow down, so a code can't be guessed.
+// A prize code (js/codes.js): the items it names unlock for good. Wrong guesses slow down, so a code can't be guessed.
 const prizeTries = { wrong: 0, wait: 0 };
 function prizeSay(text, kind){ const el = $("prizeMsg"); el.hidden = !text; el.textContent = text || ""; el.className = "msg " + (kind || ""); }
 async function redeemPrize(){
@@ -3286,7 +3286,7 @@ showScreen("title");
 	}
 	const inviteCode = (params.get("room") || "").toUpperCase();
 	if(play || params.has("room")){ params.delete("play"); params.delete("room"); history.replaceState(null, "", location.pathname + (params.toString() ? "?" + params : "")); }
-	// A link for the classroom projector: ?tv=ABCD joins that room as a big screen.
+	// A link for the projector: ?tv=ABCD joins that room as a big screen.
 	const tvCode = (params.get("tv") || "").toUpperCase();
 	if(/^[A-Z]{4}$/.test(inviteCode) && !/^[A-Z]{4}$/.test(tvCode) && !play) openInvite(inviteCode);
 	if(/^[A-Z]{4}$/.test(tvCode) && onlineAvailable()){

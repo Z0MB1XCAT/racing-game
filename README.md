@@ -236,8 +236,8 @@ original did).
   - **The #1 number and a crown** go to whoever topped last week's weekly challenge, until the
     next week ends.
 - **Prize codes** (`js/codes.js`, `tools/codes.mjs`): type a code in (Garage > **Prize code**, or **Have a prize code?** on the title
-  screen) and the items it names unlock for good, even ones that are normally earned or out of season, and follow an account. Hand them out
-  as class prizes. The codes themselves aren't in the game's files, only a fingerprint (SHA-256) of each, so reading the source doesn't give
+  screen) and the items it names unlock for good, even ones that are normally earned or out of season, and follow an account. The codes
+  themselves aren't in the game's files, only a fingerprint (SHA-256) of each, so reading the source doesn't give
   them away. A code ignores case, spaces and dashes, can have an end date, and works for everyone who knows it (make one per winner with
   `random`). Wrong guesses slow down (five in a row make you wait 30 seconds). Manage them with the tool, then commit `js/codes.js`:
   ```bash
@@ -350,7 +350,7 @@ original did).
     neural voice and play as recorded clips stitched into sentences. The computer drivers are called by name; any
     other driver is "Number 23", with their real name in the subtitles. **Settings** has Voices, Team radio,
     Commentary and Subtitles, and a **Hear the voices** button.
-- **Big screen** (Online > Big screen, or the link `?tv=ABCD`): put a room on a classroom projector. It joins as a
+- **Big screen** (Online > Big screen, or the link `?tv=ABCD`): put a room on a projector or TV. It joins as a
   watcher (never on the grid, never the host), shows the room code and who's in between races, then the race as
   a broadcast (auto cameras, a big timing tower, the map and lap counter, and the commentary and subtitles when
   the voices are on) and the results. **Race bots > Watch the bots race** does the same with computer drivers and no room.

@@ -1,4 +1,4 @@
-// Prize codes: you (or a teacher) hand out a code, a player types it in (Garage > Prize code, or "Have a prize code?" on the
+// Prize codes: you hand out a code, a player types it in (Garage > Prize code, or "Have a prize code?" on the
 // title screen), and a garage item unlocks for them, kept for good like any other item.
 //
 // The codes themselves are not in the game's files: only a fingerprint of each is (a SHA-256 hash), so reading the source doesn't

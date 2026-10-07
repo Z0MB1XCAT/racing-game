@@ -1061,7 +1061,7 @@ kbd{ font-family: var(--f-display); font-weight: 700; font-size: 13px; padding: 
 .fps-box .fps-gpu{ color: rgba(243,245,249,.45); max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 640px){ .fps-box{ bottom: auto; top: 54px; left: 8px; } }
 
-/* ---------- Big screen: a projector in a classroom (Online > Big screen, or ?tv=CODE; see main.js joinAsBigScreen) ---------- */
+/* ---------- Big screen: a projector or TV (Online > Big screen, or ?tv=CODE; see main.js joinAsBigScreen) ---------- */
 .bigtv{
 	display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); grid-template-rows: auto 1fr; gap: clamp(20px, 3vw, 56px) clamp(32px, 5vw, 96px);
 	height: 100%; padding: clamp(24px, 4vw, 72px); align-content: start;
