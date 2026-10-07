@@ -59,9 +59,13 @@ console.log("a computer that can't keep up (no graphics card: drawn in software)
 	const { p, errors } = await open({ slow: true, go: false });
 	ok((await state(p)).on, "Hold 60 fps is on");
 	ok(/swiftshader|software|llvmpipe|angle/i.test(await p.evaluate(() => window.__game.gfx.gpu)), "(and it really is software: " + await p.evaluate(() => window.__game.gfx.gpu) + ")");
-	await wait(45000);
-	const after = await state(p);
-	ok(after.step > 0, "it turned itself down: step " + after.step + " of " + (after.n - 1) + ", sharpness " + Math.round(after.pr * 100) + "%, about " + after.fps.toFixed(0) + " fps");
+	// (A software browser takes anywhere from 40 to 70 seconds to draw its first frames, depending on how busy the machine is:
+	// wait until the game has acted, for up to two minutes, rather than a fixed time that sometimes isn't enough.)
+	const t0 = Date.now();
+	let after = await state(p);
+	while(after.step === 0 && Date.now() - t0 < 120000){ await wait(2000); after = await state(p); }
+	const took = Math.round((Date.now() - t0) / 1000);
+	ok(after.step > 0, "it turned itself down: step " + after.step + " of " + (after.n - 1) + ", sharpness " + Math.round(after.pr * 100) + "%, about " + after.fps.toFixed(0) + " fps (after " + took + " s)");
 	ok(after.pr < 1, "the picture is drawn with fewer pixels (pixel ratio " + after.pr.toFixed(2) + ")");
 	ok(!after.shadows === !after.cast, "the sun's shadows follow the step (" + (after.shadows ? "on" : "off") + ")");
 	ok(errors.length === 0, "no page errors" + (errors[0] ? ": " + errors[0] : ""));
