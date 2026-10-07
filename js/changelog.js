@@ -3,6 +3,13 @@
 // when a version has something players will notice (version = the VERSION in js/config.js that shipped it).
 export const CHANGELOG = [
 	{
+		version: "2026.10.07-3", date: "7 October 2026", title: "See the graphics, and a quicker start",
+		items: [
+			"Settings now shows what Fast and Pretty look like, side by side. Tap a picture to choose it.",
+			"The menus load the circuits' surroundings and sounds in the background, one at a time, the one you're looking at first. On a slow school connection the track behind the menu is ready sooner."
+		]
+	},
+	{
 		version: "2026.10.07-2", date: "7 October 2026", title: "Your own keys, and Auto-pause",
 		items: [
 			"Choose your own keys in Settings > Change keys. Each action has two, and your keys follow your account to any computer.",

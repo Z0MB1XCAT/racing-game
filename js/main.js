@@ -1,6 +1,8 @@
 // Game shell: screens, input, camera, and wiring races to the menus and online rooms.
 import { TRACKS, LAYOUTS, trackById, venueOf, layoutsOf } from "./tracks.js";
 import { buildTrack, gridCapacity } from "./trackgen.js";
+import { IdleQueue } from "./idle.js";
+import { prefetch as prefetchSfx } from "./sfxbank.js";
 import { lineUp, maxBots, placeName } from "./grid.js";
 import { ACTIONS, defaultKeys, cleanKeys, isDefault, lookup, bindKey, clearKey, keyLabel, hudHint } from "./keys.js";
 import { makeTracker } from "./progress.js";
@@ -203,6 +205,18 @@ function showTrack(def, reverse){
 	return entry;
 }
 
+// What loads in the background (the circuits' surroundings, the models, the sound pack) is queued to run one at a time while you sit in the
+// menus (js/idle.js): not in the first moments while the first track is built, not while a track is being built, never in a race. The track on
+// show comes first, then this week's challenge, then the rest; a track you pick in a menu jumps the queue (previewTrack).
+const bootAt = performance.now();
+const idle = new IdleQueue({ canRun: () => !S.race && S.screen !== "race" && !document.hidden && !preview && !previewTimer && performance.now() - bootAt > 1500 });
+{
+	const showing = venueOf(S.setup.trackId), weekly = venueOf(weeklyChallenge().def.id);
+	idle.add("assets", () => preloadAssets(quality()).then(refreshWorld), 1);
+	for(const v of PLACE_VENUES) idle.add("places:" + v, () => loadPlaces(v).then(refreshWorld), v === showing ? 0 : v === weekly ? 1 : 5);
+	idle.add("sfx", prefetchSfx, 8);
+}
+
 // Picking a track in a menu: the card and the labels change at once and a chip says what's loading, then the
 // preview is built a moment later, a few milliseconds at a time between frames (steps.js), so the page stays alive
 // while it is. The world already on show stays until the new one is ready. A quick run of picks builds only the
@@ -224,6 +238,7 @@ function previewTrack(def, reverse, { quiet = false } = {}){
 	const key = trackKey(def, reverse), stamp = worldStamp(def);
 	if(wanted && wanted.key === key && wanted.stamp === stamp) return;          // (already on its way)
 	cancelPreview();
+	idle.now("places:" + venueOf(def.id));                                       // (its surroundings, if they haven't come yet: now, not in turn)
 	if(S.world && S.trackKey === key && S.worldStamp === stamp) return;         // (already on show)
 	wanted = { key, stamp };
 	if(!quiet){
@@ -264,8 +279,6 @@ function refreshWorld(){
 	if(wanted || !S.track || !S.world || S.race || !S.track.def || S.worldStamp === worldStamp(S.track.def)) return;
 	previewTrack(S.track.def, S.track.reverse, { quiet: true });
 }
-for(const v of PLACE_VENUES) loadPlaces(v).then(refreshWorld);
-preloadAssets(quality()).then(refreshWorld);
 
 // ---------- Menu showcase car ----------
 function placeShowcase(){
@@ -288,7 +301,7 @@ function showScreen(name){
 	audio.playMusic(menuSong());
 	document.querySelectorAll("[data-screen]").forEach(s => { s.hidden = s.dataset.screen !== name; });
 }
-function openModal(id){ audio.sfx.open(); $(id).hidden = false; const f = $(id).querySelector("button, input"); if(f) f.focus(); }
+function openModal(id){ audio.sfx.open(); if(id === "settings") paintQualityPreview(); $(id).hidden = false; const f = $(id).querySelector("button, input"); if(f) f.focus(); }
 function closeModal(id){ audio.sfx.close(); $(id).hidden = true; }
 document.querySelectorAll("[data-open]").forEach(b => b.addEventListener("click", () => openModal(b.dataset.open)));
 document.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", () => closeModal(b.closest(".modal").id)));
@@ -403,7 +416,25 @@ updateShowcaseTag();
 
 // ---------- Settings ----------
 function saveSettings(){ store.setSettings(S.settings); }
-seg($("setQuality"), S.settings.quality, v => { S.settings.quality = v; store.save("tierHint", null); saveSettings(); applyQuality(); });
+seg($("setQuality"), S.settings.quality, v => { S.settings.quality = v; store.save("tierHint", null); saveSettings(); applyQuality(); paintQualityPreview(); });
+// The two pictures under Graphics (assets/previews, made by tools/build-previews.mjs): the one in use is lit, Auto says which one it
+// picked, and a click chooses it. If the pictures can't load the strip hides itself.
+function paintQualityPreview(){
+	const q = quality();
+	for(const b of $("qualityPrev").querySelectorAll(".qp")){
+		b.setAttribute("aria-pressed", String(b.dataset.q === q));
+		b.querySelector(".qp-auto").hidden = !(S.settings.quality === "auto" && b.dataset.q === q);
+	}
+}
+$("qualityPrev").addEventListener("click", e => { const b = e.target.closest(".qp"); if(b) document.querySelector(`#setQuality [data-v="${b.dataset.q}"]`).click(); });
+{
+	// (A picture can fail before this script has run, so look for ones that already have as well as waiting for the event.)
+	const pics = [...$("qualityPrev").querySelectorAll("img")];
+	const hideIfBroken = () => { if(pics.some(i => i.complete && i.naturalWidth === 0)) $("qualityPrev").hidden = true; };
+	pics.forEach(img => img.addEventListener("error", hideIfBroken));
+	hideIfBroken();
+}
+paintQualityPreview();
 seg($("setAdaptive"), S.settings.adaptive === false ? "0" : "1", v => { S.settings.adaptive = v === "1"; saveSettings(); configureGfx(); });
 seg($("setFps"), S.settings.fps ? "1" : "0", v => { S.settings.fps = v === "1"; saveSettings(); gfx.setCounter(S.settings.fps); });
 seg($("setCamera"), S.settings.camera, v => { S.settings.camera = v; saveSettings(); });

@@ -379,6 +379,16 @@ original did).
     way they really do; further out, they're exactly where the map has them. Streets have lamps that come
     on at night, windows light up after dark, and on **Low** graphics the smallest far-off buildings are
     left out.
+- **Quality previews** (Settings > Graphics): under the Auto / Fast / Pretty buttons are two pictures of the same moment of a race, one on each
+  quality (`assets/previews/`, made from the real game by `tools/build-previews.mjs`). The one in use is lit, Auto says which one it picked, and clicking a
+  picture chooses it. If the pictures can't load the strip hides itself.
+- **Idle preloading** (`js/idle.js`): what the game fetches in the background (every circuit's surroundings in `js/places/`, the models and
+  textures, and the recorded sound pack's bytes) goes through a queue that runs one job at a time, only while you're in the menus (never in a
+  race or while a track is being built), when the browser is idle, and not in the first moments. The track on show comes first, then this week's
+  challenge, then the rest; a track you pick in a menu jumps the queue. Measured against loading everything at once, with the network slowed to
+  1.5 Mbit/s (a school's Wi-Fi) and averaged over alternating runs: the track in the menu background was finished (its models and its own
+  surroundings) after about 19 s instead of 24 s, and on a computer slowed four times the first track appeared about 10% sooner. The other
+  circuits now arrive one after another in the background (all in by about 28 s on that slow connection, instead of 23 s).
 - **Holds 60 fps by itself** (Settings > Hold 60 fps, on by default): the game watches how long each frame
   takes and, if a computer can't keep up, steps down a ladder (`js/ladders.js`): a little less sharpness (never
   the driving), the glow off, the rear-view mirror redrawn every 2nd, 3rd, then 6th frame (it's a whole second
@@ -671,8 +681,9 @@ The last two also need puppeteer installed.
 - `node tools/vendor-post.mjs` rebuilds `vendor/three-r128/postprocessing.js` (the glow parts of three.js r128's examples, in one file).
 - `node tools/adaptive-test.mjs` plays the 60 fps controller against simulated computers (strong, weak, crawling, a faster screen, stalls).
 - `node tools/gfx-test.mjs` checks the FPS counter, the game turning itself down on a computer drawing in software, "Hold 60 fps" off, the saved step and Fast, in the real game.
+- `node tools/build-previews.mjs [track] [time]` makes the two pictures Settings shows under Graphics (`assets/previews/quality-fast.jpg` and `quality-pretty.jpg`): the same moment on the grid, same car, once on each quality, taken from the real game. Run it again only when what a quality looks like changes.
 - `node tools/build-models.mjs` builds the game's own simple models (street lamp, floodlight) into `assets/models/*.glb`.
-- `node tools/check-assets.mjs` checks `assets/manifest.json` against the files (they exist, plain glTF, within their triangle and size budgets).
+- `node tools/check-assets.mjs` checks `assets/manifest.json` against the files (they exist, plain glTF, within their triangle and size budgets) and that the two quality pictures are there, real JPEGs under 80 KB, and different.
 - `node tools/asset-test.mjs` plays the game with assets loading, missing, broken and replaced, and checks it copes with each.
 - `node tools/preview-test.mjs` checks what picking a track in a menu does: the click returns at once with a "Loading ..." chip, the page keeps drawing frames while the preview builds, a quick run of picks (or a pick mid-build) builds only the last, and a race started after a pick isn't rebuilt under.
 - `node tools/place-plot.mjs <venue> [metres across] [lap fraction]` draws a map of a venue's surroundings as the game has them, with the circuit.
@@ -697,6 +708,7 @@ The last two also need puppeteer installed.
 - `node tools/bots-test.mjs` checks the computer drivers: the ten levels (3, 6 and 10 are exactly the old three, every step up looks further ahead and wobbles less, odd values are held to 1 to 10), the twenty names and their personalities, the adaptive controller, and on real circuits that lap times fall as the level rises, that no personality changes a lap by more than 7%, and that with adaptive bots five bots stay within about a second or two of a steady driver (far closer than the same bots not adapting).
 - `node tools/grid-test.mjs` checks the solo grid: a fair shuffle, you on the start place you asked for, the first 18 grid places untouched, how many cars every circuit and layout's start holds, the timing tower's rows for any number of cars, and twenty cars racing two laps of Spa, Crossroads and Jeddah with nobody stuck.
 - `node tools/keys-test.mjs` checks changing the keys, no browser: the default map is exactly the keys the game always had, what can and can't be used, picking a key, swapping with another action, refusing with a reason, removing a second key, and that rubbish saved in a profile (junk, repeats, prototype names, every default taken) always gives a complete valid map with steering and pause still bound.
+- `node tools/idle-test.mjs` checks the background queue (`js/idle.js`), no browser: the most wanted job first, one at a time with a gap between, a job you need jumps the queue, one that fails never stalls the rest, nothing starts while the game says it isn't a good moment (a race), and it still runs where `requestIdleCallback` doesn't exist.
 - `node tools/party-test.mjs` checks the party styles and the wheel of chaos against a pretend race, no browser: Hot Potato (one holder, passes, the grace time, fuses, the last car wins), Cat and mouse (catches, the cat winning, the time limit and the order it leaves the table in), Crown chase (seconds on top add up, the winner isn't whoever leads at the end), a new host carrying on from the shared state, and the chaos rules (same for everyone, never the same lap after lap, steering effects bounded).
 - `node tools/season-test.mjs` checks the seasons and the Halloween challenge week, no browser: the look comes on at the start of 1 October and goes off at the start of 1 November in every year (a leap year too); `?season=` and the Settings switch change what's drawn but never what can be earned; the Halloween challenge is the week with 31 October in it, on a forest circuit at night in fog, one a year to 2060, never repeating a track next to it, and no ordinary week is touched.
 - `node tools/music-test.mjs` plays the menu songs in a browser: each is audible, never clips, isn't silent for long, and the October one is about as loud as the usual one.
@@ -708,7 +720,7 @@ The last two also need puppeteer installed.
 - `node tools/build-voices.mjs [eng] [lead] [col] [--force] [--check]` renders the lines in `js/voicelines.js` into `assets/voice/*.pak` with the Kokoro voice (needs `npm i kokoro-js` in a scratch folder and `KOKORO_DIR` pointing at it, plus ffmpeg); `--check` listens back with a speech recogniser. Only needed when a line or a voice changes.
 - `node tools/build-sfx.mjs <folder>` packs the chosen sounds from Kenney's Impact Sounds, Interface Sounds and UI Audio packs (CC0) into `assets/audio/sfx.pak`.
 - `node tools/contact-test.mjs monaco` compares original and soft car contact (side hit, rear tap, a bot race).
-- `node tools/e2e.mjs solo|online|rematch|vote|podium|bots|controls|invite|whatsnew|halloween|codes|announce|looks|modes|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
+- `node tools/e2e.mjs solo|online|rematch|vote|podium|bots|controls|previews|invite|whatsnew|halloween|codes|announce|looks|modes|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
 
 ## Credits and licence
 

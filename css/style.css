@@ -556,6 +556,17 @@ body.halloween[data-view="title"] .bats{ display: block; }
 .km-key.listening{ color: #0e1219; background: var(--chalk); border-color: var(--chalk); animation: km-wait 1s ease-in-out infinite; }
 @keyframes km-wait{ 50%{ opacity: .7; } }
 @media (prefers-reduced-motion: reduce){ .km-key.listening{ animation: none; } }
+/* Settings > Graphics: what Fast and Pretty look like (the same moment of the same race), the one in use lit. */
+.quality-prev{ display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
+.qp{ display: flex; flex-direction: column; gap: 4px; padding: 0 0 10px; text-align: left; color: var(--chalk); background: #0d1118; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; cursor: pointer; transition: transform .22s var(--spring), border-color .2s, box-shadow .2s; }
+.qp img{ display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; background: #161b26; }
+.qp-name{ display: flex; justify-content: space-between; align-items: baseline; gap: 6px; padding: 4px 10px 0; font-family: var(--f-display); font-weight: 800; text-transform: uppercase; letter-spacing: .06em; font-size: 16px; }
+.qp-auto{ font-style: normal; font-weight: 700; font-size: 11px; letter-spacing: .08em; color: var(--car); }
+.qp small{ padding: 0 10px; color: var(--mute); font-size: 12px; line-height: 1.45; }
+.qp:hover{ border-color: var(--line-strong); transform: translateY(-2px); }
+.qp:active{ transform: scale(.98); }
+.qp:focus-visible{ outline: 2px solid var(--chalk); outline-offset: 2px; }
+.qp[aria-pressed="true"]{ border-color: var(--car); box-shadow: 0 0 0 1px var(--car) inset, 0 10px 24px -12px var(--car); }
 .stepper output.wide{ min-width: 64px; text-align: center; }
 #hud{ position: fixed; inset: 0; pointer-events: none; font-family: var(--f-display); }
 .tower{

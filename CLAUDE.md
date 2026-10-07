@@ -84,6 +84,8 @@ on purpose; `npm run setup` recreates them. If the server is already running, do
 | `adaptive-test.mjs` | the 60 fps controller (`js/adaptive.js`) against simulated computers, no browser |
 | `gfx-test.mjs` | FPS counter, adaptive sharpness on a software-drawn (slow) browser, Hold 60 fps off, saved step, Fast |
 | `vendor-post.mjs` | rebuilds `vendor/three-r128/postprocessing.js` (bloom and pass chaining from three r128's examples) |
+| `build-previews.mjs [track] [time]` | makes the Fast and Pretty pictures Settings shows (`assets/previews/`) from the real game; only when a quality's look changes |
+| `idle-test.mjs` | the background queue: order, one at a time, jumping the queue, failures, not in a race (no browser) |
 | `check-assets.mjs` | `assets/manifest.json` vs the files: they exist, plain glTF, within their triangle/size budgets |
 | `asset-test.mjs` | the game with assets loading, missing, broken, replaced and on Low: it must cope with each |
 | `sound-test.mjs [track] [--voices]` | a short race in a real browser: recorded effects load, the mix never clips or goes silent, and the voices stay hidden (with `--voices`: they speak, with subtitles) |

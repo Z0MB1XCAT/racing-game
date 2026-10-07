@@ -830,6 +830,18 @@
 			<h2>Settings</h2>
 			<div class="opt-row"><span class="opt-label">Graphics</span>
 				<div class="seg" id="setQuality" role="radiogroup" aria-label="Graphics"><button data-v="auto">Auto</button><button data-v="low">Fast</button><button data-v="high">Pretty</button></div></div>
+			<div class="quality-prev" id="qualityPrev" role="group" aria-label="What each graphics setting looks like">
+				<button type="button" class="qp" data-q="low" aria-pressed="false">
+					<img src="assets/previews/quality-fast.jpg" alt="The start straight on Fast: flat lighting, no shadows" width="640" height="360" decoding="async">
+					<span class="qp-name">Fast <em class="qp-auto" hidden>Auto picked this</em></span>
+					<small>No shadows or glow and thinner scenery. The smoothest choice on a school laptop.</small>
+				</button>
+				<button type="button" class="qp" data-q="high" aria-pressed="false">
+					<img src="assets/previews/quality-pretty.jpg" alt="The same start straight on Pretty: sun shadows, glow and richer colour" width="640" height="360" decoding="async">
+					<span class="qp-name">Pretty <em class="qp-auto" hidden>Auto picked this</em></span>
+					<small>Sun shadows, glow, richer colour and full scenery.</small>
+				</button>
+			</div>
 			<p class="opt-help">Fast turns off shadows and thins out scenery. Use it on school laptops.</p>
 			<div class="opt-row"><span class="opt-label">Hold 60 fps</span>
 				<div class="seg" id="setAdaptive" role="radiogroup" aria-label="Hold 60 fps"><button data-v="1">On</button><button data-v="0">Off</button></div></div>

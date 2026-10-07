@@ -105,6 +105,22 @@ console.log("sound");
 		if(!existsSync(new URL("audio/LICENSE-kenney.txt", ROOT))) fail("sfx", "assets/audio/LICENSE-kenney.txt (the CC0 notice) is missing");
 	}
 }
+// The two pictures Settings shows under Graphics (made by tools/build-previews.mjs). The game hides them if they're missing, so this is
+// about the repo: both there, real JPEGs, small, and not the same picture twice.
+{
+	const names = ["quality-fast.jpg", "quality-pretty.jpg"], bytes = [];
+	for(const n of names){
+		const f = new URL("previews/" + n, ROOT);
+		if(!existsSync(f)){ fail("preview " + n, "assets/previews/" + n + " is missing: run tools/build-previews.mjs"); continue; }
+		const b = readFileSync(f);
+		bytes.push(b);
+		total += b.length / 1024; files++;
+		console.log("  " + ("preview " + n.replace(/^quality-|\.jpg$/g, "")).padEnd(18), (b.length / 1024).toFixed(0).padStart(6) + " KB");
+		if(b[0] !== 0xFF || b[1] !== 0xD8) fail("preview " + n, "not a JPEG");
+		if(b.length > 80 * 1024) fail("preview " + n, "over 80 KB (" + (b.length / 1024).toFixed(0) + " KB): Settings loads it every time it opens");
+	}
+	if(bytes.length === 2 && bytes[0].equals(bytes[1])) fail("previews", "Fast and Pretty are the same picture");
+}
 console.log(files + " files, " + total.toFixed(1) + " KB in all" + (total > 8192 ? "  (warn: over 8 MB: that's a lot for players to download)" : ""));
 if(bad){ console.log(bad + " problem" + (bad > 1 ? "s" : "")); process.exit(1); }
 console.log("assets ok");

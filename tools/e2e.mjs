@@ -2,6 +2,7 @@
 //   node tools/e2e.mjs solo [trackId]     race bots, hold right-ish steering, screenshot HUD + results
 //   node tools/e2e.mjs online             two tabs over ?localnet: host, join, race
 //   node tools/e2e.mjs vote               three tabs: race, then vote for the next track on the results screen
+//   node tools/e2e.mjs previews           Settings > Graphics pictures (lit, Auto note, click to choose, hidden if missing) and the idle queue (menus load every circuit; a picked track jumps the queue)
 //   node tools/e2e.mjs controls           Settings > Change keys (pick, swap, refuse, remove, reset), the new keys steering in a race, and Auto-pause
 //   node tools/e2e.mjs bots               the ten-level bot slider, adaptive bots, 19 bots and where you start, a track's own limit, Restart keeping the grid, bot tags in results and lobby
 //   node tools/e2e.mjs podium             the winner's celebration: previewed in the garage (locked styles too), and the winner's own style on every screen of an online race
@@ -1506,6 +1507,57 @@ if(flow === "controls"){
 	await click(page, "#keysReset"); await wait(400);
 	const back = await rows();
 	console.log("   ->", JSON.stringify(back[0]), JSON.stringify(await saved()), JSON.stringify(back) === JSON.stringify(r0), await page.evaluate(() => document.getElementById("keysReset").disabled));
+}
+
+if(flow === "previews"){
+	// Settings > Graphics shows what Fast and Pretty look like: both pictures load, the one in use is lit, Auto says which it picked, a click
+	// chooses one, and the strip hides itself if the pictures can't load. Then the idle queue: every venue's surroundings arrive in the
+	// menus without a race, a track you pick jumps the queue, and nothing is fetched while a race is on.
+	const page = await open(base + "?localnet&season=off", 1280, 900);
+	const state = () => page.evaluate(() => ({
+		quality: window.__game.settings.quality,
+		pics: [...document.querySelectorAll("#qualityPrev .qp")].map(b => ({ q: b.dataset.q, on: b.getAttribute("aria-pressed") === "true", auto: !b.querySelector(".qp-auto").hidden, w: b.querySelector("img").naturalWidth, alt: b.querySelector("img").alt })),
+		hidden: document.getElementById("qualityPrev").hidden
+	}));
+	await page.evaluate(() => document.querySelector('[data-open="settings"]').click()); await wait(900);
+	const s0 = await state();
+	console.log("both pictures are there and loaded, with a description for people who can't see them:", s0.pics.length === 2 && s0.pics.every(p => p.w === 640 && p.alt.length > 20), JSON.stringify(s0.pics.map(p => [p.q, p.w])));
+	console.log("on Auto, one is lit and says Auto picked it:", s0.quality === "auto" && s0.pics.filter(p => p.on).length === 1 && s0.pics.filter(p => p.auto).length === 1 && s0.pics.find(p => p.on).auto, JSON.stringify(s0.pics.map(p => [p.q, p.on, p.auto])));
+	await shot(page, "previews-auto");
+	await page.evaluate(() => document.querySelector('#qualityPrev .qp[data-q="low"]').click()); await wait(1800);
+	const s1 = await state();
+	console.log("clicking the Fast picture chooses Fast, lights it and drops the Auto note:", s1.quality === "low" && s1.pics.find(p => p.q === "low").on && !s1.pics.find(p => p.q === "high").on && s1.pics.every(p => !p.auto), JSON.stringify(s1.pics.map(p => [p.q, p.on, p.auto])));
+	console.log("and the Graphics buttons agree:", await page.evaluate(() => document.querySelector('#setQuality [aria-checked="true"]').dataset.v));
+	await page.evaluate(() => document.querySelector('#setQuality [data-v="high"]').click()); await wait(1800);
+	const s2 = await state();
+	console.log("choosing Pretty with the buttons lights its picture:", s2.quality === "high" && s2.pics.find(p => p.q === "high").on && !s2.pics.find(p => p.q === "low").on);
+	await page.evaluate(() => document.querySelector('#setQuality [data-v="auto"]').click()); await wait(1800);
+	await shot(page, "previews-pretty");
+	// Pictures that can't load: the strip goes, nothing else breaks.
+	const other = await browser.newPage();
+	await other.setViewport({ width: 1280, height: 900 });
+	await other.setRequestInterception(true);
+	other.on("request", r => (/\/assets\/previews\//.test(r.url()) ? r.respond({ status: 404, body: "no" }) : r.continue()));
+	other.on("pageerror", e => errors.push("pageerror (pictures missing): " + e.message));
+	await other.goto(base + "?localnet&season=off", { waitUntil: "networkidle0" }); await wait(1200);
+	await other.evaluate(() => document.querySelector('[data-open="settings"]').click()); await wait(900);
+	console.log("with the pictures missing the strip hides itself and Settings still works:", await other.evaluate(() => document.getElementById("qualityPrev").hidden && !!document.querySelector('#setQuality button')));
+	await other.close();
+	// The idle queue: in the menus, everything arrives without any picking.
+	const fresh = await open(base + "?localnet&season=off", 1280, 800);
+	const loaded = () => fresh.evaluate(async () => { const m = await import("/js/placegeo.js"); return m.PLACE_VENUES.filter(v => m.placesLoaded(v)); });
+	let all = [], waited = 0;
+	for(; waited < 60; waited++){ all = await loaded(); if(all.length === 6) break; await wait(1000); }
+	console.log("sitting in the menu, every circuit's surroundings arrive by themselves (" + waited + " s):", all.length === 6, JSON.stringify(all));
+	await fresh.close();
+	// A track picked in a menu jumps the queue: its surroundings are in well before the idle queue would get to them.
+	const quick = await open(base + "?localnet&season=off", 1280, 800);
+	await click(quick, "#btnBots"); await wait(700);
+	await quick.evaluate(() => document.querySelector('#setupTracks [data-id="suzuka"]').click());
+	let got = false, ms = 0;
+	for(; ms < 6000; ms += 250){ got = await quick.evaluate(async () => { const m = await import("/js/placegeo.js"); return m.placesLoaded("suzuka"); }); if(got) break; await wait(250); }
+	console.log("picking Suzuka in the setup brings its surroundings in at once (" + ms + " ms), not in the queue's turn:", got && ms < 5000);
+	await quick.close();
 }
 
 console.log(errors.length ? "ERRORS:\n" + [...new Set(errors)].join("\n") : "no page errors");

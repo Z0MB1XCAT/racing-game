@@ -35,7 +35,7 @@ export const ACCOUNTS = {
 
 // Bump this (and version.json) whenever you push an update. Players on an older copy are
 // told to refresh, and the lobby shows who needs to.
-export const VERSION = "2026.10.07-2";
+export const VERSION = "2026.10.07-3";
 
 export const GAME_NAME = "Online Racing Game";
 export const EDITION = "Grand Prix";

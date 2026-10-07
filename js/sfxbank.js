@@ -2,6 +2,13 @@
 // name ("hit.metalHeavy", "ui.click"): each group has a few takes and one is picked at random, a little different
 // every time. It's all optional. Until the pack has loaded, or if it can't be, play() says no and the caller makes
 // its own sound instead (js/audio.js has a synthesised version of every effect).
+// Fetch the pack's bytes early (while you sit in the menus) so the first sound after your first click doesn't wait on the network.
+// Decoding still has to wait for that click, which is when the sound starts. Never throws.
+export function prefetch(){
+	const base = new URL("../assets/audio/", import.meta.url).href;
+	return Promise.all(["sfx.json", "sfx.pak"].map(f => fetch(base + f).then(r => (r.ok ? r.arrayBuffer() : null)))).then(() => true, () => false);
+}
+
 export function createBank(ctx, dest){
 	const base = new URL("../assets/audio/", import.meta.url).href;
 	const clips = new Map();
