@@ -2,6 +2,7 @@
 import { TRACKS, LAYOUTS, trackById, venueOf, layoutsOf } from "./tracks.js";
 import { buildTrack, gridCapacity } from "./trackgen.js";
 import { lineUp, maxBots, placeName } from "./grid.js";
+import { ACTIONS, defaultKeys, cleanKeys, isDefault, lookup, bindKey, clearKey, keyLabel, hudHint } from "./keys.js";
 import { makeTracker } from "./progress.js";
 import { buildWorld, buildWorldSteps } from "./world.js";
 import { runSliced, slice } from "./steps.js";
@@ -418,6 +419,7 @@ seg($("setShake"), S.settings.shake ? "1" : "0", v => { S.settings.shake = v ===
 seg($("setMirror"), S.settings.mirror ? "1" : "0", v => { S.settings.mirror = v === "1"; saveSettings(); });
 seg($("setChat"), S.settings.chat === false ? "0" : "1", v => { S.settings.chat = v === "1"; saveSettings(); chat.render(); });
 seg($("setTouch"), S.settings.touch, v => { S.settings.touch = v; saveSettings(); updateTouchZones(); });
+seg($("setAutoPause"), S.settings.autoPause === false ? "0" : "1", v => { S.settings.autoPause = v === "1"; saveSettings(); });
 $("setVolume").value = S.settings.volume;
 $("setVolume").addEventListener("input", e => { S.settings.volume = +e.target.value; saveSettings(); audio.setVolume(S.settings.volume); });
 audio.setVolume(S.settings.volume);
@@ -950,7 +952,7 @@ function beginRace(opts){
 		c.label = el;
 	}
 	if(S.race.rivalModel){
-		setTimeout(() => { if(S.race && S.race.rival) hud.toast(`${S.race.hideOwnGhost ? "Your ghost is hidden" : "Your ghost is on track too"} · ${mobile ? "Pause to" : "G to"} ${S.race.hideOwnGhost ? "show" : "hide"} it`, 3200); }, 1400);
+		setTimeout(() => { if(S.race && S.race.rival) hud.toast(`${S.race.hideOwnGhost ? "Your ghost is hidden" : "Your ghost is on track too"} · ${mobile ? "Pause to" : keyLabel(keyMap().ghost[0] || "KeyG") + " to"} ${S.race.hideOwnGhost ? "show" : "hide"} it`, 3200); }, 1400);
 		const el = document.createElement("div");
 		el.className = "label ghost-label";
 		el.style.setProperty("--c", `hsl(${S.race.rival.hue ?? 0},100%,55%)`);
@@ -1466,6 +1468,15 @@ function resume(){
 	audio.duckMusic(false);
 	if(S.paused){ S.pausedTotal += performance.now() - S.pauseStart; S.paused = false; audio.startEngine(); }
 }
+// Auto-pause: a solo race stops by itself when you switch to another tab or window (Settings > Auto-pause). An online race can't
+// stop for one person, and watching the bots has no one to wait for.
+function autoPause(){
+	if(S.settings.autoPause === false || !S.race || S.frozen || S.replay || S.screen !== "race" || !$("pause").hidden) return;
+	if(!S.ctx || S.ctx.source === "online" || S.ctx.watch) return;
+	pause();
+}
+document.addEventListener("visibilitychange", () => { if(document.hidden) autoPause(); });
+addEventListener("blur", () => { setTimeout(() => { if(!document.hasFocus()) autoPause(); }, 150); });
 $("pauseBtn").addEventListener("click", pause);
 $("resumeBtn").addEventListener("click", resume);
 $("restartBtn").addEventListener("click", () => { closeModal("pause"); S.paused = false; (S.ctx && S.ctx.restart || startSolo)(); });
@@ -1488,42 +1499,106 @@ $("quitBtn").addEventListener("click", () => {
 	else goTitle();
 });
 
+// ---------- Controls: your own keys ----------
+// What each key does comes from your profile's key map (js/keys.js), which is the usual keys until you change it.
+const keyMap = () => cleanKeys(S.profile.keys);
+let keyLookup = lookup(keyMap());
+function applyKeys(){ keyLookup = lookup(keyMap()); $("hudKeys").innerHTML = hudHint(keyMap()); }
+function setKeys(next){
+	if(isDefault(next)) delete S.profile.keys; else S.profile.keys = next;
+	saveProfile();                                  // (kept with your profile; an account carries it to any computer)
+	applyKeys();
+	renderKeymap();
+}
+function keySay(text, kind){ const el = $("keymapMsg"); el.hidden = !text; el.textContent = text || ""; el.className = "msg " + (kind || ""); }
+let keyListen = null;                               // the key button waiting for a key: { id, slot }
+function renderKeymap(){
+	const keys = keyMap();
+	$("keymapList").innerHTML = ACTIONS.map(a => `<li><span class="km-name">${a.label}</span><span class="km-keys">${[0, 1].map(slot => {
+		const code = keys[a.id][slot], on = !!keyListen && keyListen.id === a.id && keyListen.slot === slot;
+		return `<button type="button" class="km-key${code ? "" : " empty"}${on ? " listening" : ""}" data-id="${a.id}" data-slot="${slot}" aria-label="${a.label}, ${slot ? "second" : "first"} key: ${code ? keyLabel(code) : "none"}. Press to change.">${on ? "Press a key" : code ? keyLabel(code) : "+"}</button>`;
+	}).join("")}</span></li>`).join("");
+	$("keysReset").disabled = isDefault(keys);
+}
+const focusKey = (id, slot) => { const b = $("keymapList").querySelector(`[data-id="${id}"][data-slot="${slot}"]`); if(b) b.focus(); };
+$("keymapList").addEventListener("click", e => {
+	const b = e.target.closest(".km-key");
+	if(!b) return;
+	audio.sfx.click();
+	keySay("");
+	keyListen = { id: b.dataset.id, slot: +b.dataset.slot };
+	renderKeymap();
+	focusKey(keyListen.id, keyListen.slot);
+});
+// While a key button is waiting, the next key is its new key (this runs before everything else, so nothing else reacts to it).
+let swallowUp = "";
+addEventListener("keydown", e => {
+	if(!keyListen) return;
+	if($("controls").hidden){ keyListen = null; return; }
+	e.preventDefault(); e.stopImmediatePropagation();
+	if(e.repeat) return;
+	const k = e.code || "", { id, slot } = keyListen;
+	keyListen = null; swallowUp = k;
+	if(k === "Escape"){ renderKeymap(); focusKey(id, slot); return; }
+	if(k === "Backspace" || k === "Delete"){
+		if(slot >= 1) setKeys(clearKey(keyMap(), id, slot).keys);
+		else { keySay("The first key can only be changed, not removed.", "err"); renderKeymap(); }
+		focusKey(id, slot);
+		return;
+	}
+	const r = bindKey(keyMap(), id, slot, k);
+	if(r.error){ audio.sfx.error(); keySay(r.error, "err"); renderKeymap(); }
+	else{
+		audio.sfx.confirm();
+		setKeys(r.keys);
+		if(r.swapped) keySay("Swapped: " + ACTIONS.find(a => a.id === r.swapped).label.toLowerCase() + " took the key you gave up.", "ok");
+	}
+	focusKey(id, slot);
+}, true);
+// (A key that was just chosen shouldn't also press the button it was typed on.)
+addEventListener("keyup", e => { if(swallowUp && e.code === swallowUp){ swallowUp = ""; e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+$("keysReset").addEventListener("click", () => { audio.sfx.click(); keyListen = null; setKeys(defaultKeys()); keySay("Back to the usual keys.", "ok"); });
+$("openControls").addEventListener("click", () => { closeModal("settings"); keyListen = null; keySay(""); renderKeymap(); openModal("controls"); });
+applyKeys();
+
 // ---------- Input ----------
 const typing = () => /INPUT|TEXTAREA/.test(document.activeElement && document.activeElement.tagName);
 addEventListener("keydown", e => {
 	audio.unlock();
 	if(typing()) return;
 	const k = e.code || "";   // password autofill sends key events with no code
-	if(k === "ArrowLeft" || k === "KeyA") S.input.left = true;
-	if(k === "ArrowRight" || k === "KeyD") S.input.right = true;
-	if(k === "KeyB") S.input.back = true;
-	if(k === "KeyH") S.input.horn = true;
+	const act = keyLookup.get(k);                  // (what this key does: your keys, or the usual ones)
+	if(act === "left") S.input.left = true;
+	if(act === "right") S.input.right = true;
+	if(act === "back") S.input.back = true;
+	if(act === "horn") S.input.horn = true;
 	if(k.startsWith("Arrow") && S.race) e.preventDefault();
 	if(e.repeat) return;
-	if(k === "KeyH" && S.race && !S.frozen && !hornAllowed()) hud.toast("The horn is off in this race", 1400);
-	if((k === "Escape" || k === "KeyP") && S.race && !S.frozen){ $("pause").hidden ? pause() : resume(); }
+	if(act === "horn" && S.race && !S.frozen && !hornAllowed()) hud.toast("The horn is off in this race", 1400);
+	if((k === "Escape" || act === "pause") && S.race && !S.frozen){ $("pause").hidden ? pause() : resume(); }
 	else if(k === "Escape"){ document.querySelectorAll(".modal").forEach(m => { if(m.id !== "pause") m.hidden = true; }); }
 	// Chat in an online race: Enter (or T) opens the box; steering lets go while you type.
-	if((k === "Enter" || k === "NumpadEnter" || k === "KeyT") && chatMode() === "race" && $("pause").hidden && chat.openInput()){
+	if((k === "Enter" || k === "NumpadEnter" || act === "chat") && chatMode() === "race" && $("pause").hidden && chat.openInput()){
 		e.preventDefault();
 		S.input.left = S.input.right = S.input.back = S.input.horn = false;
 		return;
 	}
-	if(k === "KeyR" && S.race && !S.paused) S.race.requestRescue();
-	if(k === "KeyG" && S.race && S.race.rival && !S.frozen) toggleOwnGhost();
+	if(act === "rescue" && S.race && !S.paused) S.race.requestRescue();
+	if(act === "ghost" && S.race && S.race.rival && !S.frozen) toggleOwnGhost();
 	if((S.replay || spectating()) && (k === "ArrowLeft" || k === "ArrowRight")){ cycleFocus(k === "ArrowLeft" ? -1 : 1); return; }
-	if((S.replay || spectating()) && k === "KeyC"){ const sh = director().cycleShot(); $("tvShot").textContent = "Camera: " + SHOT_NAMES[sh]; return; }
+	if((S.replay || spectating()) && act === "camera"){ const sh = director().cycleShot(); $("tvShot").textContent = "Camera: " + SHOT_NAMES[sh]; return; }
 	if(S.replay && k === "Escape"){ endReplay(); return; }
 	if(S.replay && k === "Space"){ $("tvPlay").click(); e.preventDefault(); return; }
-	if(k === "KeyC"){ const order = ["classic", "far", "hood"]; S.settings.camera = order[(order.indexOf(S.settings.camera) + 1) % 3]; saveSettings(); hud.toast("Camera: " + ({ classic: "Classic", far: "Far", hood: "Bonnet" })[S.settings.camera], 1200); }
-	if(k === "KeyM"){ S.muted = !S.muted; audio.setVolume(S.muted ? 0 : S.settings.volume); hud.toast(S.muted ? "Sound off" : "Sound on", 1200); }
+	if(act === "camera"){ const order = ["classic", "far", "hood"]; S.settings.camera = order[(order.indexOf(S.settings.camera) + 1) % 3]; saveSettings(); hud.toast("Camera: " + ({ classic: "Classic", far: "Far", hood: "Bonnet" })[S.settings.camera], 1200); }
+	if(act === "mute"){ S.muted = !S.muted; audio.setVolume(S.muted ? 0 : S.settings.volume); hud.toast(S.muted ? "Sound off" : "Sound on", 1200); }
 });
 addEventListener("keyup", e => {
 	const k = e.code || "";
-	if(k === "ArrowLeft" || k === "KeyA") S.input.left = false;
-	if(k === "ArrowRight" || k === "KeyD") S.input.right = false;
-	if(k === "KeyB") S.input.back = false;
-	if(k === "KeyH") S.input.horn = false;
+	const act = keyLookup.get(k);
+	if(act === "left") S.input.left = false;
+	if(act === "right") S.input.right = false;
+	if(act === "back") S.input.back = false;
+	if(act === "horn") S.input.horn = false;
 });
 addEventListener("blur", () => { S.input.left = S.input.right = S.input.back = S.input.horn = false; });
 addEventListener("pointerdown", () => { audio.unlock(); setTimeout(() => { $("tvSound").hidden = audio.soundState() === "running"; }, 150); }, { once: false, passive: true });

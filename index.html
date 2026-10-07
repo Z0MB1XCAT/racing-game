@@ -768,7 +768,7 @@
 				<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
 			</button>
 		</div>
-		<div class="hud-keys"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> or <kbd>A</kbd> <kbd>D</kbd> steer &middot; <kbd>R</kbd> reset car &middot; <kbd>B</kbd> look back &middot; <kbd>H</kbd> horn &middot; <kbd>C</kbd> camera &middot; <kbd>Esc</kbd> pause</div>
+		<div class="hud-keys" id="hudKeys"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> or <kbd>A</kbd> <kbd>D</kbd> steer &middot; <kbd>R</kbd> reset car &middot; <kbd>B</kbd> look back &middot; <kbd>H</kbd> horn &middot; <kbd>C</kbd> camera &middot; <kbd>Esc</kbd> pause</div>
 	</div>
 	<!-- TV coverage: live spectating, highlights and replays -->
 	<div id="tv" hidden>
@@ -865,7 +865,25 @@
 				<div class="seg" id="setChat" role="radiogroup" aria-label="Room chat"><button data-v="1">On</button><button data-v="0">Off</button></div></div>
 			<div class="opt-row"><span class="opt-label">Phone steering</span>
 				<div class="seg" id="setTouch" role="radiogroup" aria-label="Phone steering"><button data-v="tilt">Tilt</button><button data-v="touch">Tap sides</button></div></div>
+			<div class="opt-row"><span class="opt-label">Auto-pause</span>
+				<div class="seg" id="setAutoPause" role="radiogroup" aria-label="Auto-pause"><button data-v="1">On</button><button data-v="0">Off</button></div></div>
+			<p class="opt-help">A solo race pauses by itself when you switch to another tab or window.</p>
+			<div class="opt-row"><span class="opt-label">Keys</span><button class="back-btn" id="openControls" type="button">Change keys</button></div>
 			<button class="go-btn" data-close><span>Done</span></button>
+		</div>
+	</div>
+
+	<!-- Controls: choose your own keys -->
+	<div class="modal" id="controls" hidden>
+		<div class="panel kerbed">
+			<h2>Controls</h2>
+			<p class="opt-help">Click a key, then press the one you want. Backspace removes a second key. Esc and Enter always pause and chat, so they can't be changed. Keys are saved with your profile, so an account takes them anywhere.</p>
+			<ul class="keymap" id="keymapList"></ul>
+			<p class="msg" id="keymapMsg" role="status" hidden></p>
+			<div class="flex gap-3" style="flex-wrap:wrap">
+				<button class="go-btn ghost" id="keysReset"><span>Reset to defaults</span></button>
+				<button class="go-btn" data-close><span>Done</span></button>
+			</div>
 		</div>
 	</div>
 
@@ -966,6 +984,7 @@
 			<ul>
 				<li>Hold <kbd>B</kbd> to look behind you. The mirror at the top shows who's close (switch it off in Settings).</li>
 				<li><kbd>H</kbd> sounds your horn (pick one in the garage). <kbd>C</kbd> change camera &middot; <kbd>M</kbd> mute &middot; <kbd>Esc</kbd> pause</li>
+				<li>These are the usual keys. Change any of them in Settings &rsaquo; Change keys.</li>
 			</ul>
 			<p class="credit">Physics and the Classic track are from <a href="https://github.com/jchabin/cars" target="_blank" rel="noopener">jchabin/cars</a> (GPL-3.0). Circuit shapes are simplified from the real layouts.</p>
 			<p class="credit"><button class="back-btn" data-open="whatsnew">What's new</button></p>

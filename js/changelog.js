@@ -3,6 +3,13 @@
 // when a version has something players will notice (version = the VERSION in js/config.js that shipped it).
 export const CHANGELOG = [
 	{
+		version: "2026.10.07-2", date: "7 October 2026", title: "Your own keys, and Auto-pause",
+		items: [
+			"Choose your own keys in Settings > Change keys. Each action has two, and your keys follow your account to any computer.",
+			"Auto-pause: a solo race now pauses by itself when you switch to another tab or window (you can turn it off in Settings)."
+		]
+	},
+	{
 		version: "2026.10.07-1", date: "7 October 2026", title: "Smarter bots and bigger grids",
 		items: [
 			"Bots now have ten levels (a slider) instead of three. Rookie, Racer and Ace are levels 3, 6 and 10.",

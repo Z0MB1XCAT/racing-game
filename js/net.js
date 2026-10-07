@@ -796,7 +796,7 @@ export class Net {
 	// Your driver name, colour and car follow your account between devices.
 	saveProfile(p){
 		if(this.account().kind === "guest") return Promise.resolve();
-		return this.store.set("users/" + this.uid, { name: String(p.name).slice(0, 18), hue: p.hue, body: p.body, look: p.look || null, solo: p.solo || null });
+		return this.store.set("users/" + this.uid, { name: String(p.name).slice(0, 18), hue: p.hue, body: p.body, look: p.look || null, solo: p.solo || null, keys: p.keys || null });
 	}
 	loadProfile(){ return this.store.get("users/" + this.uid); }
 }

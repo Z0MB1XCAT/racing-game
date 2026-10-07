@@ -420,6 +420,13 @@ original did).
   the walls, it happens automatically.
 
 Controls: **← →** or **A D** steer, **R** reset car, hold **B** look back, **H** horn, **C** camera, **M** mute, **Esc** pause.
+**Settings > Change keys** (`js/keys.js`) lets you choose your own: each thing has a first key and an optional second one; click one, then press the
+key you want (Backspace removes a second key, Esc cancels, **Reset to defaults** puts the usual ones back). A key another action has is swapped with
+the one you're replacing, so nothing is left without a key; steering and pause always keep one. Esc (pause and closing things), Enter (chat), Tab,
+function keys, Ctrl, Alt and the Windows key can't be used. Keys are kept as key positions (so any keyboard layout works) in your profile, which an
+account carries to any computer (no rules change: the profile node takes extra fields). Only which key does what changes: steering, and so the
+handling, is exactly as before. **Settings > Auto-pause** (on by default) pauses a solo race by itself when you switch to another tab or
+window (not online races, which can't stop for one person, nor watching the bots).
 On phones, tilt to steer or tap the screen sides (Settings).
 
 ---
@@ -689,6 +696,7 @@ The last two also need puppeteer installed.
 - `node tools/vote-test.mjs` checks the next-track vote, no browser: the ballot is the track just raced plus two others, the same on every screen and different each race, every track turns up, votes for anything not on the ballot (made-up and prototype names included) don't count, the most votes wins, and a tie is settled the same way everywhere and fairly over many races.
 - `node tools/bots-test.mjs` checks the computer drivers: the ten levels (3, 6 and 10 are exactly the old three, every step up looks further ahead and wobbles less, odd values are held to 1 to 10), the twenty names and their personalities, the adaptive controller, and on real circuits that lap times fall as the level rises, that no personality changes a lap by more than 7%, and that with adaptive bots five bots stay within about a second or two of a steady driver (far closer than the same bots not adapting).
 - `node tools/grid-test.mjs` checks the solo grid: a fair shuffle, you on the start place you asked for, the first 18 grid places untouched, how many cars every circuit and layout's start holds, the timing tower's rows for any number of cars, and twenty cars racing two laps of Spa, Crossroads and Jeddah with nobody stuck.
+- `node tools/keys-test.mjs` checks changing the keys, no browser: the default map is exactly the keys the game always had, what can and can't be used, picking a key, swapping with another action, refusing with a reason, removing a second key, and that rubbish saved in a profile (junk, repeats, prototype names, every default taken) always gives a complete valid map with steering and pause still bound.
 - `node tools/party-test.mjs` checks the party styles and the wheel of chaos against a pretend race, no browser: Hot Potato (one holder, passes, the grace time, fuses, the last car wins), Cat and mouse (catches, the cat winning, the time limit and the order it leaves the table in), Crown chase (seconds on top add up, the winner isn't whoever leads at the end), a new host carrying on from the shared state, and the chaos rules (same for everyone, never the same lap after lap, steering effects bounded).
 - `node tools/season-test.mjs` checks the seasons and the Halloween challenge week, no browser: the look comes on at the start of 1 October and goes off at the start of 1 November in every year (a leap year too); `?season=` and the Settings switch change what's drawn but never what can be earned; the Halloween challenge is the week with 31 October in it, on a forest circuit at night in fog, one a year to 2060, never repeating a track next to it, and no ordinary week is touched.
 - `node tools/music-test.mjs` plays the menu songs in a browser: each is audible, never clips, isn't silent for long, and the October one is about as loud as the usual one.
@@ -700,7 +708,7 @@ The last two also need puppeteer installed.
 - `node tools/build-voices.mjs [eng] [lead] [col] [--force] [--check]` renders the lines in `js/voicelines.js` into `assets/voice/*.pak` with the Kokoro voice (needs `npm i kokoro-js` in a scratch folder and `KOKORO_DIR` pointing at it, plus ffmpeg); `--check` listens back with a speech recogniser. Only needed when a line or a voice changes.
 - `node tools/build-sfx.mjs <folder>` packs the chosen sounds from Kenney's Impact Sounds, Interface Sounds and UI Audio packs (CC0) into `assets/audio/sfx.pak`.
 - `node tools/contact-test.mjs monaco` compares original and soft car contact (side hit, rear tap, a bot race).
-- `node tools/e2e.mjs solo|online|rematch|vote|podium|bots|invite|whatsnew|halloween|codes|announce|looks|modes|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
+- `node tools/e2e.mjs solo|online|rematch|vote|podium|bots|controls|invite|whatsnew|halloween|codes|announce|looks|modes|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
 
 ## Credits and licence
 

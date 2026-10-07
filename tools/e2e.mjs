@@ -2,6 +2,7 @@
 //   node tools/e2e.mjs solo [trackId]     race bots, hold right-ish steering, screenshot HUD + results
 //   node tools/e2e.mjs online             two tabs over ?localnet: host, join, race
 //   node tools/e2e.mjs vote               three tabs: race, then vote for the next track on the results screen
+//   node tools/e2e.mjs controls           Settings > Change keys (pick, swap, refuse, remove, reset), the new keys steering in a race, and Auto-pause
 //   node tools/e2e.mjs bots               the ten-level bot slider, adaptive bots, 19 bots and where you start, a track's own limit, Restart keeping the grid, bot tags in results and lobby
 //   node tools/e2e.mjs podium             the winner's celebration: previewed in the garage (locked styles too), and the winner's own style on every screen of an online race
 //   node tools/e2e.mjs modes              Sprint/Endurance presets, Hot Potato, Cat and mouse, Crown chase, the wheel of chaos, a reversed grid, and a party style online
@@ -1424,6 +1425,87 @@ if(flow === "bots"){
 	const lobby = await host.evaluate(() => ({ level: document.getElementById("lobbyLevelName").textContent, tags: [...document.querySelectorAll("#playerList .tag.bot")].map(t => t.textContent), saved: Object.values(window.__game.room.players).filter(p => p.bot).map(p => p.bot) }));
 	console.log("the lobby's slider adds bots at the level you set, tagged with level and personality:", JSON.stringify(lobby), lobby.saved.join() === "l8,easy" && lobby.tags[0] === "AI · Expert · Careful" && lobby.tags[1] === "AI · Rookie · Bold");
 	await shot(host, "bots-lobby");
+}
+
+if(flow === "controls"){
+	// Settings > Change keys: the list, picking a key, swapping, refusing, removing a second key, resetting; the new keys steer in a race
+	// and the old ones don't; and Auto-pause stopping a solo race when the tab is hidden.
+	const page = await open(base + "?localnet&season=off", 1280, 800);
+	const rows = () => page.evaluate(() => [...document.querySelectorAll("#keymapList li")].map(li => [li.querySelector(".km-name").textContent, ...[...li.querySelectorAll(".km-key")].map(b => b.textContent)]));
+	const row = async name => (await rows()).find(r => r[0] === name);
+	const pick = (id, slot) => page.evaluate((id, slot) => document.querySelector(`.km-key[data-id="${id}"][data-slot="${slot}"]`).click(), id, slot);
+	const msg = () => page.evaluate(() => { const m = document.getElementById("keymapMsg"); return m.hidden ? "" : m.textContent; });
+	const saved = () => page.evaluate(() => ({ live: window.__game.profile.keys || null, stored: (JSON.parse(localStorage.getItem("org-gp:profile") || "{}")).keys || null }));
+	await page.evaluate(() => document.querySelector('[data-open="settings"]').click()); await wait(400);
+	console.log("Settings has Auto-pause (on to begin with) and a Change keys button:", await page.evaluate(() => !!document.getElementById("openControls") && document.querySelector('#setAutoPause [aria-checked="true"]')?.dataset.v === "1"));
+	await click(page, "#openControls"); await wait(500);
+	const r0 = await rows();
+	console.log("the Controls list shows ten actions with the usual keys:", r0.length === 10 && JSON.stringify(r0[0]) === '["Steer left","←","A"]' && JSON.stringify(r0[1]) === '["Steer right","→","D"]' && r0.find(r => r[0].startsWith("Horn"))[1] === "H" && r0.find(r => r[0] === "Pause")[1] === "P", JSON.stringify(r0.slice(0, 4)));
+	await shot(page, "controls-default");
+	console.log("nothing is saved while they're the usual keys:", JSON.stringify(await saved()));
+	// pick a key
+	await pick("left", 0); await wait(200);
+	console.log("clicking a key makes it wait for one:", JSON.stringify((await row("Steer left"))[1]));
+	await shot(page, "controls-listening");
+	await page.keyboard.press("KeyJ"); await wait(300);
+	console.log("pressing J makes it steer left's first key, the second stays A:", JSON.stringify(await row("Steer left")), JSON.stringify(await saved()));
+	// Esc cancels and leaves the window open
+	await pick("right", 0); await wait(150);
+	await page.keyboard.press("Escape"); await wait(250);
+	console.log("Esc while it waits cancels, changes nothing and leaves the window open:", JSON.stringify(await row("Steer right")), await page.evaluate(() => !document.getElementById("controls").hidden));
+	// a reserved key is refused with a reason
+	await pick("right", 0); await wait(150);
+	await page.keyboard.press("Tab"); await wait(250);
+	console.log("Tab is refused, with a reason:", JSON.stringify(await msg()), JSON.stringify(await row("Steer right")));
+	// swap with another action
+	await pick("horn", 0); await wait(150);
+	await page.keyboard.press("KeyA"); await wait(300);
+	console.log("giving the horn A swaps it with steer left, which gets H:", JSON.stringify(await row("Steer left")), JSON.stringify(await row("Horn (hold)")), JSON.stringify(await msg()));
+	// take away a second key
+	await pick("left", 1); await wait(150);
+	await page.keyboard.press("Backspace"); await wait(300);
+	console.log("Backspace on a second key removes it:", JSON.stringify(await row("Steer left")), JSON.stringify((await saved()).live));
+	await pick("left", 0); await wait(150);
+	await page.keyboard.press("Backspace"); await wait(300);
+	console.log("but the first key can't be removed:", JSON.stringify(await row("Steer left")), JSON.stringify(await msg()));
+	await shot(page, "controls-changed");
+	// closing the window while it waits must not swallow later keys
+	await pick("mute", 0); await wait(150);
+	await click(page, "#controls [data-close]"); await wait(300);
+	await page.keyboard.press("KeyZ"); await wait(200);
+	console.log("closing the window while a key waits leaves nothing waiting (keys work as usual afterwards):", await page.evaluate(() => (window.__game.profile.keys || {}).mute === undefined || window.__game.profile.keys.mute[0] === "KeyM"));
+	// in a race: J steers left, A and the arrow don't
+	await click(page, "#btnTrial"); await wait(900);
+	await click(page, "#setupGo"); await wait(4500);
+	const held = async code => { await page.keyboard.down(code); await wait(250); const v = await page.evaluate(() => [window.__game.input.left, window.__game.input.right]); await page.keyboard.up(code); await wait(150); return v; };
+	const hJ = await held("KeyJ"), hA = await held("KeyA"), hL = await held("ArrowLeft"), hD = await held("KeyD"), hR = await held("ArrowRight");
+	console.log("in a race J steers left; A (now the horn) and the left arrow no longer do:", JSON.stringify({ J: hJ, A: hA, ArrowLeft: hL }), hJ[0] === true && hA[0] === false && hL[0] === false);
+	console.log("steer right is as it was (D and the right arrow):", JSON.stringify({ D: hD, ArrowRight: hR }), hD[1] === true && hR[1] === true);
+	console.log("the hint along the bottom shows the new keys:", await page.evaluate(() => document.getElementById("hudKeys").textContent), /^J/.test(await page.evaluate(() => document.getElementById("hudKeys").textContent.trim())));
+	await shot(page, "controls-race");
+	// auto-pause
+	const hide = hidden => page.evaluate(h => { Object.defineProperty(document, "hidden", { value: h, configurable: true }); document.dispatchEvent(new Event("visibilitychange")); }, hidden);
+	const paused = () => page.evaluate(() => ({ modal: !document.getElementById("pause").hidden, paused: window.__game.paused }));
+	await hide(true); await wait(400);
+	const ap = await paused();
+	console.log("switching tabs pauses a solo race:", JSON.stringify(ap), ap.modal && ap.paused);
+	await hide(false);
+	await click(page, "#resumeBtn"); await wait(400);
+	await page.evaluate(() => document.querySelector('#setAutoPause [data-v="0"]').click());
+	await hide(true); await wait(400);
+	const off = await paused();
+	console.log("with Auto-pause off it doesn't:", JSON.stringify(off), !off.modal && !off.paused);
+	await hide(false);
+	await page.evaluate(() => document.querySelector('#setAutoPause [data-v="1"]').click());
+	// reset
+	await page.keyboard.press("Escape"); await wait(400);
+	await click(page, "#quitBtn"); await wait(800);
+	await page.evaluate(() => document.querySelector('[data-open="settings"]').click()); await wait(300);
+	await click(page, "#openControls"); await wait(400);
+	console.log("Reset to defaults is on offer, and puts the usual keys back and saves nothing:", await page.evaluate(() => !document.getElementById("keysReset").disabled));
+	await click(page, "#keysReset"); await wait(400);
+	const back = await rows();
+	console.log("   ->", JSON.stringify(back[0]), JSON.stringify(await saved()), JSON.stringify(back) === JSON.stringify(r0), await page.evaluate(() => document.getElementById("keysReset").disabled));
 }
 
 console.log(errors.length ? "ERRORS:\n" + [...new Set(errors)].join("\n") : "no page errors");

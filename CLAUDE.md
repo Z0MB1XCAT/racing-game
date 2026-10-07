@@ -56,6 +56,7 @@ on purpose; `npm run setup` recreates them. If the server is already running, do
 | `remnant-check.mjs [id]` | the closed-off roads of a venue's other layouts never show through the track |
 | `e2e.mjs <flow> [trackId]` | drives the game in headless Chrome (flows: solo, online, tv, midjoin, p2p, quali, champ, migrate, ghost, ...) |
 | `audio-test.mjs` | sound survives bad values and rebuilds itself if it breaks |
+| `keys-test.mjs` | changing the keys: defaults are the original keys, binding, swapping, refusing, junk saved data (no browser) |
 | `bots-test.mjs` | the ten bot levels (3, 6, 10 = the old three), personalities, adaptive bots, and lap times by level on real circuits (no browser) |
 | `grid-test.mjs` | the 20-place solo grid, each circuit's start capacity, the timing tower's rows, and 20-car races on real circuits (no browser) |
 | `podium-test.mjs` | the winner's celebration: styles match the garage, particles sane at any screen size, fireworks burst on screen, shows stop by themselves (no browser) |
