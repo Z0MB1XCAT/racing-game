@@ -192,14 +192,22 @@
 						<span class="opt-label">Bots</span>
 						<div class="stepper" data-stepper="bots"><button data-d="-1" aria-label="Fewer bots">&minus;</button><output id="setupBots">5</output><button data-d="1" aria-label="More bots">+</button></div>
 					</div>
+					<div class="opt-row" data-for="bots" id="setupStartRow">
+						<span class="opt-label">Start</span>
+						<div class="stepper" data-stepper="start"><button data-d="-1" aria-label="Start further forward">&minus;</button><output id="setupStart" class="wide">Random</output><button data-d="1" aria-label="Start further back">+</button></div>
+					</div>
 					<div class="opt-row" data-for="bots">
-						<span class="opt-label">Bot level</span>
-						<div class="seg" id="setupLevel" role="radiogroup" aria-label="Bot level">
-							<button data-v="easy" aria-checked="false">Rookie</button>
-							<button data-v="medium" aria-checked="true">Racer</button>
-							<button data-v="hard" aria-checked="false">Ace</button>
+						<label class="opt-label nowrap" for="setupLevel">Bot level</label>
+						<div class="level-pick"><input class="range" id="setupLevel" type="range" min="1" max="10" step="1" value="6"><output id="setupLevelName" for="setupLevel">6 · Racer</output></div>
+					</div>
+					<div class="opt-row" data-for="bots">
+						<span class="opt-label">Adaptive bots</span>
+						<div class="seg" id="setupAdaptive" role="radiogroup" aria-label="Adaptive bots" title="Bots slow down or speed up to stay within about a second of you">
+							<button data-v="1" aria-checked="false">On</button>
+							<button data-v="0" aria-checked="true">Off</button>
 						</div>
 					</div>
+					<p class="opt-help" data-for="bots" id="botHelp"></p>
 					<div class="opt-row" data-for="bots">
 						<span class="opt-label">Qualifying</span>
 						<div class="seg" id="setupQuali" role="radiogroup" aria-label="Qualifying">
@@ -367,11 +375,7 @@
 					<div class="opt-row"><span class="opt-label">Drivers <span id="playerCount" style="color:var(--mute)"></span></span></div>
 					<ul class="players" id="playerList"></ul>
 					<div class="opt-row" id="botControls">
-						<div class="seg" id="lobbyLevel" role="radiogroup" aria-label="Bot level">
-							<button data-v="easy" aria-checked="false">Rookie</button>
-							<button data-v="medium" aria-checked="true">Racer</button>
-							<button data-v="hard" aria-checked="false">Ace</button>
-						</div>
+						<div class="level-pick"><input class="range" id="lobbyLevel" type="range" min="1" max="10" step="1" value="6" aria-label="Bot level"><output id="lobbyLevelName" for="lobbyLevel">6 · Racer</output></div>
 						<button class="back-btn" id="addBot">+ Add bot</button>
 					</div>
 					<section class="chat-box" id="lobbyChat" aria-labelledby="lobbyChatTitle">

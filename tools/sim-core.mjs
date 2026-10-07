@@ -15,7 +15,7 @@ export function race(track, tracker, skills, laps, opts = {}){
 	const cars = skills.map((skill, k) => ({
 		data: phys.newCarData(k, track.lines.length),
 		pos: new THREE.Vector3(phys.GRID[k].x, phys.CAR_Y, phys.GRID[k].y),
-		bot: new Bot(skill, rand, Object.assign({}, track.def && track.def.botTune, opts.overrides)),
+		bot: new Bot(skill, rand, Object.assign({}, track.def && track.def.botTune, opts.overrides), opts.personas && opts.personas[k]),
 		hits: 0, lapStart: null, laps: [], finished: null, best: 0, bestT: 0, stuck: 0, oob: 0
 	}));
 	const dt = 1 / 60, warp = opts.warp || 1;

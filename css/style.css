@@ -464,6 +464,7 @@ a.race-btn{ color: inherit; text-decoration: none; }
 .party-hud{ position: absolute; top: 130px; left: 50%; transform: translateX(-50%); max-width: min(92vw, 560px); padding: 7px 18px; text-align: center; background: rgba(12,15,22,.82); border: 1px solid var(--line); border-left: 4px solid var(--wall); font-family: var(--f-display); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; font-size: 17px; line-height: 1.25; box-shadow: var(--elev-2); }
 .chaos-tag{ position: absolute; top: 176px; left: 50%; transform: translateX(-50%); padding: 3px 14px; background: rgba(120,40,200,.82); color: #fff; font-family: var(--f-display); font-weight: 800; font-style: italic; text-transform: uppercase; letter-spacing: .12em; font-size: 14px; }
 #hud.blind .tower, #hud.blind .hud-lap, #hud.blind #minimap, #hud.blind .mirror, #hud.blind .hud-speed .speed-read{ visibility: hidden; }
+.tower-row.tower-gap{ margin-top: 8px; }     /* (the leaders, then the cars round you: a gap where the places jump) */
 .tower-row.is-holder{ background: linear-gradient(90deg, rgba(255,122,18,.55), rgba(18,22,30,.9) 70%); }
 .label.holder{ background: var(--wall); color: #170b02; box-shadow: 0 0 14px rgba(255,122,18,.7); }
 .label.holder b{ color: #170b02; }
@@ -542,6 +543,7 @@ body.halloween[data-view="title"] .bats{ display: block; }
 .weekly[data-theme="halloween"] .weekly-tag{ display: block; }
 
 /* ---------- HUD ---------- */
+.stepper output.wide{ min-width: 64px; text-align: center; }
 #hud{ position: fixed; inset: 0; pointer-events: none; font-family: var(--f-display); }
 .tower{
 	position: absolute; top: max(16px, env(safe-area-inset-top)); left: max(16px, env(safe-area-inset-left));
@@ -787,6 +789,18 @@ body.tv-on .hud-keys{ display: none; }
 .modal ul{ margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
 kbd{ font-family: var(--f-display); font-weight: 700; font-size: 13px; padding: 1px 7px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 3px; background: #0d1118; color: var(--chalk); }
 .range{ width: 160px; accent-color: var(--car); }
+/* The ten-level bot slider: a hard-edged track that fills with your car's colour, and a skewed handle like the timing tower's. */
+.level-pick{ display: flex; align-items: center; gap: var(--s2); }
+.opt-label.nowrap{ white-space: nowrap; }
+.level-pick output{ min-width: 84px; text-align: right; font-family: var(--f-display); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; font-size: 14px; white-space: nowrap; color: var(--chalk); font-variant-numeric: tabular-nums; }
+.level-pick .range{ -webkit-appearance: none; appearance: none; width: 116px; height: 26px; background: transparent; cursor: pointer; --fill: 55%; }
+.level-pick .range::-webkit-slider-runnable-track{ height: 8px; background: linear-gradient(90deg, var(--car) var(--fill), #2a3243 var(--fill)); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
+.level-pick .range::-moz-range-track{ height: 8px; background: linear-gradient(90deg, var(--car) var(--fill), #2a3243 var(--fill)); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
+.level-pick .range::-webkit-slider-thumb{ -webkit-appearance: none; width: 12px; height: 22px; margin-top: -7px; background: var(--chalk); border: 0; transform: skewX(-12deg); box-shadow: 0 2px 8px rgba(3,6,12,.55), 0 0 0 2px rgba(14,18,26,.9); transition: transform .2s var(--spring); }
+.level-pick .range::-moz-range-thumb{ width: 12px; height: 22px; background: var(--chalk); border: 0; border-radius: 0; transform: skewX(-12deg); box-shadow: 0 2px 8px rgba(3,6,12,.55), 0 0 0 2px rgba(14,18,26,.9); }
+.level-pick .range:hover::-webkit-slider-thumb{ transform: skewX(-12deg) scaleY(1.12); }
+.level-pick .range:active::-webkit-slider-thumb{ transform: skewX(-12deg) scaleY(.94); }
+.level-pick .range:focus-visible{ outline: 2px solid var(--chalk); outline-offset: 3px; }
 
 @media (max-width: 900px){
 	.title-grid{ grid-template-columns: 1fr; align-items: start; }

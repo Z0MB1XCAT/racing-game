@@ -294,7 +294,25 @@ original did).
   Up to 10 cars per room. **Copy invite link** in the lobby copies a link like `https://your-site/?room=ABCD`: whoever opens it
   lands on Online with the code filled in and **Join room** highlighted (one press to join; it never joins on its own, so a
   player can still set their name first). A bad code is ignored and a closed room says so when they press Join.
-- **Bots** in three levels (Rookie, Racer, Ace), in solo races and online rooms.
+- **Bots** (`js/bots.js`, `js/botlevels.js`), in solo races and online rooms. A bot only ever chooses a steering angle: nothing here touches
+  the handling.
+  - **Ten levels** (a slider in Race bots and in the lobby): Learner, Beginner, Rookie, Improver, Club, Racer, Contender, Expert, Pro and Ace.
+    Levels 3, 6 and 10 are exactly the old Rookie, Racer and Ace (and are saved under their old names, so an older version in the same room
+    understands them); the rest are worked out in between, and level 1 is a little worse than Rookie. Lap times fall steadily up the ladder
+    (about 15 to 20% from level 1 to 9 on the circuits checked).
+  - **Named bots**: twenty made-up names, each with a personality it always drives with: **Bold** (pulls out early to pass, swings about, makes more
+    mistakes), **Careful** (gives other cars room, a touch slower), **Wet weather** (two levels better in rain, snow and storms, one worse when
+    it's dry), **Slipstreamer** (tucks into the tow from close up) and **Late charger** (a level and a half down at the start, better every
+    lap). The results and the lobby tag each bot with its level and personality (hover for what it means). A personality changes style, not
+    speed: no personality moves a lap by more than about 5%. The first eleven names are the ones the commentary has clips for.
+  - **Adaptive bots** (Race bots, off by default): the bots speed up or slow down to stay within about a second of you, starting from the level
+    you chose. It only changes how well they steer. Wins against adaptive bots don't count for the Racer and Ace solo goals.
+  - **Up to 19 bots and where you start** (solo): a **Bots** stepper up to 19 (online rooms still hold 10) and a **Start** stepper: Random, Pole,
+    P2... down to the back. The grid has 20 places (the first 18 are the original's, untouched); each track's start holds what its straight
+    allows (Monaco 16, Monaco's Formula E layout 14, Glacier Pass 19, Classic 18, the rest 20) and you get a note if you ask for more. A start place
+    you picked yourself doesn't count for the Underdog title. With more than ten cars the timing tower shows the leaders and then the cars
+    round you.
+  - **Restart** in the pause menu keeps the same cars in the same order (and your start place); **Race again** on the results deals a new field.
 - **HUD**: F1-style start lights, timing tower, lap and race timers, best lap, speedometer,
   minimap, final-lap and wrong-way banners, results podium.
 - **Lap records** saved on your device, and shared with everyone on your site once Firebase is set up.
@@ -669,6 +687,8 @@ The last two also need puppeteer installed.
 - `node tools/codes-test.mjs` checks prize codes and look codes, no browser: a code is found however it's typed, wrong, short and expired ones aren't, the shipped list holds no plain codes, the `codes.mjs` tool adds, lists, checks and removes on a copy, a prize unlocks any item for good, and look codes round-trip for every paint and refuse anything else (made-up and prototype names included).
 - `node tools/podium-test.mjs` checks the winner's celebration, no browser: the garage's podium styles are the ones the show can draw, a new driver has only Confetti, every kind of particle is made of real numbers and starts on screen at any screen size, fireworks burst in the upper part of the screen, each show starts straight away and stops by itself (drawn against a canvas that draws nothing), and no canvas, a made-up style or "less motion" give no show and no error.
 - `node tools/vote-test.mjs` checks the next-track vote, no browser: the ballot is the track just raced plus two others, the same on every screen and different each race, every track turns up, votes for anything not on the ballot (made-up and prototype names included) don't count, the most votes wins, and a tie is settled the same way everywhere and fairly over many races.
+- `node tools/bots-test.mjs` checks the computer drivers: the ten levels (3, 6 and 10 are exactly the old three, every step up looks further ahead and wobbles less, odd values are held to 1 to 10), the twenty names and their personalities, the adaptive controller, and on real circuits that lap times fall as the level rises, that no personality changes a lap by more than 7%, and that with adaptive bots five bots stay within about a second or two of a steady driver (far closer than the same bots not adapting).
+- `node tools/grid-test.mjs` checks the solo grid: a fair shuffle, you on the start place you asked for, the first 18 grid places untouched, how many cars every circuit and layout's start holds, the timing tower's rows for any number of cars, and twenty cars racing two laps of Spa, Crossroads and Jeddah with nobody stuck.
 - `node tools/party-test.mjs` checks the party styles and the wheel of chaos against a pretend race, no browser: Hot Potato (one holder, passes, the grace time, fuses, the last car wins), Cat and mouse (catches, the cat winning, the time limit and the order it leaves the table in), Crown chase (seconds on top add up, the winner isn't whoever leads at the end), a new host carrying on from the shared state, and the chaos rules (same for everyone, never the same lap after lap, steering effects bounded).
 - `node tools/season-test.mjs` checks the seasons and the Halloween challenge week, no browser: the look comes on at the start of 1 October and goes off at the start of 1 November in every year (a leap year too); `?season=` and the Settings switch change what's drawn but never what can be earned; the Halloween challenge is the week with 31 October in it, on a forest circuit at night in fog, one a year to 2060, never repeating a track next to it, and no ordinary week is touched.
 - `node tools/music-test.mjs` plays the menu songs in a browser: each is audible, never clips, isn't silent for long, and the October one is about as loud as the usual one.
@@ -680,7 +700,7 @@ The last two also need puppeteer installed.
 - `node tools/build-voices.mjs [eng] [lead] [col] [--force] [--check]` renders the lines in `js/voicelines.js` into `assets/voice/*.pak` with the Kokoro voice (needs `npm i kokoro-js` in a scratch folder and `KOKORO_DIR` pointing at it, plus ffmpeg); `--check` listens back with a speech recogniser. Only needed when a line or a voice changes.
 - `node tools/build-sfx.mjs <folder>` packs the chosen sounds from Kenney's Impact Sounds, Interface Sounds and UI Audio packs (CC0) into `assets/audio/sfx.pak`.
 - `node tools/contact-test.mjs monaco` compares original and soft car contact (side hit, rear tap, a bot race).
-- `node tools/e2e.mjs solo|online|rematch|vote|podium|invite|whatsnew|halloween|codes|announce|looks|modes|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
+- `node tools/e2e.mjs solo|online|rematch|vote|podium|bots|invite|whatsnew|halloween|codes|announce|looks|modes|p2p|champ|quali|tv|midjoin|admin|migrate|account|link|ghost|rival|draft|tour` (`p2p fallback` tests the blocked case) plays through the game in a headless browser.
 
 ## Credits and licence
 

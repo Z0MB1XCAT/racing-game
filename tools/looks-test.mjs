@@ -42,6 +42,10 @@ const win = { pos: 1, status: "finished" }, second = { pos: 2, status: "finished
 const g = o => soloGoals(Object.assign({ me: win, results: R(6), sky: null, level: "easy", mode: "race", hits: 5, lastOnGrid: false, october: false }, o));
 ok(g({}).join() === "race", "an easy win with some contact ticks off just 'race'");
 ok(g({ level: "hard" }).includes("winRacer") && g({ level: "hard" }).includes("winAce") && !g({ level: "easy" }).includes("winRacer"), "winning against Racers and Aces");
+ok(g({ level: "l6" }).includes("winRacer") && g({ level: "l7" }).includes("winRacer") && !g({ level: "l5" }).includes("winRacer") && !g({ level: "l3" }).includes("winRacer"), "with ten levels a Racer win is level 6 or above");
+ok(g({ level: "l10" }).includes("winAce") && !g({ level: "l9" }).includes("winAce") && !g({ level: "medium" }).includes("winAce"), "and an Ace win is level 10 only");
+ok(!g({ level: "hard", adaptive: true }).includes("winRacer") && !g({ level: "hard", adaptive: true }).includes("winAce") && g({ level: "hard", adaptive: true }).includes("race"), "bots that adapt to you don't count for the Racer and Ace goals (the race itself still counts)");
+ok(!g({ lastOnGrid: true, chosenStart: true }).includes("underdog") && g({ lastOnGrid: true, chosenStart: false }).includes("underdog"), "Underdog isn't earned from a start you picked yourself");
 ok(g({ sky: { night: true } }).includes("winNight") && g({ sky: { night: true } }).includes("night") && !g({ sky: { rain: true } }).includes("winNight"), "a win at night: Night Owl (and 'night')");
 ok(g({ sky: { rain: true } }).includes("winRain") && g({ sky: { rain: true } }).includes("rain"), "a win in the rain: Wet Weather Wizard (and 'rain')");
 ok(!g({ me: second, sky: { rain: true, night: true } }).includes("winRain") && g({ me: second, sky: { rain: true } }).includes("rain"), "finishing second in the rain ticks 'rain' but isn't a win");

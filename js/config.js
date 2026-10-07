@@ -35,7 +35,7 @@ export const ACCOUNTS = {
 
 // Bump this (and version.json) whenever you push an update. Players on an older copy are
 // told to refresh, and the lobby shows who needs to.
-export const VERSION = "2026.10.06-3";
+export const VERSION = "2026.10.07-1";
 
 export const GAME_NAME = "Online Racing Game";
 export const EDITION = "Grand Prix";
@@ -43,6 +43,8 @@ export const EDITION = "Grand Prix";
 // Room limits. Every car sends ~15 small updates a second, so keep rooms modest
 // to stay well inside Firebase's free plan.
 export const MAX_CARS = 10;
+// Solo races hold more: up to 19 bots and you (a track whose start is short holds fewer: gridCapacity in trackgen.js).
+export const MAX_SOLO_CARS = 20;
 export const SEND_RATE = 15;
 
 // Direct (peer-to-peer) connections between players during races. Firebase is only

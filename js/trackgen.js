@@ -570,6 +570,14 @@ export function nearestOnPath(c, x, z, hint){
 	return best;
 }
 
+// How many cars a track's start holds: the places up to the first one that would start in a wall. A track from the original's
+// code has no road data to check against, so it keeps the original's 18.
+export function gridCapacity(track){
+	if(!track.center) return 18;
+	const bad = badGridSlots(track, GRID.length);
+	return bad.length ? Math.max(2, bad[0]) : GRID.length;
+}
+
 // Grid slots that would start inside a wall (used by the track test).
 export function badGridSlots(track, count = GRID.length){
 	if(!track.center) return [];

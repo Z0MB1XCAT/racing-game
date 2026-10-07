@@ -1,6 +1,7 @@
 // Game shell: screens, input, camera, and wiring races to the menus and online rooms.
 import { TRACKS, LAYOUTS, trackById, venueOf, layoutsOf } from "./tracks.js";
-import { buildTrack } from "./trackgen.js";
+import { buildTrack, gridCapacity } from "./trackgen.js";
+import { lineUp, maxBots, placeName } from "./grid.js";
 import { makeTracker } from "./progress.js";
 import { buildWorld, buildWorldSteps } from "./world.js";
 import { runSliced, slice } from "./steps.js";
@@ -27,7 +28,7 @@ import { initAdmin } from "./admin.js";
 import { initChat } from "./chat.js";
 import { minLapMs } from "./limits.js";
 import { Director, Replay, buildHighlights, pickFocus, SHOT_NAMES } from "./broadcast.js";
-import { BOT_NAMES } from "./voicelines.js";
+import { BOT_ROSTER, PERSONAS, personaOf, skillLevel, levelId, levelName } from "./bots.js";
 import { Engineer } from "./radio.js";
 import { Commentary } from "./commentary.js";
 import { build as buildSpeech, carPiece, gapPiece } from "./speechkit.js";
@@ -39,7 +40,7 @@ import { voteCandidates, tally, winner as voteWinner } from "./vote.js";
 import { startPodium } from "./podium.js";
 import { PARTY } from "./party.js";
 import { configureSeason, halloween, season } from "./season.js";
-import { GAME_NAME, MAX_CARS, EDITOR_ENABLED, VOICES_ENABLED, ACCOUNTS, VERSION } from "./config.js";
+import { GAME_NAME, MAX_CARS, MAX_SOLO_CARS, EDITOR_ENABLED, VOICES_ENABLED, ACCOUNTS, VERSION } from "./config.js";
 import * as phys from "./physics.js";
 
 const THREE = globalThis.THREE;
@@ -61,7 +62,7 @@ const S = {
 	race: null, ctx: null, frozen: false,
 	paused: false, pauseStart: 0, pausedTotal: 0,
 	net: null, room: null, raceId: null, resultsShown: null,
-	setup: { mode: "bots", trackId: "monza", reverse: false, laps: 3, bots: 5, level: "medium", gameMode: "race", draft: true, contact: "soft", tod: "default", weather: "clear", rounds: [], quali: false, style: "standard", chaos: false, gridRev: false },
+	setup: { mode: "bots", trackId: "monza", reverse: false, laps: 3, bots: 5, level: "medium", adaptive: false, start: 0, gameMode: "race", draft: true, contact: "soft", tod: "default", weather: "clear", rounds: [], quali: false, style: "standard", chaos: false, gridRev: false },
 	champ: null, champEntrants: null, lastHost: null,
 	lobbyLevel: "medium",
 	lastDelta: null,
@@ -104,6 +105,7 @@ scene.add(camera);
 gfx.attach(scene, camera);
 let fx = new Effects(scene, quality());
 const hud = new Hud();
+hud.towerMax = mobile ? 5 : 10;                     // (rows the timing tower has room for: the phone's CSS shows five)
 const lens = new Lens($("lens"));
 const calmMotion = matchMedia("(prefers-reduced-motion: reduce)");
 addEventListener("resize", () => {
@@ -230,6 +232,7 @@ function previewTrack(def, reverse, { quiet = false } = {}){
 	previewTimer = setTimeout(() => {
 		previewTimer = 0;
 		const entry = getTrack(def, reverse), sink = {};
+		if(S.screen === "setup") refreshLimits();          // (now this track's start can be checked)
 		const job = runSliced(buildWorldSteps(entry.track, { quality: quality(), season: halloween(), sink }), {
 			onSlice: () => gfx.stall(1500),                       // (a build in slices isn't a slow computer)
 			onDone: world => {
@@ -309,11 +312,31 @@ function seg(el, value, onPick){
 	buttons.forEach(b => b.addEventListener("click", () => { if(el.dataset.locked) return; audio.sfx.toggle(); set(b.dataset.v); onPick(b.dataset.v); }));
 	return set;
 }
-function stepper(name, get, set, min, max){
+// The ten-level bot slider: a range and its label ("6 · Racer"). The setting it saves is "easy", "medium", "hard" or "l7"...
+// (so a room with an older version in it still understands the old three).
+function levelSlider(range, out, value, onPick){
+	let lastTick = 0;
+	const show = n => {
+		out.textContent = n + " · " + levelName(n);
+		range.setAttribute("aria-valuetext", "Level " + n + ", " + levelName(n));
+		range.style.setProperty("--fill", ((n - 1) / 9 * 100) + "%");
+	};
+	const set = v => { range.value = skillLevel(v); show(+range.value); };
+	set(value);
+	range.addEventListener("input", () => {
+		const n = +range.value;
+		show(n);
+		const now = performance.now();
+		if(now - lastTick > 60){ lastTick = now; audio.sfx.tick(); }
+		onPick(levelId(n));
+	});
+	return set;
+}
+function stepper(name, get, set, min, max, fmt = v => v){
 	const el = document.querySelector(`[data-stepper="${name}"]`);
 	const out = el.querySelector("output");
 	const [minus, plus] = el.querySelectorAll("button");
-	const render = () => { const v = get(); out.textContent = v; minus.disabled = v <= min() || !!el.dataset.locked; plus.disabled = v >= max() || !!el.dataset.locked; };
+	const render = () => { const v = get(); out.textContent = fmt(v); minus.disabled = v <= min() || !!el.dataset.locked; plus.disabled = v >= max() || !!el.dataset.locked; };
 	minus.addEventListener("click", () => { audio.sfx.tick(); set(Math.max(min(), get() - 1)); render(); });
 	plus.addEventListener("click", () => { audio.sfx.tick(); set(Math.min(max(), get() + 1)); render(); });
 	render();
@@ -569,9 +592,33 @@ seg($("setupGridRev"), "0", v => { S.setup.gridRev = v === "1"; });
 const partyStyle = () => S.setup.gameMode === "race" && !!styleOf(S.setup.style).party;
 seg($("setupChase"), "mine", v => { S.setup.chase = v; });
 const setupOwnGhost = seg($("setupOwnGhost"), S.settings.hideMyGhost ? "0" : "1", v => { S.settings.hideMyGhost = v === "0"; saveSettings(); });
-seg($("setupLevel"), "medium", v => { S.setup.level = v; });
+const setupLevelPick = levelSlider($("setupLevel"), $("setupLevelName"), S.setup.level, v => { S.setup.level = v; botHelp(); });
+seg($("setupAdaptive"), "0", v => { S.setup.adaptive = v === "1"; botHelp(); });
+// What the bot controls mean, in plain words, under them.
+function botHelp(){
+	const n = skillLevel(S.setup.level);
+	$("botHelp").textContent = S.setup.adaptive
+		? `Bots start at level ${n} and speed up or slow down to stay within about a second of you. Only their driving changes, never the cars. Wins against them don't count towards the Racer and Ace goals.`
+		: `Level ${n} is ${levelName(n)}. Each bot has its own personality: ${Object.values(PERSONAS).map(p => p.label).join(", ")}.`;
+}
+botHelp();
 const lapStep = stepper("laps", () => S.setup.laps, v => { S.setup.laps = v; }, () => 1, () => maxLaps(S.setup.style));
-const botStep = stepper("bots", () => S.setup.bots, v => { S.setup.bots = v; }, () => S.setup.gameMode === "elim" || partyStyle() ? 1 : 0, () => MAX_CARS - 1);
+// How many cars this track's start holds (at most MAX_SOLO_CARS): a track with a short start holds fewer.
+// (From the tracks already built, so opening the menu never waits on one; the limit is checked again when the preview is built,
+// and always when a race starts.)
+function soloCars(build = false){
+	const def = defFor(S.setup.trackId), entry = trackCache.get(trackKey(def, S.setup.reverse)) || (build ? getTrack(def, S.setup.reverse) : null);
+	return entry ? Math.min(MAX_SOLO_CARS, gridCapacity(entry.track)) : MAX_SOLO_CARS;
+}
+// Keep the bots and your start place inside what the track's start holds, and show them.
+function refreshLimits(){
+	S.setup.bots = Math.min(S.setup.bots, maxBots(soloCars()));
+	S.setup.start = Math.min(S.setup.start, S.setup.bots + 1);
+	botStep.render(); startStep.render();
+}
+const botStep = stepper("bots", () => S.setup.bots, v => { S.setup.bots = v; if(S.setup.start > v + 1) S.setup.start = v + 1; startStep.render(); }, () => S.setup.gameMode === "elim" || partyStyle() ? 1 : 0, () => maxBots(soloCars()));
+// Where you start: Random (the draw decides), Pole, or any place down to the back.
+const startStep = stepper("start", () => S.setup.start, v => { S.setup.start = v; }, () => 0, () => S.setup.bots + 1, placeName);
 
 function openSetup(mode){
 	S.setup.mode = mode;
@@ -617,9 +664,10 @@ function refreshSetup(){
 		$("setupBlurb").textContent = r.length ? r.map(d => d.name).join(" → ") : "";
 		$("modeHelp").textContent = "Pick 2 to 6 tracks in the order you want to race them. Points go 25, 18, 15, 12, 10, 8, 6, 4, 2, 1, and the leader starts at the back of the next round's grid.";
 		document.querySelector('[data-for="bots laps"]').hidden = false;
+		$("setupStartRow").hidden = true;
 		$("setupGo").disabled = r.length < 2;
 		$("setupGo").firstElementChild.textContent = "Start championship";
-		botStep.render();
+		refreshLimits();
 		renderLayoutSeg($("setupLayout"), S.setup.trackId, pickSetupLayout);
 		if(r[0]) previewTrack(r[0], S.setup.reverse && !r[0].code);
 		return;
@@ -642,7 +690,8 @@ function refreshSetup(){
 	$("setupGridRow").hidden = trial || !S.setup.quali;
 	document.querySelector('[data-for="bots laps"]').hidden = trial || S.setup.gameMode === "elim" || partyStyle();
 	if((S.setup.gameMode === "elim" || partyStyle()) && S.setup.bots < 1) S.setup.bots = 1;
-	botStep.render();
+$("setupStartRow").hidden = trial || S.setup.quali;                  // (qualifying decides the grid)
+refreshLimits();
 	previewTrack(def, S.setup.reverse);
 	if(S.setup.mode === "trial") loadBoard(def);
 }
@@ -664,6 +713,11 @@ async function loadBoard(def){
 	board.innerHTML = rows.length ? rows.map((r, i) => `<li class="${i ? "" : "first"}"><span>${i + 1}</span><i class="chip" style="background:hsl(${r.h},100%,55%)"></i><span>${escapeHtml(r.n)}${r.me ? " (you)" : ""}</span><span class="t">${fmtTime(r.t)}</span></li>`).join("")
 		: `<li class="empty">No laps yet. Set the first one.</li>`;
 }
+// The tag on a bot: AI, its level where known, and its personality (with what that means as a tooltip).
+function botTag(name, level){
+	const pe = PERSONAS[personaOf(name)];
+	return `<span class="tag bot"${pe ? ` title="${escapeHtml(pe.label + ": " + pe.blurb)}"` : ""}>AI${level ? " · " + level : ""}${pe ? " · " + pe.label : ""}</span>`;
+}
 function escapeHtml(s){ return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
 $("btnBots").addEventListener("click", () => { audio.sfx.click(); openSetup("bots"); });
@@ -680,13 +734,18 @@ function spreadHues(n, avoid){
 function startSolo(){
 	const st = S.setup;
 	const def = defFor(st.trackId);
-	const entrants = [{ id: "me", name: driverName(), hue: S.profile.hue, body: S.profile.body, look: S.profile.look, local: true }];
+	let entrants = [{ id: "me", name: driverName(), hue: S.profile.hue, body: S.profile.body, look: S.profile.look, local: true }];
 	if(st.mode === "bots"){
-		const hues = spreadHues(st.bots, S.profile.hue);
-		const names = [...BOT_NAMES].sort(() => Math.random() - 0.5);
-		for(let i = 0; i < st.bots; i++) entrants.push({ id: "bot" + i, name: names[i % names.length], hue: hues[i], body: BODIES[Math.floor(Math.random() * BODIES.length)].id, look: botLook(), bot: st.level, local: true });
-		entrants.sort(() => Math.random() - 0.5);
+		// A track whose start holds fewer cars than were asked for (a championship: the shortest of its rounds) gets fewer bots.
+		const cars = champMode() ? Math.min(...st.rounds.map(id => gridCapacity(getTrack(defFor(id), st.reverse).track)), MAX_SOLO_CARS) : soloCars(true);
+		const bots = Math.min(st.bots, maxBots(cars));
+		if(bots < st.bots) toastOnScreen(`${champMode() ? "One of those tracks" : def.name} starts ${cars} cars at most: racing ${bots} bot${bots === 1 ? "" : "s"}.`);
+		const hues = spreadHues(bots, S.profile.hue);
+		const names = BOT_ROSTER.map(r => r.name).sort(() => Math.random() - 0.5);       // (each name always drives the same way: js/bots.js)
+		for(let i = 0; i < bots; i++) entrants.push({ id: "bot" + i, name: names[i % names.length], hue: hues[i], body: BODIES[Math.floor(Math.random() * BODIES.length)].id, look: botLook(), bot: st.level, local: true });
 	}
+	const chosenStart = st.mode === "bots" && !st.quali && !champMode() && st.start >= 1;
+	entrants = lineUp(entrants, "me", chosenStart ? st.start : 0);                    // (shuffled, with you where you asked)
 	if(champMode()){
 		S.champ = newChamp(st.rounds.map(id => ({ track: id })), st.reverse, st.laps);
 		S.champEntrants = entrants;
@@ -705,8 +764,10 @@ function startSolo(){
 	const sr = styleRace(st.style, { mode: st.gameMode, laps: st.laps }), mode = sr.mode;
 	const race = grid => beginRace({
 		source: "solo", def, reverse: st.reverse, mode, laps: mode === "elim" ? 99 : sr.laps, rule: sr.rule, chaos: st.gameMode === "race" && !sr.rule && st.chaos,
-		entrants: grid ? grid.map(id => entrants.find(e => e.id === id)).filter(Boolean) : entrants, myId: "me", draft: mode !== "trial" && st.draft, contact: st.contact, tod: st.tod || "default", weather: st.weather || "clear",
-		startAt: soloNow() + 700 + COUNTDOWN, authority: true, restart: startSolo
+		entrants: grid ? grid.map(id => entrants.find(e => e.id === id)).filter(Boolean) : entrants, myId: "me", draft: mode !== "trial" && st.draft, contact: st.contact, tod: st.tod || "default", weather: st.weather || "clear", adaptive: st.adaptive,
+		startAt: soloNow() + 700 + COUNTDOWN, authority: true, chosenStart,
+		restart: () => race(grid),          // (Restart in the pause menu: the same cars in the same order)
+		again: startSolo                    // (Race again after the results: a new field and a new draw)
 	});
 	if(st.quali && st.mode === "bots") startQuali(def, st.reverse, entrants, grid => race(st.gridRev && grid ? grid.slice().reverse() : grid));
 	else race();
@@ -716,7 +777,7 @@ function startSolo(){
 function startBroadcast(){
 	const st = S.setup, def = defFor(st.trackId);
 	const n = Math.max(4, Math.min(MAX_CARS, (st.bots || 5) + 1));
-	const hues = spreadHues(n, S.profile.hue), names = [...BOT_NAMES].sort(() => Math.random() - 0.5);
+	const hues = spreadHues(n, S.profile.hue), names = BOT_ROSTER.map(r => r.name).sort(() => Math.random() - 0.5);
 	const entrants = [];
 	for(let i = 0; i < n; i++) entrants.push({ id: "bot" + i, name: names[i % names.length], hue: hues[i], body: BODIES[Math.floor(Math.random() * BODIES.length)].id, look: botLook(), bot: st.level || "medium", local: true });
 	const sr = styleRace(st.style, { mode: st.gameMode === "elim" ? "elim" : "race", laps: st.laps }), mode = sr.mode;
@@ -747,7 +808,7 @@ function startChampRound(qualiGrid){
 	const order = qualiGrid || (c.idx === 0 ? ids : champGrid(c, ids));
 	beginRace({
 		source: "solo", def, reverse: c.reverse && !def.code, mode: "race", laps: c.laps,
-		entrants: order.map(id => S.champEntrants.find(e => e.id === id)), myId: "me", draft: S.setup.draft, contact: S.setup.contact, tod: S.setup.tod, weather: S.setup.weather,
+		entrants: order.map(id => S.champEntrants.find(e => e.id === id)), myId: "me", draft: S.setup.draft, contact: S.setup.contact, tod: S.setup.tod, weather: S.setup.weather, adaptive: S.setup.adaptive,
 		startAt: soloNow() + 700 + COUNTDOWN, authority: true, champ: true, restart: () => startChampRound(qualiGrid)
 	});
 }
@@ -860,7 +921,7 @@ function beginRace(opts){
 		scene, track: entry.track, tracker: entry.tracker, laps: opts.laps, mode: opts.mode,
 		entrants: opts.entrants, myId: opts.myId, startAt: opts.startAt, authority: opts.authority,
 		now: opts.source === "online" ? () => S.net.now() : soloNow,
-		net: opts.source === "online" ? S.net : null, ghost, rival: opts.rival || null, draft: opts.draft !== false, contact: opts.contact, hideOwnGhost: S.settings.hideMyGhost, rule: opts.rule || null,
+		net: opts.source === "online" ? S.net : null, ghost, rival: opts.rival || null, draft: opts.draft !== false, contact: opts.contact, hideOwnGhost: S.settings.hideMyGhost, rule: opts.rule || null, adaptive: !!opts.adaptive,
 		onEvent: (t, d) => onRaceEvent(t, d)
 	});
 	S.race.key = key;
@@ -1023,6 +1084,7 @@ function updateSky(r, raceMs, dt){
 	const focus = focusCar(), v = focus ? Math.hypot(focus.data.xv, focus.data.yv) / 0.4 : 0;
 	lens.update(dt, { rain: S.paused ? 0 : look.rain, speed: Math.min(1, v), active: !S.paused && !S.replay && !tv.live && S.screen === "race" && quality() === "high" && !calmMotion.matches });
 	// Spray behind cars on a wet track.
+	r.wet = look.rain > 0.3 || look.wet > 0.2;       // (the wet-weather bots drive better in it)
 	if(look.wet > 0.2 && !S.paused && !S.replay && r.phase === "racing"){
 		for(const c of r.cars) if(!c.gone && c.elim === null) fx.spray(c, dt, look.wet);
 	}
@@ -1300,7 +1362,7 @@ function showResults(results, online, opts = {}){
 	}).join("");
 	$("resultsBody").innerHTML = results.map(r => `<tr class="${r.id === myId ? "me" : ""}">
 		<td class="pos">${r.pos}</td>
-		<td class="name"><i style="background:hsl(${r.hue},100%,55%)"></i><span class="${nameFxById(r.nf)}">${escapeHtml(r.name)}</span>${r.bot ? ' <span class="tag bot">AI</span>' : ""}</td>
+		<td class="name"><i style="background:hsl(${r.hue},100%,55%)"></i><span class="${nameFxById(r.nf)}">${escapeHtml(r.name)}</span>${r.bot ? " " + botTag(r.name) : ""}</td>
 		<td>${r.sc ? escapeHtml(r.sc) : r.time != null ? fmtTime(r.time) : r.status === "out" ? "Out" : "DNF"}</td>
 		<td class="best ${r.best != null && r.best === fastest ? "fastest" : ""}">${r.best != null ? fmtTime(r.best) : "--"}</td>
 		<td>${r.pos === 1 ? "" : r.gap || ""}</td></tr>`).join("");
@@ -1346,7 +1408,7 @@ function showResults(results, online, opts = {}){
 		addBtn("Back to lobby", "ghost", () => S.net.backToLobby());
 		addBtn("Leave room", "ghost", leaveRoom);
 	}else if(!online){
-		addBtn("Race again", "", () => { audio.unlock(); (S.ctx && S.ctx.restart || startSolo)(); });
+		addBtn("Race again", "", () => { audio.unlock(); (S.ctx && (S.ctx.again || S.ctx.restart) || startSolo)(); });
 		addBtn("Change track", "ghost", () => { endRace(); openSetup(S.setup.mode); });
 		addBtn("Main menu", "ghost", goTitle);
 	}else if(S.net && S.net.isHost){
@@ -1375,7 +1437,7 @@ function showResults(results, online, opts = {}){
 	if(!quali && !online && S.soloFlagsKey !== key && me && S.ctx && S.ctx.mode !== "trial" && results.length > 1){
 		const grid = S.ctx.entrants || [];       // (the grid is the entrants' order)
 		const flags = soloGoals({
-			me, results, mode: S.ctx.mode, level: S.setup.level, hits: S.carHits, october: season() === "halloween",
+			me, results, mode: S.ctx.mode, level: S.setup.level, adaptive: !!S.ctx.adaptive, chosenStart: !!S.ctx.chosenStart, hits: S.carHits, october: season() === "halloween",
 			sky: S.finishSky && S.race && S.finishSky.at === S.race.startAt ? S.finishSky : null,
 			lastOnGrid: grid.length > 0 && grid[grid.length - 1].id === "me"
 		});
@@ -1391,6 +1453,7 @@ function pause(){
 	const online = S.ctx.source === "online";
 	$("pauseNote").hidden = !online;
 	$("restartBtn").hidden = online;
+	$("restartBtn").firstElementChild.textContent = S.ctx.again ? "Restart (same grid)" : "Restart race";
 	$("ownGhostBtn").hidden = !S.race.rival;
 	$("ownGhostBtn").firstElementChild.textContent = S.race.hideOwnGhost ? "Show my ghost" : "Hide my ghost";
 	$("quitBtn").firstElementChild.textContent = online ? "Leave room" : "Quit to menu";
@@ -2376,7 +2439,7 @@ const lobbySettingsControls = {
 	quali: seg($("lobbyQuali"), "0", v => S.net.updateSettings({ quali: v === "1" })),
 	mode: seg($("lobbyMode"), "race", v => S.net.updateSettings({ mode: v })),
 	dir: seg($("lobbyDir"), "0", v => S.net.updateSettings({ reverse: v === "1" })),
-	level: seg($("lobbyLevel"), "medium", v => { S.lobbyLevel = v; }),
+	level: levelSlider($("lobbyLevel"), $("lobbyLevelName"), "medium", v => { S.lobbyLevel = v; }),
 	laps: stepper("lobbyLaps", () => (S.room && S.room.settings && S.room.settings.laps) || 3, v => S.net.updateSettings({ laps: v }), () => 1, () => maxLaps(S.room && S.room.settings && S.room.settings.style))
 };
 let lobbyGridKey = null;
@@ -2404,7 +2467,7 @@ function renderLobby(room){
 		li.className = "player";
 		const hostV = room.players[room.host] && room.players[room.host].v;
 		const stale = !p.bot && p.v !== hostV ? '<span class="tag old" title="A different version of the game from the host: refresh the page">Needs refresh</span>' : "";
-		const tags = [stale, p.id === room.host ? '<span class="tag host">Host</span>' : "", p.bot ? `<span class="tag bot">AI · ${({ easy: "Rookie", medium: "Racer", hard: "Ace" })[p.bot]}</span>` : p.id === room.host ? "" : `<span class="tag ${p.ready ? "ready" : ""}">${p.ready ? "Ready" : "Not ready"}</span>`].join(" ");
+		const tags = [stale, p.id === room.host ? '<span class="tag host">Host</span>' : "", p.bot ? botTag(p.name, levelName(skillLevel(p.bot))) : p.id === room.host ? "" : `<span class="tag ${p.ready ? "ready" : ""}">${p.ready ? "Ready" : "Not ready"}</span>`].join(" ");
 		li.innerHTML = `<i class="chip" style="background:hsl(${p.hue},100%,55%)"></i>
 			<span class="pname">${garage && garage.crown === p.id ? CROWN_SVG : ""}<span class="${nameFxClass(p.look)}">${escapeHtml(cleanName(p.name, p.id))}</span>${p.id === net.uid ? " (you)" : ""}<span class="pbody">${(BODIES.find(b => b.id === p.body) || BODIES[0]).name}${p.look && p.look.number != null ? " · #" + p.look.number : ""}</span>${lookTitle(p)}</span>
 			<span>${tags}${netTag(p)}</span>`;
@@ -2510,7 +2573,7 @@ $("addBot").addEventListener("click", () => {
 	const room = S.room;
 	if(!room) return;
 	const used = new Set(Object.values(room.players || {}).map(p => p.name));
-	const name = BOT_NAMES.find(n => !used.has(n)) || "Bot " + Math.floor(Math.random() * 99);
+	const name = BOT_ROSTER.map(r => r.name).find(n => !used.has(n)) || "Bot " + Math.floor(Math.random() * 99);
 	audio.sfx.click();
 	S.net.addBot({ name, hue: Math.floor(Math.random() * 360), body: BODIES[Math.floor(Math.random() * BODIES.length)].id, bot: S.lobbyLevel });
 });

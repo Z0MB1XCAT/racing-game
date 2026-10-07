@@ -36,7 +36,9 @@ export const GRID = [
 	{x: 0, y: -6}, {x: 2, y: -6}, {x: -2, y: -6},
 	{x: 0, y: -9}, {x: 2, y: -9}, {x: -2, y: -9},
 	{x: 0, y: -12}, {x: -2, y: -12}, {x: 2, y: -12},
-	{x: 0, y: -15}, {x: 2, y: -15}, {x: -2, y: -15}
+	{x: 0, y: -15}, {x: 2, y: -15}, {x: -2, y: -15},
+	// (the 19th and 20th, for a solo race with 19 bots)
+	{x: 0, y: -18}, {x: 2, y: -18}
 ];
 
 export function newCarData(slot, lineCount){

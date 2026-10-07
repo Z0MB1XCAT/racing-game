@@ -1,6 +1,7 @@
 // The in-race overlay: timing tower, lap/time panel, speed, minimap, start lights and banners.
 // Text is only rewritten when it changes, so the page isn't doing layout work every frame.
 import { nameFxClass } from "./cosmetics.js";
+import { towerRows } from "./grid.js";
 
 const $ = id => document.getElementById(id);
 
@@ -123,7 +124,7 @@ export class Hud {
 	}
 
 	setTower(standings, focusId, holderId){
-		const n = Math.min(standings.length, 10);
+		const idx = towerRows(standings.length, standings.findIndex(s => s.car.id === focusId), this.towerMax || 10), n = idx.length;
 		while(this.rows.length < n){
 			const row = document.createElement("li");
 			row.className = "tower-row";
@@ -131,9 +132,9 @@ export class Hud {
 			this.tower.appendChild(row);
 			this.rows.push({ row, pos: row.children[0], chip: row.children[1], name: row.children[2], gap: row.children[3] });
 		}
-		this.rows.forEach((r, i) => {
-			const s = standings[i];
-			r.row.hidden = !s || i >= n;
+		this.rows.forEach((r, k) => {
+			const i = idx[k], s = i === undefined ? null : standings[i];
+			r.row.hidden = !s;
 			if(!s) return;
 			setText(r.pos, String(i + 1));
 			const hue = `hsl(${s.car.hue}, 100%, 55%)`;
@@ -142,7 +143,7 @@ export class Hud {
 			const fx = nameFxClass(s.car.look);
 			if(r.name._fx !== fx){ r.name._fx = fx; r.name.className = "tw-name" + (fx ? " " + fx : ""); }
 			setText(r.gap, s.car.finish !== null ? (i === 0 ? "WIN" : s.gap) : (s.gap || "Leader"));
-			const cls = "tower-row" + (s.car.id === focusId ? " is-me" : "") + (holderId && s.car.id === holderId ? " is-holder" : "") + (s.car.elim !== null ? " is-out" : "") + (s.car.finish !== null ? " is-done" : "");
+			const cls = "tower-row" + (s.car.id === focusId ? " is-me" : "") + (holderId && s.car.id === holderId ? " is-holder" : "") + (s.car.elim !== null ? " is-out" : "") + (s.car.finish !== null ? " is-done" : "") + (k && i !== idx[k - 1] + 1 ? " tower-gap" : "");
 			if(r.row._c !== cls){ r.row._c = cls; r.row.className = cls; }
 		});
 	}

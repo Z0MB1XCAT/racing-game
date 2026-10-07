@@ -1,7 +1,7 @@
 // One race: the cars, the rules and the clock. Physics comes from physics.js untouched.
 import * as phys from "./physics.js";
 import { makeTracker, raceProgress } from "./progress.js";
-import { Bot } from "./bots.js";
+import { Bot, personaOf, adaptLevel } from "./bots.js";
 import { isOffTrack, noteGoodSpot, rescue, OFF_TRACK_GRACE } from "./rescue.js";
 import { makeCar, animateCar, disposeCar } from "./cars.js";
 import { seededRandom } from "./trackgen.js";
@@ -46,6 +46,8 @@ export class Race {
 		});
 		this.draft = opts.draft !== false && opts.mode !== "quali";
 		this.contact = opts.contact === "classic" ? "classic" : "soft";
+		this.adaptive = !!opts.adaptive;      // solo bots keep within about a second of you (js/bots.js)
+		this.wet = false;                    // set by the game each frame: it's raining, snowing or storming (some bots like that)
 		this.qualiLimit = opts.qualiLimit || null;
 		this.tracker = opts.tracker || makeTracker(this.track);
 		this.lapLen = this.tracker.path ? this.tracker.path.len : 500;
@@ -74,7 +76,7 @@ export class Race {
 			const car = {
 				id: e.id, name: e.name, hue: e.hue, body: e.body || "classic", look: e.look || null,
 				isBot: !!e.bot, skill: e.bot || null, local: !!e.local, me: e.id === this.myId,
-				bot: e.bot && e.local ? new Bot(e.bot, this.rand, this.track.def && this.track.def.botTune) : null,
+				bot: e.bot && e.local ? new Bot(e.bot, this.rand, this.track.def && this.track.def.botTune, personaOf(e.name)) : null,
 				data, pos: new THREE.Vector3(data.x, phys.CAR_Y, data.y),
 				model: makeCar(e.body || "classic", e.hue, { look: e.look, ghost: opts.mode === "quali" && e.id !== opts.myId }),
 				finish: null, elim: null, best: null, lapStart: null, lapTimes: [],
@@ -142,6 +144,8 @@ export class Race {
 			if(c.me) c.data.steer = phys.clampSteer(mySteer);
 			else if(c.bot){
 				this.tracker.update(c);
+				c.bot.setConditions(this.wet, Math.max(1, c.data.lap));
+				if(this.adaptive && this.me) c.bot.setLevel(adaptLevel({ level: c.bot.level, base: c.bot.base, gap: this.gapSeconds(c, this.me), dt }));
 				c.data.steer = phys.clampSteer(c.bot.steer(c, this.tracker, active, dt));
 			}
 		}
@@ -464,7 +468,7 @@ export class Race {
 		for(const c of this.cars){
 			if(!c.isBot) continue;
 			c.local = isHost;
-			c.bot = isHost ? new Bot(c.skill || "medium", this.rand, this.track.def && this.track.def.botTune) : null;
+			c.bot = isHost ? new Bot(c.skill || "medium", this.rand, this.track.def && this.track.def.botTune, personaOf(c.name)) : null;
 			c.bestProgT = this.raceTime;
 		}
 	}

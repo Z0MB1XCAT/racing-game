@@ -3,6 +3,16 @@
 // when a version has something players will notice (version = the VERSION in js/config.js that shipped it).
 export const CHANGELOG = [
 	{
+		version: "2026.10.07-1", date: "7 October 2026", title: "Smarter bots and bigger grids",
+		items: [
+			"Bots now have ten levels (a slider) instead of three. Rookie, Racer and Ace are levels 3, 6 and 10.",
+			"Every bot has a name and a personality: Bold, Careful, Wet weather, Slipstreamer or Late charger. The results and the lobby show them.",
+			"Adaptive bots (Race bots, off by default) speed up or slow down to stay within about a second of you.",
+			"Race up to 19 bots and choose where you start, from pole to the back. Each track holds as many cars as its start straight allows.",
+			"Restart in the pause menu keeps the same grid. Race again after the results deals a new one."
+		]
+	},
+	{
 		version: "2026.10.06-3", date: "6 October 2026", title: "Podium styles",
 		items: [
 			"Pick how you celebrate when you win: Confetti, Fireworks, Fizz, Flames or Rainbow (Garage > Podium). Everyone in the room sees the winner's style on the results screen, with its own jingle.",

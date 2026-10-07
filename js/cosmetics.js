@@ -7,6 +7,7 @@
 // Driver level is worked out from XP, and XP from the online stats.
 
 import { season } from "./season.js";
+import { skillLevel } from "./botlevels.js";
 
 // ----- Levels -----
 // The curve below runs to level 30 (where it stays exactly as it always was); every level after that, up to 100, is a flat
@@ -361,7 +362,7 @@ export function cleanLook(look, P, isCrown){
 // Which solo goals a finished bot race ticks off in the garage. me and results are from the race ({ pos, status }); sky is what the
 // sky was doing as you finished ({ night, rain, fog }) or null; level is the bots' level; hits is how many times you touched another
 // car; lastOnGrid says you started at the back; october says it's the Halloween season.
-export function soloGoals({ me, results, sky, level, mode, hits, lastOnGrid, october }){
+export function soloGoals({ me, results, sky, level, mode, hits, lastOnGrid, october, adaptive = false, chosenStart = false }){
 	const flags = [];
 	if(!me) return flags;
 	if(me.status === "finished" || (me.pos === 1 && mode === "elim")){
@@ -371,11 +372,13 @@ export function soloGoals({ me, results, sky, level, mode, hits, lastOnGrid, oct
 		if(sky && sky.night && sky.fog && october) flags.push("halloween");        // the limited Halloween paint
 	}
 	if(me.pos === 1 && me.status !== "dnf"){
-		if(level === "medium" || level === "hard") flags.push("winRacer");
-		if(level === "hard") flags.push("winAce");
+		// (Bots that slow themselves down to stay near you don't count for the harder levels.)
+		const lv = adaptive ? 0 : skillLevel(level);
+		if(lv >= 6) flags.push("winRacer");
+		if(lv >= 10) flags.push("winAce");
 		if(sky && sky.rain) flags.push("winRain");
 		if(sky && sky.night) flags.push("winNight");
-		if(results.length >= 4 && lastOnGrid) flags.push("underdog");      // (won from the back, against at least three bots)
+		if(results.length >= 4 && lastOnGrid && !chosenStart) flags.push("underdog");      // (won from the back, against at least three bots; a start you picked yourself isn't luck of the draw)
 	}
 	if(me.status === "finished" && results.length >= 3 && !hits) flags.push("cleanRace");
 	return flags;

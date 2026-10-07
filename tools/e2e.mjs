@@ -2,6 +2,7 @@
 //   node tools/e2e.mjs solo [trackId]     race bots, hold right-ish steering, screenshot HUD + results
 //   node tools/e2e.mjs online             two tabs over ?localnet: host, join, race
 //   node tools/e2e.mjs vote               three tabs: race, then vote for the next track on the results screen
+//   node tools/e2e.mjs bots               the ten-level bot slider, adaptive bots, 19 bots and where you start, a track's own limit, Restart keeping the grid, bot tags in results and lobby
 //   node tools/e2e.mjs podium             the winner's celebration: previewed in the garage (locked styles too), and the winner's own style on every screen of an online race
 //   node tools/e2e.mjs modes              Sprint/Endurance presets, Hot Potato, Cat and mouse, Crown chase, the wheel of chaos, a reversed grid, and a party style online
 //   node tools/e2e.mjs looks              a name effect, start lights and number style: seen by the right people in the lobby, tower, labels and results
@@ -1338,6 +1339,91 @@ if(flow === "podium"){
 	// It's gone after a few seconds and when you leave the screen.
 	await wait(6500);
 	console.log("after its few seconds the canvas is clear and hidden again:", JSON.stringify(await Promise.all([host, guest].map(fx))));
+}
+
+if(flow === "bots"){
+	// The bot controls: a ten-level slider, adaptive bots, up to 19 bots and where you start, a track's own limit, Restart keeping the
+	// same grid while Race again deals a new one, and the bots' level and personality in the lobby.
+	const page = await open(base + "?localnet&season=off", 1280, 800);
+	await click(page, "#btnBots"); await wait(1500);
+	const slide = n => page.evaluate(n => { const r = document.getElementById("setupLevel"); r.value = n; r.dispatchEvent(new Event("input", { bubbles: true })); return [window.__game.setup.level, document.getElementById("setupLevelName").textContent, r.getAttribute("aria-valuetext")]; }, n);
+	const press = (sel, n) => page.evaluate((sel, n) => { for(let i = 0; i < n; i++) document.querySelector(sel).click(); }, sel, n);
+	console.log("the slider starts on level 6, Racer:", JSON.stringify(await page.evaluate(() => [window.__game.setup.level, document.getElementById("setupLevelName").textContent])));
+	const l2 = await slide(2), l3 = await slide(3), l7 = await slide(7), l10 = await slide(10);
+	console.log("level 2 is saved as l2 and named Beginner:", JSON.stringify(l2), l2[0] === "l2" && /Beginner/.test(l2[1]));
+	console.log("levels 3 and 10 keep their old names (easy, hard) so an older version in a room understands them:", l3[0] === "easy" && l10[0] === "hard" && l7[0] === "l7", JSON.stringify([l3, l7, l10]));
+	await slide(6);
+	await shot(page, "bots-setup");
+	console.log("adaptive bots start off, and switching them on says what they do:", await page.evaluate(() => { const off = window.__game.setup.adaptive === false; document.querySelector('#setupAdaptive [data-v="1"]').click(); return off && window.__game.setup.adaptive === true && /within about a second/.test(document.getElementById("botHelp").textContent); }));
+	await page.evaluate(() => document.querySelector('#setupAdaptive [data-v="0"]').click());
+	// A track whose start is short holds fewer cars.
+	await page.evaluate(() => document.querySelector('#setupTracks [data-id="monaco"]').click());
+	for(let i = 0; i < 40; i++){ if(await page.evaluate(() => document.getElementById("trackLoading").hidden)) break; await wait(500); }
+	await wait(600);
+	await press('[data-stepper="bots"] [data-d="1"]', 25);
+	const mon = await page.evaluate(() => ({ bots: window.__game.setup.bots, out: document.getElementById("setupBots").textContent, plusOff: document.querySelector('[data-stepper="bots"] [data-d="1"]').disabled }));
+	console.log("Monaco's start holds 16 cars, so 15 bots at most:", JSON.stringify(mon), mon.bots === 15 && mon.plusOff);
+	// Spa holds twenty: 19 bots, starting at the back.
+	await page.evaluate(() => document.querySelector('#setupTracks [data-id="spa"]').click());
+	for(let i = 0; i < 40; i++){ if(await page.evaluate(() => document.getElementById("trackLoading").hidden)) break; await wait(500); }
+	await wait(600);
+	await press('[data-stepper="bots"] [data-d="1"]', 25);
+	await press('[data-stepper="start"] [data-d="1"]', 40);
+	const spa = await page.evaluate(() => ({ bots: window.__game.setup.bots, start: window.__game.setup.start, startOut: document.getElementById("setupStart").textContent }));
+	console.log("Spa takes 19 bots, and the start place stops at the back (P20):", JSON.stringify(spa), spa.bots === 19 && spa.start === 20 && spa.startOut === "P20");
+	await press('[data-stepper="start"] [data-d="-1"]', 40);
+	console.log("and the minus button brings it back to Random:", await page.evaluate(() => document.getElementById("setupStart").textContent));
+	await press('[data-stepper="start"] [data-d="1"]', 40);
+	await page.evaluate(() => document.querySelector('#setupQuali [data-v="1"]').click()); await wait(300);
+	console.log("with Qualifying on the start place is hidden (qualifying decides the grid):", await page.evaluate(() => document.getElementById("setupStartRow").hidden));
+	await page.evaluate(() => document.querySelector('#setupQuali [data-v="0"]').click()); await wait(300);
+	await click(page, "#setupGo");
+	await wait(3500);
+	const lineup = () => page.evaluate(() => { const r = window.__game.race; return { cars: r.cars.length, me: r.cars.findIndex(c => c.me), names: r.cars.map(c => c.name), hues: r.cars.map(c => c.hue), bots: r.cars.filter(c => c.isBot).length }; });
+	const a = await lineup();
+	console.log("twenty cars on the grid, you at the back (the 20th place):", a.cars === 20 && a.me === 19 && a.bots === 19 && new Set(a.names).size === 20, JSON.stringify({ cars: a.cars, me: a.me + 1, bots: a.bots }));
+	const roster = await page.evaluate(async () => { const { BOT_ROSTER } = await import("/js/bots.js"); return BOT_ROSTER.map(r => r.name); });
+	console.log("every bot is one of the twenty named drivers:", a.names.filter((n, i) => i !== a.me).every(n => roster.includes(n)));
+	await shot(page, "bots-grid");
+	// Restart in the pause menu: the same cars in the same order.
+	await page.keyboard.press("Escape"); await wait(500);
+	console.log("the pause menu offers Restart (same grid):", await page.evaluate(() => document.getElementById("restartBtn").textContent.trim()));
+	await click(page, "#restartBtn"); await wait(3500);
+	const b = await lineup();
+	console.log("Restart gives the same cars in the same order, and you start at the back again:", JSON.stringify(a.names) === JSON.stringify(b.names) && JSON.stringify(a.hues) === JSON.stringify(b.hues) && b.me === 19);
+	// A short race to the results: Race again deals a new field.
+	await page.keyboard.press("Escape"); await wait(300);
+	await page.evaluate(() => { document.getElementById("pause").hidden = true; });
+	await click(page, "#quitBtn").catch(() => {});
+	await wait(800);
+	await page.evaluate(() => { const g = window.__game; });
+	await click(page, "#btnBots"); await wait(1200);
+	await page.evaluate(() => document.querySelector('#setupTracks [data-id="figure8"]').click()); await wait(2500);
+	await page.evaluate(() => { document.querySelector('[data-stepper="laps"] [data-d="-1"]').click(); document.querySelector('[data-stepper="laps"] [data-d="-1"]').click(); });
+	await press('[data-stepper="bots"] [data-d="-1"]', 40); await press('[data-stepper="bots"] [data-d="1"]', 4);
+	await click(page, "#setupGo"); await wait(3500);
+	const c1 = await lineup();
+	await autodrive(page);
+	console.log("results:", await waitScreen(page, "results", 200));
+	await wait(1500);
+	const tags = await page.evaluate(() => [...document.querySelectorAll("#resultsBody .tag.bot")].map(t => ({ text: t.textContent, tip: t.title })));
+	console.log("the results tag the bots with their personality:", tags.length === 4 && tags.every(t => /^AI · (Bold|Careful|Wet weather|Slipstreamer|Late charger)$/.test(t.text) && t.tip.length > 20), JSON.stringify(tags.map(t => t.text)));
+	await shot(page, "bots-results");
+	await page.evaluate(() => [...document.querySelectorAll("#resultsActions button")].find(b => /^Race again/.test(b.textContent.trim())).click());
+	await wait(3500);
+	const c2 = await lineup();
+	console.log("Race again deals a new field (new order or new drivers):", JSON.stringify(c1.names) !== JSON.stringify(c2.names) || JSON.stringify(c1.hues) !== JSON.stringify(c2.hues), JSON.stringify([c1.names, c2.names]));
+	// The lobby: a bot's level and personality.
+	const host = await open(base + "?localnet&season=off");
+	await click(host, "#btnOnline"); await wait(400);
+	await click(host, "#hostBtn"); await wait(1200);
+	await host.evaluate(() => { const r = document.getElementById("lobbyLevel"); r.value = 8; r.dispatchEvent(new Event("input", { bubbles: true })); });
+	await click(host, "#addBot"); await wait(900);
+	await host.evaluate(() => { const r = document.getElementById("lobbyLevel"); r.value = 3; r.dispatchEvent(new Event("input", { bubbles: true })); });
+	await click(host, "#addBot"); await wait(1200);
+	const lobby = await host.evaluate(() => ({ level: document.getElementById("lobbyLevelName").textContent, tags: [...document.querySelectorAll("#playerList .tag.bot")].map(t => t.textContent), saved: Object.values(window.__game.room.players).filter(p => p.bot).map(p => p.bot) }));
+	console.log("the lobby's slider adds bots at the level you set, tagged with level and personality:", JSON.stringify(lobby), lobby.saved.join() === "l8,easy" && lobby.tags[0] === "AI · Expert · Careful" && lobby.tags[1] === "AI · Rookie · Bold");
+	await shot(host, "bots-lobby");
 }
 
 console.log(errors.length ? "ERRORS:\n" + [...new Set(errors)].join("\n") : "no page errors");
